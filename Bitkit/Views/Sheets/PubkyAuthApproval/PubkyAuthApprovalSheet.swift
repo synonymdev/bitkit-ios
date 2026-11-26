@@ -1,3 +1,4 @@
+import Paykit
 import SwiftUI
 
 // MARK: - Config & Sheet Item
@@ -42,6 +43,18 @@ func pubkyAuthLiteralText(_ value: String) -> String {
             return text
         }
         text = stripped
+    }
+}
+
+/// A homeserver that refuses the signup code and a failed connection get their own messages, since retrying is safe for both.
+func pubkyAuthApprovalFailureDescription(_ error: Error) -> String {
+    switch error {
+    case let PaykitError.Identity(code, _) where code == "signup_code_rejected":
+        t("profile__auth_error_signup_code_rejected")
+    case PaykitError.Transport:
+        t("pubky_auth__identity_unavailable_desc")
+    default:
+        error.localizedDescription
     }
 }
 
@@ -707,7 +720,7 @@ struct PubkyAuthApprovalSheet: View {
             } else {
                 Logger.error("Failed to approve pubky auth: \(error)", context: "PubkyAuthApprovalSheet")
             }
-            app.toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("pubky_auth__approval_failed"), description: pubkyAuthApprovalFailureDescription(error))
             state = .authorize
         }
     }

@@ -988,6 +988,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             hasSeenNotificationsIntro: defaults.bool(forKey: "hasSeenNotificationsIntro"),
             hasSeenQuickpayIntro: defaults.bool(forKey: "hasSeenQuickpayIntro"),
             hasSeenShopIntro: defaults.bool(forKey: "hasSeenShopIntro"),
+            hasSeenTransferIntro: defaults.bool(forKey: "hasSeenTransferIntro"),
+            hasSeenTransferToSpendingIntro: defaults.bool(forKey: "hasSeenTransferToSpendingIntro"),
             hasSeenTransferToSavingsIntro: defaults.bool(forKey: "hasSeenTransferToSavingsIntro"),
             hasSeenWidgetsIntro: defaults.bool(forKey: "hasSeenWidgetsIntro"),
             hasDismissedWidgetsOnboardingHint: defaults.bool(forKey: "hasDismissedWidgetsOnboardingHint"),
@@ -998,7 +1000,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
             quickPayLedger: spend,
-            detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot()
+            detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot(),
+            sparkExitNextFundingIndexes: SparkExitFundingIndexes.backup(defaults)
         )
     }
 
@@ -1015,6 +1018,8 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
         defaults.set(cache.hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
         defaults.set(cache.hasSeenShopIntro, forKey: "hasSeenShopIntro")
+        defaults.set(cache.hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
+        defaults.set(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
         defaults.set(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
         defaults.set(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
         defaults.set(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
@@ -1026,5 +1031,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
         QuickPaySpendStore.shared.restoreFromBackup(ledger: cache.quickPayLedger)
         CoreService.shared.activity.restoreDetachedContacts(cache.detachedActivityContacts)
+        SparkExitFundingIndexes.restore(cache.sparkExitNextFundingIndexes, into: defaults)
     }
 }

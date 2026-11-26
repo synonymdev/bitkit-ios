@@ -86,6 +86,29 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
+    func testDiscoveryLeavesOutPubkyAppModerationAccounts() async {
+        let ownKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let moderationKeys = [
+            "pubkyeuarj183st16psbzusb44usk8i1k5foubnw7zt3n3j8h9zxg6hro",
+            "nto4u7kkagk5hfjk4wgueemzy61nssic811hid1ty9u81uatmqzy",
+        ]
+        let friend = makeContact(publicKey: "pubky5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo")
+        let cases: [([String], [Bitkit.PubkyContact])] = [
+            (moderationKeys + [friend.publicKey], [friend]),
+            (moderationKeys, []),
+        ]
+
+        for (followKeys, expected) in cases {
+            let manager = ContactsManager()
+            await manager.discoverRemoteContacts(publicKey: ownKey, fetchContactKeys: { _ in followKeys }, resolveProfile: { publicKey in
+                XCTAssertFalse(moderationKeys.contains { PubkyPublicKeyFormat.matches(publicKey, $0) })
+                return friend.profile
+            })
+
+            XCTAssertEqual(manager.pendingImportContacts, expected)
+        }
+    }
+
     func testImportPreservesExistingContactsOnBatchFailureAndRetriesSelectedContacts() async throws {
         let manager = ContactsManager()
         let existing = makeContact(publicKey: "pubky-existing")
@@ -2246,6 +2269,28 @@ final class ContactsManagerTests: XCTestCase {
         let fetchedKeys = await lookups.fetchedKeys
         XCTAssertEqual(fetchedKeys, [], "No read is issued for a deleted contact")
         XCTAssertTrue(manager.contacts.isEmpty)
+    }
+
+    func testDeleteAllContactsPreservesEvidenceWhenTheContactReadFails() async throws {
+        snapshotAppDefaults("pubkyContactProfileOverrides")
+        let contact = makeContact(publicKey: contactProfileKey)
+        ContactsManager.restoreContactProfileOverrides([contact.publicKey: PubkyProfileData.from(profile: contact.profile)])
+        let unavailable = AppError(message: "App Error", debugMessage: "Fetch failed: 404 missing session")
+        let manager = ContactsManager(contactRecords: { throw unavailable }, removeContactRecords: { _ in
+            XCTFail("An unavailable read must not authorize a removal")
+            return []
+        })
+        manager.contacts = [contact]
+
+        do {
+            try await manager.deleteAllContacts()
+            XCTFail("An unavailable read is not an empty contact list")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, unavailable.localizedDescription)
+        }
+
+        XCTAssertEqual(manager.contacts, [contact])
+        XCTAssertNotNil(ContactsManager.backupContactProfileOverrides()?[contact.publicKey])
     }
 
     func testDeleteAllContactsPreservesContactsNotRemovedByTheBulkOperation() async throws {

@@ -99,6 +99,29 @@ class TransferStorage {
         }
     }
 
+    /// Moves a transfer's countdown target, as a Spark exit learns when its timelocks mature.
+    func updateClaimableAtHeight(id: String, claimableAtHeight: UInt32?) throws {
+        var transfers = try getAll()
+        guard let index = transfers.firstIndex(where: { $0.id == id }), transfers[index].claimableAtHeight != claimableAtHeight else { return }
+        let transfer = transfers[index]
+        transfers[index] = Transfer(
+            id: transfer.id,
+            type: transfer.type,
+            amountSats: transfer.amountSats,
+            channelId: transfer.channelId,
+            fundingTxId: transfer.fundingTxId,
+            lspOrderId: transfer.lspOrderId,
+            isSettled: transfer.isSettled,
+            createdAt: transfer.createdAt,
+            settledAt: transfer.settledAt,
+            claimableAtHeight: claimableAtHeight,
+            txTotalSats: transfer.txTotalSats,
+            preTransferOnchainSats: transfer.preTransferOnchainSats
+        )
+        try save(transfers)
+        transfersChangedSubject.send()
+    }
+
     /// Delete old settled transfers
     func deleteOldSettled(expirationTimestamp: UInt64) throws {
         var transfers = try getAll()

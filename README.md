@@ -24,6 +24,18 @@ The app automatically selects the network based on the build configuration:
 - **Debug builds** → Uses **Regtest** network (for local development and testing)
 - **Release builds** → Uses **Bitcoin Mainnet** network (for production)
 
+### Build secrets
+
+Spark (Lightning without channels) needs a Breez API key on mainnet. Provide it in one of two ways:
+
+- Store it in the macOS keychain item `BREEZ_API_KEY`, which the build reads when no build setting sets the key:
+  ```bash
+  security add-generic-password -U -a "$USER" -s BREEZ_API_KEY -w
+  ```
+- Or copy `Secrets.xcconfig.template` to `Secrets.xcconfig` (gitignored) and paste the key after `BREEZ_API_KEY =`.
+
+Without it the app builds and Spark stays off on mainnet; regtest needs no key.
+
 ### Building for E2E tests
 
 To produce an E2E build (uses the local Electrum backend by default), pass the `E2E_BUILD` compilation flag:
@@ -83,7 +95,7 @@ This project uses [SwiftFormat](https://github.com/nicklockwood/SwiftFormat) for
 brew install swiftformat
 ```
 
-CI pins SwiftFormat 0.64.0, and `.swiftformat` sets it as the minimum version.
+CI pins SwiftFormat 0.64.6, and `.swiftformat` sets it as the minimum version.
 
 **IDE Extensions:**
 - [VSCode extension](https://open-vsx.org/extension/vknabel/vscode-swiftformat)

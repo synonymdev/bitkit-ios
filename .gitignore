@@ -27,5 +27,5 @@ buildServer.json
 # XcodeBuildMCP
 .xcodebuildmcp/config.yaml
 
-# Local build secrets
+# Local build secrets (see Secrets.xcconfig.template)
 Secrets.xcconfig

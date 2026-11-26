@@ -41,13 +41,15 @@ final class HwWalletManagerFundingTests: XCTestCase {
         )
     }
 
-    private func makeEvent(total: UInt64) -> WatcherEvent {
+    private func makeEvent(total: UInt64, txIds: [String] = []) -> WatcherEvent {
         let balance = WalletBalance(
             confirmed: total, immature: 0, trustedPending: 0, untrustedPending: 0, spendable: total, total: total
         )
         return .transactionsChanged(
             activities: [],
-            transactionDetails: [],
+            transactionDetails: txIds.map {
+                BitkitCore.TransactionDetails(walletId: WalletScope.default, txId: $0, amountSats: 0, inputs: [], outputs: [])
+            },
             balance: balance,
             txCount: 0,
             blockHeight: 100,
@@ -85,6 +87,33 @@ final class HwWalletManagerFundingTests: XCTestCase {
         XCTAssertEqual(wallet.fundingBalanceSats, 50000, "funding balance is native-segwit only")
         XCTAssertEqual(manager.fundingBalance(walletId: walletId("dev1")), 50000)
         XCTAssertEqual(manager.fundingBalance(walletId: walletId("dev1"), addressType: .taproot), 30000)
+    }
+
+    func testFundingStateChangesWithTransactionsAtTheSameBalance() {
+        let device = makeDevice(id: "dev1", xpubs: ["nativeSegwit": "zpubNS", "taproot": "zpubTR"])
+        let manager = makeManager()
+        manager.updateDevices(knownDevices: [device], connectedDeviceId: "dev1")
+        let nativeSegwit = watcherId("dev1", "nativeSegwit")
+
+        manager.handleWatcherEvent(watcherId: nativeSegwit, event: makeEvent(total: 50000, txIds: ["a"]))
+        let before = manager.fundingStateFingerprint(walletId: walletId("dev1"))
+        manager.handleWatcherEvent(watcherId: nativeSegwit, event: makeEvent(total: 50000, txIds: ["a"]))
+        XCTAssertEqual(manager.fundingStateFingerprint(walletId: walletId("dev1")), before, "same coins keep the state")
+
+        manager.handleWatcherEvent(watcherId: nativeSegwit, event: makeEvent(total: 50000, txIds: ["a", "b", "c"]))
+        XCTAssertNotEqual(
+            manager.fundingStateFingerprint(walletId: walletId("dev1")),
+            before,
+            "a spend and a top-up back to the same total change the state"
+        )
+
+        let afterSpend = manager.fundingStateFingerprint(walletId: walletId("dev1"))
+        manager.handleWatcherEvent(watcherId: watcherId("dev1", "taproot"), event: makeEvent(total: 9000, txIds: ["t"]))
+        XCTAssertEqual(
+            manager.fundingStateFingerprint(walletId: walletId("dev1")),
+            afterSpend,
+            "only the funding address type counts"
+        )
     }
 
     func testGetFundingAccountReturnsNativeSegwitXpubAndBalance() throws {

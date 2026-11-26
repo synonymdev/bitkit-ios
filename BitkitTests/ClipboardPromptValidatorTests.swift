@@ -92,12 +92,14 @@ final class ClipboardPromptValidatorTests: XCTestCase {
         let port = try XCTUnwrap(probe.port)
         let lnurl = ClipboardLnurlEncoder.encode("http://127.0.0.1:\(port)/lnurlp")
 
-        for uri in [lnurl, "https://example.com/pay?lightning=\(lnurl)", "bitkit://\(lnurl)"] {
+        let inputs = [lnurl, "https://example.com/pay?lightning=\(lnurl)", "bitkit://\(lnurl)"]
+            + ["\r", "\u{0085}", "\u{2028}", "\u{2029}"].map { "https://example.com/\($0)?lightning=\(lnurl)" }
+        for uri in inputs {
             // The probe returns 404; a decoding failure is expected, but the request proves the fixture is valid.
             let decoded = try? await decode(invoice: uri)
             XCTAssertNil(decoded)
         }
-        XCTAssertEqual(probe.connections, 3)
+        XCTAssertEqual(probe.connections, inputs.count)
     }
 
     func testLocalPaymentFormatsRemainSupported() async {
@@ -122,14 +124,85 @@ final class ClipboardPromptValidatorTests: XCTestCase {
         }
     }
 
-    func testDuplicateBip21IsRejectedBeforeCandidateRecognition() async {
-        let supported = await ClipboardPromptValidator.isSupportedURI(
-            "bitcoin:bitcoin:invalid?lightning=lnurl1qqqqqq", ownPublicKey: nil, contacts: []
-        ) { _ in
-            XCTFail("Duplicated BIP21 must be rejected before decoding")
-            return true
+    func testBip21ValidationUsesDecoderResult() async {
+        let uri = "bitcoin:mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn?message=bitcoin:donation"
+        for decoderResult in [false, true] {
+            var decodeCount = 0
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: []) {
+                decodeCount += 1
+                XCTAssertEqual($0, uri)
+                return decoderResult
+            }
+            XCTAssertEqual(decodeCount, 1)
+            XCTAssertEqual(supported, decoderResult)
         }
+    }
+
+    func testDuplicateBip21IsRejectedByCoreDecoder() async {
+        let first = "bitcoin:bcrt1qr289x0fhg62672e8urudfnxnsr8tcax64xk2vk?amount=0.0000002&message=Bitkit"
+        let second = "bitcoin:bcrt1qr289x0fhg62672e8urudfnxnsr8tcax64xk2vk?amount=0.0000003&message=Bitkit"
+        let supported = await ClipboardPromptValidator.isSupportedURI(
+            first + second, ownPublicKey: nil, contacts: []
+        )
         XCTAssertFalse(supported)
+    }
+
+    func testHttpWrapperTerminatorsRemainOfflineBeforeConsent() async throws {
+        let probe = try ClipboardConnectionProbe()
+        defer { probe.stop() }
+        let ready = expectation(description: "loopback listener ready")
+        probe.start(ready: ready)
+        await fulfillment(of: [ready], timeout: 5)
+        let port = try XCTUnwrap(probe.port)
+        let lnurl = ClipboardLnurlEncoder.encode("http://127.0.0.1:\(port)/lnurlp")
+        for terminator in ["\r", "\u{0085}", "\u{2028}", "\u{2029}"] {
+            for prefix in ["", "bitkit://", "lightning:bitkit://"] {
+                let input = "\(prefix)https://example.com/\(terminator)?lightning=\(lnurl)"
+                let supported = await ClipboardPromptValidator.isSupportedURI(input, ownPublicKey: nil, contacts: [])
+                XCTAssertTrue(supported, input)
+            }
+        }
+        let unsupported = await ClipboardPromptValidator.isSupportedURI(
+            "https://example.com/\n?lightning=\(lnurl)", ownPublicKey: nil, contacts: []
+        )
+        XCTAssertFalse(unsupported, "Core does not match HTTP wrappers across LF")
+        XCTAssertEqual(probe.connections, 0, "Interior terminators must not bypass pre-consent inspection")
+    }
+
+    func testNormalizedLnurlInspectionDoesNotContactEndpoints() async throws {
+        let probe = try ClipboardConnectionProbe()
+        defer { probe.stop() }
+        let ready = expectation(description: "loopback listener ready")
+        probe.start(ready: ready)
+        await fulfillment(of: [ready], timeout: 5)
+        let port = try XCTUnwrap(probe.port)
+        let lnurl = ClipboardLnurlEncoder.encode("http://127.0.0.1:\(port)/lnurlp")
+        for input in ["\u{0085}\(lnurl)", "bitkit://lightning: \(lnurl)", "bitkit://bitkbitkit://it://\(lnurl)"] {
+            let supported = await ClipboardPromptValidator.isSupportedURI(input, ownPublicKey: nil, contacts: [])
+            XCTAssertTrue(supported, input)
+        }
+        XCTAssertEqual(probe.connections, 0, "Normalized candidates must not contact endpoints before confirmation")
+    }
+
+    func testBip21WithLnurlMetadataIsValidatedWithoutNetworkRequests() async throws {
+        let probe = try ClipboardConnectionProbe()
+        defer { probe.stop() }
+        let ready = expectation(description: "loopback listener ready")
+        probe.start(ready: ready)
+        await fulfillment(of: [ready], timeout: 5)
+        let port = try XCTUnwrap(probe.port)
+        let lnurl = ClipboardLnurlEncoder.encode("http://127.0.0.1:\(port)/lnurlp")
+        let address = "bcrt1qr289x0fhg62672e8urudfnxnsr8tcax64xk2vk"
+        let valid = "bitcoin:\(address)?message=bitcoin:donation&lightning=\(lnurl)"
+        let doubled = "bitcoin:\(address)?amount=0.0000002bitcoin:\(address)?amount=0.0000003&lightning=\(lnurl)"
+
+        for prefix in ["", "bitkit://", "bitkit://lightning:"] {
+            for (uri, expected) in [(valid, true), (doubled, false)] {
+                let supported = await ClipboardPromptValidator.isSupportedURI(prefix + uri, ownPublicKey: nil, contacts: [])
+                XCTAssertEqual(supported, expected, prefix + uri)
+            }
+        }
+        XCTAssertEqual(probe.connections, 0, "BIP21 inspection must not fetch optional LNURL metadata before consent")
     }
 
     func testNonNetworkDecodeKeepsOriginalNormalizedPayload() async {

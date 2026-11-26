@@ -1,0 +1,22 @@
+<journey name="scan onchain amount over hardware spendable">
+  <description>
+    Verifies that an on-chain BIP21 request whose amount a paired hardware wallet's balance covers,
+    but not once the network fee is taken, shows the Insufficient Savings toast and closes the Send
+    sheet, instead of leaving the Confirm screen on the hardware wallet with a Try again toast and a
+    disabled swipe. Nothing is broadcast.
+    Precondition: an onboarded dev wallet with 0 sats in Savings and a paired Bridge emulator (see
+    README.md) whose native-segwit account holds a confirmed regtest balance B of at least 10 000
+    sats, read from its home tile. Use an amount between B minus 100 sats and B, which the balance
+    covers but the balance minus any non-zero fee does not, and a regtest address the wallet does
+    not own. Start on the wallet home screen.
+    iOS opens the Confirm screen (id "SendConfirm") while it checks the funding sources, so the sheet
+    may show briefly before it closes; Android shows the toast without opening Confirm.
+  </description>
+  <actions>
+    <action>Read the paired Trezor's balance B from its home tile (id "ActivityHardware") and pick an amount A with B - 100 &lt; A &lt; B, written in BTC</action>
+    <action>Run xcrun simctl openurl &lt;UDID&gt; "bitcoin:&lt;regtest address&gt;?amount=&lt;A&gt;"</action>
+    <action>Verify within 30 seconds the Insufficient Savings toast (id "InsufficientSavingsToast") appears (screenshot), the Send sheet closes back to the wallet home screen, and no "Please try again" toast is shown</action>
+    <action>Pick an amount below B by at least 2 000 sats and run the same openurl command with it</action>
+    <action>Verify the Confirm screen opens with the Trezor as the funding source (Show Details, id "SendConfirmAssetButton"), a non-zero network fee and an enabled swipe (id "GRAB"); close the sheet without sending</action>
+  </actions>
+</journey>

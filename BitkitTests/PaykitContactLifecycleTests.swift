@@ -77,9 +77,9 @@ final class PaykitContactLifecycleTests: XCTestCase {
                 counterparty: sdk.publicKey,
                 paymentRequestId: "550e8400-e29b-41d4-a716-446655440000", localRole: testCase.role, state: .activeRecurring,
                 proposalStreamItemId: nil, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
-                proposalEventId: nil, proposalAppId: testCase.appId,
+                proposalEventId: nil, proposalAppId: testCase.appId, proposalRecordedAt: nil,
                 payerAppId: testCase.role == .payer ? testCase.appId : nil, executionClaimAppId: nil,
-                terms: terms, acceptedEventId: nil, acceptedOutboundStatus: nil,
+                terms: terms, acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil,
                 rejectedEventId: nil, rejectedOutboundStatus: nil, canceledEventId: nil, canceledOutboundStatus: nil,
                 conversionQuotes: [],
                 paymentProofs: [], lastStreamItemId: nil, lastOutboundMessageId: nil, lastOutboundStatus: nil,
@@ -128,8 +128,8 @@ final class PaykitContactLifecycleTests: XCTestCase {
                 counterparty: publicKey,
                 paymentRequestId: UUID().uuidString, localRole: .payer, state: .activeRecurring,
                 proposalStreamItemId: nil, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
-                proposalEventId: nil, proposalAppId: "paykit-server", payerAppId: "paykit-server", executionClaimAppId: nil,
-                terms: terms, acceptedEventId: nil, acceptedOutboundStatus: nil,
+                proposalEventId: nil, proposalAppId: "paykit-server", proposalRecordedAt: nil, payerAppId: "paykit-server", executionClaimAppId: nil,
+                terms: terms, acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil,
                 rejectedEventId: nil, rejectedOutboundStatus: nil, canceledEventId: nil, canceledOutboundStatus: nil,
                 conversionQuotes: [], paymentProofs: [], lastStreamItemId: nil, lastOutboundMessageId: nil,
                 lastOutboundStatus: nil, lastEventAt: nil, invalidReason: nil
@@ -527,6 +527,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
             queued: [],
             cleared: updates.filter { update in !failed.contains { $0.counterparty == update.counterparty } }
                 .map { .init(counterparty: $0.counterparty, outboundMessageId: 1, error: nil) },
+            acknowledged: [],
             failedToQueue: failed.map { .init(counterparty: $0.counterparty, outboundMessageId: nil, error: nil) },
             failedToDeliver: []
         )
@@ -540,7 +541,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
         if failWithdrawal {
             throw PubkyServiceError.sessionNotActive
         }
-        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
     }
 
     override func blockPeer(counterparty: String) async throws -> LinkedPeerRecord {

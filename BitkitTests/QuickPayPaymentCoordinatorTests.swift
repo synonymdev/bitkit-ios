@@ -103,6 +103,22 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertEqual(store.spentCentsToday(), 0)
     }
 
+    func testSparkRefusalReleasesSpendAndFails() async throws {
+        let invoiceHash = try Self.invoiceHash
+        // Spark refuses only before anything leaves the wallet, as when its balance can't cover the payment.
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                throw Bitkit.ChannelFreeRailSendRefused(reason: "Spark balance can't cover the payment")
+            }
+        )
+
+        guard case .failure = route else {
+            return XCTFail("Expected failure, got \(String(describing: route))")
+        }
+        XCTAssertNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
     func testWrappedDuplicateDispatchWithSucceededLdkReleasesFreshReserveAndFails() async throws {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(

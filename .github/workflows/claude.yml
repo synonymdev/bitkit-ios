@@ -10,7 +10,7 @@ on:
 
 jobs:
   claude:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write      # Allow creating branches/commits
       pull-requests: write # Allow pushing to PR branches

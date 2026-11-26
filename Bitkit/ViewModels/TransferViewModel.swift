@@ -5,7 +5,19 @@ import SwiftUI
 
 @MainActor
 class TransferViewModel: ObservableObject {
-    @Published var selectedChannelIds: [String] = []
+    /// Channels picked in the Advanced list of Transfer to Savings; nil transfers them all.
+    @Published var selectedChannelIds: Set<String>?
+    /// Whether the Advanced list of Transfer to Savings picks Spark's balance.
+    @Published var isSparkSelected = true
+    /// Spark's fee to withdraw its balance to savings, for the confirm screen; nil until priced.
+    @Published var sparkWithdrawFeeSats: UInt64?
+    @Published var isPricingSparkWithdrawal = false
+    /// Spark's balance would leave less than the dust limit after its withdrawal fee, so it can't move to savings.
+    @Published private(set) var isSparkWithdrawTooSmall = false
+    /// While the swipe prices Spark's withdrawal again, nothing else may commit the transfer.
+    @Published private(set) var isRecheckingSparkFee = false
+    /// Why the last transfer's Spark withdrawal failed, so the progress screen shows it instead of success.
+    @Published private(set) var sparkWithdrawError: String?
     @Published var channelsToClose: [ChannelDetails] = []
 
     /// How the LN -> onchain "transfer to savings" is executed. Closing a channel is the
@@ -28,6 +40,8 @@ class TransferViewModel: ObservableObject {
     /// SwiftUI cancelling and re-running the progress screen's `.task` neither cancels the swap
     /// nor creates and pays a second one: re-entry awaits the same run and its memoized result.
     private var savingsSwapRun: Task<SavingsSwapResult, Never>?
+    /// Whether the committed transfer withdraws Spark's balance to savings.
+    private var withdrawsSpark = false
     /// The amount (sat) that will actually be swapped out; adjustable via the confirm slider.
     private var pendingSwapAmountSat: UInt64 = 0
     /// Cached swap limits so the slider can re-price locally without hitting the network.
@@ -36,6 +50,29 @@ class TransferViewModel: ObservableObject {
     private let swapClaimTimeout: TimeInterval = 30
     /// Upper bound for fetching swap limits before the confirm screen gives up on a quote.
     private let swapQuoteTimeout: TimeInterval = 15
+    /// Prices Spark's withdrawal for the confirm screen; tests replace it.
+    var priceSparkWithdrawal: @Sendable (String) async throws -> UInt64 = { try await SparkManager.shared.withdrawAllFeeSats(to: $0) }
+    var sparkBalanceSats: @MainActor () -> UInt64 = { SparkManager.shared.balanceSats }
+    /// Sends Spark's balance to the address, refusing above the shown fee; tests replace it.
+    var withdrawSpark: @MainActor (String, UInt64) async throws -> Void = { try await SparkManager.shared.withdrawAll(to: $0, maxFeeSats: $1) }
+    /// Whether Spark reads Savings' chain, so its withdrawal reaches Savings; tests replace it.
+    var sparkReadsSavingsChain: @MainActor () -> Bool = {
+        SparkManager.readsBitkitChain(network: Env.network, chainServiceUrl: Env.sparkChainServiceUrl(for: Env.network))
+    }
+
+    /// How long the confirm screen waits for Spark's withdrawal fee before offering to retry; a full-balance quote can
+    /// take minutes.
+    var sparkFeeTimeout: TimeInterval = 180
+    private var sparkFeeTask: Task<Void, Never>?
+    /// The Spark balance the fee was priced for, so it is priced once per balance.
+    private var sparkFeeBalanceSats: UInt64?
+    /// Counts each pricing of a new Spark balance, so a swipe's recheck can tell the fee shown changed under it.
+    private var sparkFeeGeneration = 0
+    /// The Spark withdrawal fee shown when the transfer was confirmed, the most `withdrawSparkToSavings` pays.
+    private var confirmedSparkFeeSats: UInt64?
+    /// One Savings address for Spark's withdrawal, priced on the confirm screen and then paid to, so the withdrawal
+    /// reuses the quote the fee came from.
+    private var sparkWithdrawAddress: String?
     /// Minimum sats held back from a swap to cover Lightning routing fees.
     private static let minLnRoutingFeeReserveSats: UInt64 = 10
 
@@ -149,13 +186,13 @@ class TransferViewModel: ObservableObject {
 
         onEvent(eventId) { event in
             if case let .channelPending(
-                eventChannelId,
-                eventUserChannelId,
-                _,
-                _,
-                fundingTxo
-            ) = event,
-                // Match by user channel ID
+                   eventChannelId,
+                   eventUserChannelId,
+                   _,
+                   _,
+                   fundingTxo
+               ) = event,
+               // Match by user channel ID
                eventUserChannelId.description == userChannelId
             {
                 Task {
@@ -226,27 +263,266 @@ class TransferViewModel: ObservableObject {
 
     // MARK: - Savings Transfer Methods
 
-    func setSelectedChannelIds(_ ids: [String]) {
-        selectedChannelIds = ids
+    /// Opens Transfer to Savings with nothing left from an earlier visit that ended before the swipe.
+    func beginSavingsTransfer() {
+        selectAllForSavings()
     }
 
-    /// Commit the transfer and pick how it runs. A swap needs a priced quote, so without one
+    /// Back to transferring everything, the default.
+    func selectAllForSavings() {
+        selectedChannelIds = nil
+        isSparkSelected = true
+    }
+
+    /// What the current pick moves, out of the ready channels and Spark's balance.
+    func savingsSelection(readyChannelIds: [String], sparkSats: UInt64) -> SavingsSelection {
+        SavingsSelection.resolve(
+            readyChannelIds: readyChannelIds,
+            selectedChannelIds: selectedChannelIds,
+            isSparkSelected: isSparkSelected,
+            sparkSats: sparkSats,
+            isSparkTooSmall: isSparkWithdrawTooSmall
+        )
+    }
+
+    /// Prices withdrawing Spark's `balanceSats` to `savingsAddress`, once per balance, as `withdrawSparkToSavings`
+    /// then sends it. Gives up after `sparkFeeTimeout`, leaving the fee unpriced.
+    func loadSparkWithdrawFee(balanceSats: UInt64, savingsAddress: String) {
+        let isPriced = sparkFeeTask != nil || sparkWithdrawFeeSats != nil
+        if balanceSats == sparkFeeBalanceSats, isPriced {
+            return
+        }
+        sparkFeeTask?.cancel()
+        sparkFeeTask = nil
+        sparkFeeGeneration += 1
+        sparkFeeBalanceSats = balanceSats
+        sparkWithdrawFeeSats = nil
+        isSparkWithdrawTooSmall = false
+        isPricingSparkWithdrawal = false
+        if sparkWithdrawAddress == nil, !savingsAddress.isEmpty {
+            sparkWithdrawAddress = savingsAddress
+        }
+        guard balanceSats > 0, let address = sparkWithdrawAddress else {
+            sparkFeeBalanceSats = nil
+            return
+        }
+
+        isPricingSparkWithdrawal = true
+        let price = priceSparkWithdrawal
+        let timeout = sparkFeeTimeout
+        sparkFeeTask = Task { [weak self] in
+            // Spark refuses to quote a balance that even its cheapest fee leaves as dust, which is too small, not unpriced.
+            let priced = await Self.withTimeout(seconds: timeout) { () -> SparkWithdrawalPrice in
+                do {
+                    return try await .fee(price(address))
+                } catch where SparkManager.isBelowMinimum(error) {
+                    return .belowMinimum
+                }
+            }
+            guard let self, !Task.isCancelled else { return }
+            sparkFeeTask = nil
+            isPricingSparkWithdrawal = false
+            let fee: UInt64? = if case let .fee(sats) = priced {
+                sats
+            } else {
+                nil
+            }
+            if priced == .belowMinimum {
+                isSparkWithdrawTooSmall = true
+                sparkFeeBalanceSats = nil
+            } else if let fee, balanceSats < fee + UInt64(Env.dustLimit) {
+                isSparkWithdrawTooSmall = true
+                sparkFeeBalanceSats = nil
+            } else if let fee {
+                sparkWithdrawFeeSats = fee
+            } else {
+                sparkFeeBalanceSats = nil
+                Logger.warn("Spark withdrawal fee not priced within \(timeout)s or failed", context: "TransferViewModel")
+            }
+        }
+    }
+
+    /// Whether the swipe may commit: a transfer that withdraws Spark waits until its fee is shown.
+    func isSparkWithdrawalPriced(withdrawsSpark: Bool) -> Bool {
+        !withdrawsSpark || sparkWithdrawFeeSats != nil
+    }
+
+    /// Prices the withdrawal again at swipe time and returns the fee it approved. Throws `SparkWithdrawalFeeIncreased`
+    /// after showing the higher fee, so the user swipes again for it, `SavingsCommitRefused` when Spark's balance was
+    /// priced again meanwhile, and throws when it can't be priced.
+    @discardableResult
+    func recheckSparkWithdrawFee() async throws -> UInt64 {
+        guard let shownFeeSats = sparkWithdrawFeeSats, let address = sparkWithdrawAddress else {
+            throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal not priced")
+        }
+        let generation = sparkFeeGeneration
+        let price = priceSparkWithdrawal
+        isRecheckingSparkFee = true
+        defer { isRecheckingSparkFee = false }
+        guard let feeSats = await Self.withTimeout(seconds: sparkFeeTimeout, { try await price(address) }) else {
+            throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal re-quote failed")
+        }
+        guard sparkFeeGeneration == generation else { throw SavingsCommitRefused() }
+        do {
+            try SparkManager.checkWithdrawalFee(feeSats, shownFeeSats: shownFeeSats)
+        } catch {
+            sparkWithdrawFeeSats = feeSats
+            throw error
+        }
+        return shownFeeSats
+    }
+
+    /// The result of `operation`, or nil when it throws, takes longer than `seconds` or the caller is cancelled. Returns
+    /// at the deadline even while `operation` ignores cancellation, as the Breez SDK calls do.
+    private nonisolated static func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async -> T? {
+        let result = FirstResult<T?>()
+        let work = Task {
+            do {
+                try await result.resume(operation())
+            } catch {
+                Logger.error("Failed to price the Spark withdrawal", context: error.localizedDescription)
+                result.resume(nil)
+            }
+        }
+        let deadline = Task {
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            result.resume(nil)
+        }
+        defer {
+            work.cancel()
+            deadline.cancel()
+        }
+        return await withTaskCancellationHandler {
+            await result.value()
+        } onCancel: {
+            result.resume(nil)
+        }
+    }
+
+    /// The swipe: prices a Spark withdrawal again, then commits the transfer. Throws `SavingsCommitRefused` when the
+    /// commit is refused, as when Spark's balance changed during the recheck, so the swipe resets instead of opening
+    /// progress.
+    func confirmSavingsSwipe(channels: [ChannelDetails], withdrawsSpark: Bool) async throws {
+        var approvedSparkFeeSats: UInt64?
+        if withdrawsSpark {
+            approvedSparkFeeSats = try await recheckSparkWithdrawFee()
+        }
+        guard onTransferToSavingsConfirm(channels: channels, withdrawsSpark: withdrawsSpark, approvedSparkFeeSats: approvedSparkFeeSats) else {
+            throw SavingsCommitRefused()
+        }
+    }
+
+    /// Commit the transfer and pick how it runs. A Spark withdrawal commits only at a fee shown and not being priced again,
+    /// returning false otherwise, and pays at most `approvedSparkFeeSats` when the swipe rechecked one. A swap needs a priced quote, so without one
     /// (swaps unsupported on this network, Boltz unreachable, or an amount below the swap
     /// minimum) the transfer closes a channel exactly as it did before swaps existed.
-    func onTransferToSavingsConfirm(channels: [ChannelDetails], mode: SavingsTransferMode? = nil) {
+    @discardableResult
+    func onTransferToSavingsConfirm(
+        channels: [ChannelDetails],
+        withdrawsSpark: Bool,
+        mode: SavingsTransferMode? = nil,
+        approvedSparkFeeSats: UInt64? = nil
+    ) -> Bool {
+        guard !withdrawsSpark || (isSparkWithdrawalPriced(withdrawsSpark: true) && !isRecheckingSparkFee) else { return false }
         savingsTransferMode = mode ?? resolvedSavingsTransferMode
-        selectedChannelIds = []
+        selectAllForSavings()
         channelsToClose = channels
+        self.withdrawsSpark = withdrawsSpark
+        // Spark withdraws at the fee shown now, even if the screen prices it again before the withdrawal runs.
+        confirmedSparkFeeSats = withdrawsSpark ? approvedSparkFeeSats ?? sparkWithdrawFeeSats : nil
         // Each swipe commit is a new transfer; the previous run's memo must not satisfy it.
         savingsSwapRun = nil
+        return true
     }
 
     private var resolvedSavingsTransferMode: SavingsTransferMode {
         savingsSwapState.quote != nil ? .swap : .close
     }
 
+    /// Whether Transfer to Savings closes channels, rather than only withdrawing Spark's balance.
+    var hasChannelsToClose: Bool {
+        !channelsToClose.isEmpty
+    }
+
+    /// Withdraws Spark's balance when selected, then closes the selected channels. A failed withdrawal doesn't stop
+    /// the closes; it is kept in `sparkWithdrawError` for the progress screen.
     func closeSelectedChannels() async throws -> [ChannelDetails] {
+        await withdrawSelectedSpark()
         return try await closeChannels(channels: channelsToClose)
+    }
+
+    private func withdrawSelectedSpark() async {
+        sparkWithdrawError = nil
+        guard withdrawsSpark else { return }
+        do {
+            try await withdrawSparkToSavings()
+        } catch {
+            Logger.error("Failed to withdraw Spark to savings: \(error)", context: "TransferViewModel")
+            sparkWithdrawError = SparkErrorCopy.message(for: error, fallback: t("lightning__savings_spark_failed__text"))
+        }
+    }
+
+    private func withdrawSparkToSavings() async throws {
+        sparkFeeTask?.cancel()
+        sparkFeeTask = nil
+        isPricingSparkWithdrawal = false
+        guard sparkBalanceSats() > 0, !SparkManager.shared.isExiting else { return }
+        guard let confirmedFeeSats = confirmedSparkFeeSats, let address = sparkWithdrawAddress else {
+            throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal not priced")
+        }
+        // On regtest Spark may read another chain than Savings, where Savings' address would take Spark's funds.
+        guard sparkReadsSavingsChain() else { throw SparkReadsAnotherChain() }
+        try await withdrawSpark(address, confirmedFeeSats)
+        sparkWithdrawAddress = nil
+        sparkFeeBalanceSats = nil
+        sparkWithdrawFeeSats = nil
+    }
+
+    // MARK: - Spark Funding
+
+    /// Sends `amountSats` of savings to the Spark deposit address and returns its txid. Spark claims the deposit
+    /// early when the provider offers it within the accepted fee, otherwise after 3 confirmations.
+    func fundSpark(address: String, amountSats: UInt64, satsPerVbyte: UInt32, txFee: UInt64, isMaxAmount: Bool) async throws -> String {
+        let walletId = OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
+        let attempts = OnchainSendAttemptService.shared
+        let result = try await attempts.send(
+            using: lightningService,
+            address: address,
+            amountSats: amountSats,
+            satsPerVbyte: satsPerVbyte,
+            utxosToSpend: nil,
+            isMaxAmount: isMaxAmount,
+            followupContext: OnchainSendFollowupContext(
+                feeSats: txFee,
+                feeRate: satsPerVbyte,
+                tags: [],
+                contact: nil,
+                createdAt: UInt64(Date().timeIntervalSince1970)
+            ),
+            isSparkFunding: true
+        )
+        let txid = try Self.fundedTxid(result)
+        _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
+        await SparkFundingRecovery.handOff(txid: txid, amountSats: amountSats)
+        Logger.info("Funded Spark wallet with \(amountSats) sats in \(txid)", context: "TransferViewModel")
+        await onBalanceRefresh?()
+        return txid
+    }
+
+    /// The txid of an accepted funding. A rejected or unknown one is kept and broadcast again, so it is unresolved, not
+    /// failed, and is never swiped a second time.
+    static func fundedTxid(_ result: OnchainSendResult) throws -> String {
+        switch result {
+        case let .accepted(txid):
+            return txid
+        case let .rejected(txid, reason):
+            throw SparkFundingUnresolved(txid: txid, rejectionReason: reason)
+        case let .unknown(txid):
+            throw SparkFundingUnresolved(txid: txid)
+        }
     }
 
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
@@ -528,6 +804,8 @@ class TransferViewModel: ObservableObject {
         }
 
         do {
+            // The swap moves only the channels' balance, so a selected Spark balance is withdrawn on its own.
+            await withdrawSelectedSpark()
             let claimAddress = try await lightningService.newAddress()
             let swap = try await boltzService.createReverseSwap(amountSat: amount, claimAddress: claimAddress)
             Logger.info("Created savings transfer swap \(swap.id)", context: "TransferViewModel")
@@ -539,7 +817,8 @@ class TransferViewModel: ObservableObject {
             // Pay the hold invoice. `send` returns a payment id as soon as the HTLC is dispatched;
             // a hold invoice never settles until Boltz claims on-chain, so this does not block on
             // the claim. A failure to dispatch the payment throws and is surfaced immediately.
-            let paymentId = try await lightningService.send(bolt11: swap.invoice)
+            // Quoted against the channels; a deselected Spark balance must never pay it if the channels can't.
+            let paymentId = try await lightningService.send(bolt11: swap.invoice, channelsOnly: true)
 
             let result = await awaitSwapOutcome(
                 swapId: swap.id,
@@ -671,6 +950,54 @@ actor SwapPaymentFailureCapture {
     }
 }
 
+/// What Transfer to Savings moves: the channels to close or swap out and whether Spark's balance is withdrawn.
+struct SavingsSelection: Equatable {
+    let channelIds: [String]
+    let withdrawsSpark: Bool
+
+    var isEmpty: Bool {
+        channelIds.isEmpty && !withdrawsSpark
+    }
+
+    /// Without a pick (`selectedChannelIds` nil) every ready channel moves. Spark moves when picked and holding a balance
+    /// its withdrawal fee leaves something of, so one too small to move never holds the channels back. Its balance is 0
+    /// during an emergency exit.
+    static func resolve(
+        readyChannelIds: [String],
+        selectedChannelIds: Set<String>?,
+        isSparkSelected: Bool,
+        sparkSats: UInt64,
+        isSparkTooSmall: Bool = false
+    ) -> SavingsSelection {
+        SavingsSelection(
+            channelIds: readyChannelIds.filter { selectedChannelIds?.contains($0) ?? true },
+            withdrawsSpark: isSparkSelected && sparkSats > 0 && !isSparkTooSmall
+        )
+    }
+}
+
+/// What the progress screen shows once a transfer to savings ran.
+enum SavingsTransferOutcome: Equatable {
+    case success
+    /// Channels failed to close cooperatively and are retried.
+    case channelsInterrupted
+    /// Spark's withdrawal failed; `channelsMoved` when the selected channels still moved.
+    case sparkFailed(channelsMoved: Bool)
+
+    static func resolve(sparkFailed: Bool, movedChannels: Bool, channelsFailedToClose: Bool) -> SavingsTransferOutcome {
+        if channelsFailedToClose {
+            return .channelsInterrupted
+        }
+        if sparkFailed {
+            return .sparkFailed(channelsMoved: movedChannels)
+        }
+        return .success
+    }
+}
+
+/// The swipe's commit was refused, as Spark's withdrawal fee is being priced again; nothing was committed.
+struct SavingsCommitRefused: Error {}
+
 /// Whether a transfer to savings swaps funds out or closes a channel (default).
 enum SavingsTransferMode {
     case swap
@@ -727,3 +1054,53 @@ actor ChannelPendingCapture {
         return channelData
     }
 }
+
+/// The first value any of several racing tasks resumes with; later ones are dropped.
+private final class FirstResult<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: T?
+    private var isResolved = false
+    private var continuation: CheckedContinuation<T, Never>?
+
+    func resume(_ value: T) {
+        lock.lock()
+        guard !isResolved else { return lock.unlock() }
+        isResolved = true
+        let waiting = continuation
+        continuation = nil
+        if waiting == nil {
+            result = value
+        }
+        lock.unlock()
+        waiting?.resume(returning: value)
+    }
+
+    func value() async -> T {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if isResolved, let result {
+                lock.unlock()
+                continuation.resume(returning: result)
+            } else {
+                self.continuation = continuation
+                lock.unlock()
+            }
+        }
+    }
+}
+
+/// A Spark withdrawal's fee, or Spark's refusal to quote a balance below its minimum.
+private enum SparkWithdrawalPrice: Equatable {
+    case fee(UInt64)
+    case belowMinimum
+}
+
+/// A Spark funding the network rejected or whose broadcast outcome is unknown. It is kept and broadcast again, so it is
+/// never sent a second time.
+struct SparkFundingUnresolved: Error {
+    let txid: String
+    var rejectionReason: String?
+}
+
+/// Spark reads another chain than Savings, so a withdrawal to Savings would never arrive.
+private struct SparkReadsAnotherChain: Error {}

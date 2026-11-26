@@ -125,6 +125,8 @@ actor VssClientCoordinator {
 }
 
 class VssBackupClient {
+    struct SetupTimeout: Error {}
+
     static let shared = VssBackupClient()
 
     private let coordinator = VssClientCoordinator()
@@ -166,7 +168,7 @@ class VssBackupClient {
 
     private func setup(walletIndex: Int = 0) async throws {
         do {
-            try await withTimeout(seconds: 30) { [self] in
+            try await withSetupTimeout { [self] in
                 Logger.debug("VSS client setting up…", context: "VssBackupClient")
                 let vssUrl = Env.vssServerUrl
                 Logger.debug("Building VSS client with vssUrl: '\(vssUrl)'", context: "VssBackupClient")
@@ -195,7 +197,7 @@ class VssBackupClient {
             throw CustomServiceError.vssAuthRequired
         }
         do {
-            try await withTimeout(seconds: 30) {
+            try await withSetupTimeout {
                 Logger.debug("VSS LDK client setting up…", context: "VssBackupClient")
                 try await vssNewLdkClientWithLnurlAuth(
                     baseUrl: params.vssUrl,
@@ -354,7 +356,7 @@ class VssBackupClient {
         }
     }
 
-    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+    func withSetupTimeout<T>(seconds: TimeInterval = 30, operation: @escaping () async throws -> T) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask {
                 try await operation()
@@ -362,7 +364,7 @@ class VssBackupClient {
 
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw AppError(message: "Operation timed out", debugMessage: "Timeout after \(seconds) seconds")
+                throw AppError(message: "Operation timed out", debugMessage: "Timeout after \(seconds) seconds", underlyingError: SetupTimeout())
             }
 
             let result = try await group.next()!

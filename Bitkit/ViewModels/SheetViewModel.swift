@@ -17,6 +17,7 @@ enum SheetID: String, CaseIterable {
     case subscription
     case quickpay
     case usdtIntro
+    case moveToSpark
     case receive
     case receivedTx
     case btcpayConnection
@@ -387,6 +388,18 @@ class SheetViewModel: ObservableObject {
         get {
             guard activeSheetConfiguration?.id == .usdtIntro else { return nil }
             return UsdtIntroSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var moveToSparkSheetItem: MoveToSparkSheetItem? {
+        get {
+            guard activeSheetConfiguration?.id == .moveToSpark else { return nil }
+            return MoveToSparkSheetItem()
         }
         set {
             if newValue == nil {

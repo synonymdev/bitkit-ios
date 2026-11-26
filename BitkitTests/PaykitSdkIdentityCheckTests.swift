@@ -469,6 +469,114 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         XCTAssertEqual(sdk.writes, ["upload"])
     }
 
+    func testProfileDeletionRefusesActiveSubscriptionsInEitherRoleWithoutContacts() async throws {
+        for role in [PaymentRequestLocalRole.payer, .payee] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.profileExists = true
+            var request = try paymentRequestRecord(appId: "another-app")
+            request.localRole = role
+            request.state = .activeRecurring
+            sdk.rawPaymentRequests = { [request] }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+
+            do {
+                try await service.deletePaykitProfile(expectedIdentity: identityA)
+                XCTFail("An active subscription must prevent profile deletion even without a contact")
+            } catch PubkyServiceError.activeSubscription {}
+            XCTAssertTrue(sdk.writes.isEmpty)
+        }
+    }
+
+    func testProfileCleanupChecksAllSubscriptionsBeforeRemovingAnyContact() async throws {
+        for endsAt in [nil, "invalid", "9999-01-01T00:00:00Z", "2000-01-01T00:00:00Z"] as [String?] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.profileExists = true
+            var request = try paymentRequestRecord(appId: "another-app")
+            request.state = .activeRecurring
+            request.terms?.recurrence = PaymentRequestRecurrence(
+                every: 1, unit: "month", startsAt: "1999-01-01T00:00:00Z", anchor: "1999-01-01T00:00:00Z", endsAt: endsAt
+            )
+            sdk.rawPaymentRequests = { [request] }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let blocked = endsAt != "2000-01-01T00:00:00Z"
+            let operations: [() async throws -> Void] = [
+                { try await service.requireNoActiveSubscriptions(expectedIdentity: identityA) },
+                { _ = try await service.removeContactsForProfile(publicKeys: [identityB]) },
+                { _ = try await service.removeContactsForProfile(publicKeys: []) },
+                { try await service.deletePaykitProfile(expectedIdentity: identityA) },
+            ]
+            for operation in operations {
+                do {
+                    try await operation()
+                    XCTAssertFalse(blocked)
+                } catch let PubkyServiceError.activeSubscription(actualEnd) {
+                    XCTAssertTrue(blocked)
+                    XCTAssertEqual(actualEnd, endsAt.flatMap(PaykitPaymentRequest.parseDate))
+                }
+            }
+            XCTAssertEqual(sdk.writes, blocked ? [] : ["remove-contacts:1", "delete-profile:test"])
+        }
+    }
+
+    func testProfileRemovalOnlyReportsAnEndWhenEveryBlockingSubscriptionHasOne() async throws {
+        let earlier = "2999-01-01T00:00:00Z"
+        let later = "3000-01-01T00:00:00Z"
+        let cases: [(ends: [String?], expected: String?)] = [
+            ([earlier, later], later),
+            ([later, earlier], later),
+            ([earlier, nil], nil),
+            (["invalid", later], nil),
+            (["2000-01-01T00:00:00Z", later], later),
+        ]
+        for testCase in cases {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            let requests = try testCase.ends.map { endsAt in
+                var request = try paymentRequestRecord(appId: "another-app")
+                request.state = .activeRecurring
+                request.terms?.recurrence = PaymentRequestRecurrence(
+                    every: 1, unit: "month", startsAt: "1999-01-01T00:00:00Z", anchor: "1999-01-01T00:00:00Z", endsAt: endsAt
+                )
+                return request
+            }
+            sdk.rawPaymentRequests = { requests }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            do {
+                try await service.requireNoActiveSubscriptions(expectedIdentity: identityA)
+                XCTFail("Every case contains a blocking subscription")
+            } catch let PubkyServiceError.activeSubscription(endsAt) {
+                XCTAssertEqual(endsAt, testCase.expected.flatMap(PaykitPaymentRequest.parseDate))
+            }
+            XCTAssertTrue(sdk.writes.isEmpty)
+        }
+    }
+
+    func testSubscriptionReadFailureAndCancellationNeverAuthorizeProfileCleanup() async throws {
+        for failure: Error in [sharedStateBusy, CancellationError()] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.profileExists = true
+            sdk.rawPaymentRequests = { throw failure }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let operations: [() async throws -> Void] = [
+                { try await service.requireNoActiveSubscriptions(expectedIdentity: identityA) },
+                { _ = try await service.removeContactsForProfile(publicKeys: [contactKey]) },
+                { try await service.deletePaykitProfile(expectedIdentity: identityA) },
+            ]
+            for operation in operations {
+                do {
+                    try await operation()
+                    XCTFail("An unavailable subscription read must stop cleanup")
+                } catch {
+                    XCTAssertEqual(error.localizedDescription, failure.localizedDescription)
+                }
+            }
+            XCTAssertTrue(sdk.writes.isEmpty)
+        }
+    }
+
     func testProfileDeletionChecksItsOwnerBeforeReadingOrRemovingTheProfile() async throws {
         for signedIn in [identityA, identityB, nil] {
             let sdk = IdentitySwitchingSdk(noPointer: .init())
@@ -907,7 +1015,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             localRole: .payee, state: .proposed, proposalStreamItemId: 1,
             proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
             proposalEventId: "71300000-0000-4000-8000-000000000002",
-            proposalAppId: appId, payerAppId: nil, executionClaimAppId: nil,
+            proposalAppId: appId, proposalRecordedAt: nil, payerAppId: nil, executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
@@ -915,7 +1023,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
             ),
-            acceptedEventId: nil, acceptedOutboundStatus: nil,
+            acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil,
             rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil,
             conversionQuotes: [], paymentProofs: [], lastStreamItemId: 42,
@@ -1036,6 +1144,39 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         XCTAssertEqual(oldSdk.mutations, alreadyStartedMutations, "Abandoned cleanup must not start another mutation")
         XCTAssertTrue(replacementSdk.mutations.isEmpty, "An old wallet cleanup must not mutate the replacement SDK")
     }
+
+    func testReauthenticationSignsInOnlyWhileTheExpectedIdentityIsSignedInWithItsOwnKey() async throws {
+        let ownKey = String(repeating: "1", count: 64)
+        let ownIdentity = try PubkyProfileManager.publicKeyFromSecretKey(ownKey)
+        let otherKey = String(repeating: "2", count: 64)
+        let signInReached = PubkyServiceError.authFailed("sign-in reached")
+        let cases: [(signedIn: String?, key: String?, signsIn: Bool)] = [
+            (nil, ownKey, false),
+            (identityB, ownKey, false),
+            (ownIdentity, otherKey, false),
+            (ownIdentity, nil, false),
+            (ownIdentity, ownKey, true),
+        ]
+        for testCase in cases {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = testCase.signedIn
+            var bootstraps = 0
+            let service = PaykitSdkService(sdkFactory: { sdk }, bootstrapFactory: { _, _ in
+                bootstraps += 1
+                throw signInReached
+            })
+
+            do {
+                _ = try await service.reauthenticate(expectedIdentity: ownIdentity, secretKeyHex: { testCase.key })
+                XCTFail("Expected reauthentication to stop")
+            } catch PubkyServiceError.identityChanged {
+                XCTAssertFalse(testCase.signsIn, "\(testCase)")
+            } catch {
+                XCTAssertTrue(testCase.signsIn, "\(testCase): \(error)")
+            }
+            XCTAssertEqual(bootstraps, testCase.signsIn ? 1 : 0, "\(testCase)")
+        }
+    }
 }
 
 private let identityA = "pubky8qd4tbz3hyafi7h7hoqwd5hm7tsaz1n7txcyojmd4kxf9xp7mgro"
@@ -1118,6 +1259,8 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
         PaymentRequestRead(identityStatus: nil, paymentRequests: [])
     }
 
+    var rawPaymentRequests: () async throws -> [PaymentRequestRecord] = { [] }
+
     var schedulingRead: () async throws -> Paykit.PrivateMessageSchedulingSnapshot = {
         Paykit.PrivateMessageSchedulingSnapshot(linkedPeers: [], pendingOutboundCounterparties: [])
     }
@@ -1193,6 +1336,10 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
         }
     }
 
+    override func paymentRequests() async throws -> [PaymentRequestRecord] {
+        try await rawPaymentRequests()
+    }
+
     override func readPaymentRequests(counterparty: String, expectedIdentity: String?) async throws -> PaymentRequestRead {
         try await paymentRequestRead(counterparty, expectedIdentity)
     }
@@ -1260,6 +1407,11 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
         await contactRecordsStarted.record()
         await contactRecordsGate.wait()
         return []
+    }
+
+    override func removeContactsAndBlockPeers(publicKeys: [String]) async throws -> [ContactRecord] {
+        recordWrite("remove-contacts:\(publicKeys.count)")
+        return publicKeys.map { Self.record(publicKey: $0, label: nil) }
     }
 
     override func contactRecord(publicKey: String) async throws -> ContactRecord? {
@@ -1407,6 +1559,6 @@ private final class AbandonedCleanupSdk: PaykitSdk, @unchecked Sendable {
         updates _: [PrivatePaymentListReservationUpdateInput], clearUnlistedLinkedPeers _: Bool
     ) async throws -> PrivatePaymentListDeliveryReport {
         mutations.append("privateEndpoints")
-        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
     }
 }

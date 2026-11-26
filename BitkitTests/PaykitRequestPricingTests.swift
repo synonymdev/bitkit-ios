@@ -113,6 +113,51 @@ final class PaykitRequestPricingTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testUsdtProofSizeCountsTheBillingPeriodAndQuote() throws {
+        let placeholder = try PaykitPaymentProofSize.placeholderProof(for: .usdt)
+        let baseLength = try Paykit.paymentProofEventLen(
+            localAppId: "bitkit",
+            paymentReference: PaymentReference(text: "a"),
+            submission: PaymentProofSubmission(billingPeriod: nil, paymentAppId: "bitkit",
+                                               paymentEndpointIdentifier: "usdt-arbitrum-address", allowanceId: nil,
+                                               conversionQuoteId: nil, proof: PrivateJsonObject(text: placeholder))
+        )
+        let fillingBytes = PaykitSdkService.maximumMessageBytes - (Int(baseLength) - 1)
+        let reference = String(repeating: "💜", count: fillingBytes / 4) + String(repeating: "a", count: fillingBytes % 4)
+        let withPeriod = UsdtPaymentProofBinding(payer: String(repeating: "y", count: 52), payee: String(repeating: "y", count: 52),
+                                                 paymentAppId: "bitkit", paymentRequestId: UUID().uuidString.lowercased(),
+                                                 paymentReference: reference, paymentEndpointIdentifier: "usdt-arbitrum-address",
+                                                 periodStartsAt: "2027-01-01T00:00:00Z", periodEndsAt: "2027-02-01T00:00:00Z",
+                                                 conversionQuoteId: "")
+        var withQuote = withPeriod
+        withQuote.periodStartsAt = ""
+        withQuote.periodEndsAt = ""
+        withQuote.conversionQuoteId = UUID().uuidString.lowercased()
+
+        for binding in [withPeriod, withQuote] {
+            XCTAssertThrowsError(try PaykitUsdtPaymentService.validateProofSize(binding: binding))
+        }
+    }
+
+    func testBitkitRequestsLeaveRoomForTheirLongestProof() throws {
+        let period = BillingPeriod(startsAt: "2027-01-01T00:00:00.123456789Z", endsAt: "2027-02-01T00:00:00.123456789Z")
+        let endpoints: [(PaykitPaymentProofKind, PublicPaykitService.MethodId)] = [
+            (.lightning, .bitcoinLightningBolt11), (.onchain, .bitcoinOnchainP2wpkh), (.usdt, .usdtArbitrum),
+        ]
+        for (kind, endpoint) in endpoints {
+            XCTAssertNoThrow(try PaykitPaymentProofSize.validate(
+                paymentReference: "bitkit-\(UUID().uuidString)",
+                paymentAppId: "bitkit",
+                paymentEndpointIdentifier: endpoint.rawValue,
+                billingPeriod: period,
+                allowanceId: UUID().uuidString.lowercased(),
+                conversionQuoteId: UUID().uuidString.lowercased(),
+                kind: kind
+            ), "\(kind)")
+        }
+    }
+
     func testRatesAreRequiredOnlyWhenIssuingBitcoinConversions() throws {
         let usd = PublicPaykitService.MethodId.usdtArbitrum.rawValue
         XCTAssertEqual(try PaykitRequestPricing.rates(requested: .usd, endpoints: [usd], market: nil, at: now),
@@ -134,6 +179,33 @@ final class PaykitRequestPricingTests: XCTestCase {
         var oversized = binding
         oversized.paymentReference = String(repeating: "é", count: 256)
         XCTAssertThrowsError(try PaykitUsdtPaymentService.validateProofSize(binding: oversized))
+    }
+
+    @MainActor
+    func testUsdtProofSizeIsMeasuredExactlyWithTheLongestValidProof() throws {
+        let placeholder = try PaykitPaymentProofSize.placeholderProof(for: .usdt)
+        let proof = try JSONDecoder().decode(PaykitUsdtPaymentService.Proof.self, from: Data(placeholder.utf8))
+        XCTAssertEqual(proof.type, PaykitPaymentProofKind.usdt.rawValue)
+        XCTAssertEqual(proof.receiptLogIndex.count, 78)
+
+        var binding = UsdtPaymentProofBinding(payer: String(repeating: "y", count: 52), payee: String(repeating: "y", count: 52),
+                                              paymentAppId: "bitkit", paymentRequestId: UUID().uuidString.lowercased(),
+                                              paymentReference: "a", paymentEndpointIdentifier: "usdt-arbitrum-address",
+                                              periodStartsAt: "", periodEndsAt: "", conversionQuoteId: "")
+        let baseLength = try Paykit.paymentProofEventLen(
+            localAppId: "bitkit",
+            paymentReference: PaymentReference(text: "a"),
+            submission: PaymentProofSubmission(billingPeriod: nil, paymentAppId: "bitkit",
+                                               paymentEndpointIdentifier: "usdt-arbitrum-address", allowanceId: nil,
+                                               conversionQuoteId: nil, proof: PrivateJsonObject(text: placeholder))
+        )
+        let fillingBytes = PaykitSdkService.maximumMessageBytes - (Int(baseLength) - 1)
+        binding.paymentReference = String(repeating: "💜", count: fillingBytes / 4) + String(repeating: "a", count: fillingBytes % 4)
+        XCTAssertNoThrow(try PaykitUsdtPaymentService.validateProofSize(binding: binding))
+        binding.paymentReference += "a"
+        XCTAssertThrowsError(try PaykitUsdtPaymentService.validateProofSize(binding: binding)) {
+            XCTAssertEqual($0 as? PaykitPaymentRequestError, .requestUnavailable)
+        }
     }
 
     func testRecurringPaymentsKeepTheirChosenQuoteAndInclusiveDeadline() throws {

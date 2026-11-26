@@ -279,11 +279,16 @@ struct ProfileView: View {
                     name: profile.name,
                     bio: profile.bio,
                     links: profile.links,
-                    tags: tags
+                    tags: tags,
+                    baseRevision: profile.revision,
+                    baseTagsUnread: profile.tagsUnread
                 )
             } catch {
                 Logger.error("Failed to update profile tags: \(error)", context: "ProfileView")
                 app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
+                if case PubkyAppProfileError.changedElsewhere = error {
+                    await pubkyProfile.loadProfile()
+                }
             }
         }
     }
@@ -291,7 +296,10 @@ struct ProfileView: View {
     private func refreshProfile() async {
         isRefreshing = true
         defer { isRefreshing = false }
-        guard pubkyProfile.profile == nil else { return }
+        guard pubkyProfile.profile == nil else {
+            await pubkyProfile.loadProfile()
+            return
+        }
         async let restoration: Void = pubkyProfile.restoreSessionIfNeeded()
         await pubkyProfile.loadProfile()
         await restoration

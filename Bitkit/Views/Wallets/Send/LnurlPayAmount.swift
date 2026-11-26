@@ -17,7 +17,8 @@ struct LnurlPayAmount: View {
     var maxAmount: UInt64 {
         // TODO: subtract fee
         guard let data = app.lnurlPayData else { return 0 }
-        return min(data.maxSendableSat, UInt64(wallet.totalLightningSats))
+        // One payment goes over one rail, so the larger rail balance caps it.
+        return min(data.maxSendableSat, UInt64(wallet.maxSendLightningSats))
     }
 
     var amount: UInt64 {
@@ -46,9 +47,9 @@ struct LnurlPayAmount: View {
                 Spacer()
 
                 HStack(alignment: .bottom) {
-                    AvailableAmount(label: t("wallet__send_available_spending"), amount: wallet.totalLightningSats)
+                    AvailableAmount(label: t("wallet__send_available_spending"), amount: wallet.maxSendLightningSats)
                         .onTapGesture {
-                            amountViewModel.updateFromSats(UInt64(wallet.totalLightningSats), currency: currency)
+                            amountViewModel.updateFromSats(UInt64(wallet.maxSendLightningSats), currency: currency)
                         }
 
                     Spacer()
@@ -98,7 +99,7 @@ struct LnurlPayAmount: View {
     private func showMaxExceededToast() {
         guard let data = app.lnurlPayData else { return }
         // The cap is min(invoice max, spending balance); word the message for whichever bound is hit.
-        let isInvoiceCapped = data.maxSendableSat < UInt64(wallet.totalLightningSats)
+        let isInvoiceCapped = data.maxSendableSat < UInt64(wallet.maxSendLightningSats)
 
         app.toast(
             type: .warning,

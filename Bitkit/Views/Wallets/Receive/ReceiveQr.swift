@@ -252,7 +252,6 @@ struct ReceiveQr: View {
                     } else {
                         CustomButton(
                             title: t("common__show_details"),
-                            variant: .tertiary,
                             isDisabled: selectedTab == .hardware && displayedHardwareAddress == nil
                         ) {
                             showDetails.toggle()
@@ -510,7 +509,7 @@ struct ReceiveQr: View {
     var cjitOnboarding: some View {
         VStack(alignment: .leading, spacing: 0) {
             DisplayText(t("wallet__receive_spending_title"), accentColor: .purpleAccent)
-                .padding(.bottom, 12)
+                .padding(.bottom, 8)
 
             BodyMText(t("wallet__receive_spending_text"))
 
@@ -526,9 +525,9 @@ struct ReceiveQr: View {
             }
         }
         .padding(32)
+        .frame(maxHeight: .infinity)
         .background(Color.black)
         .cornerRadius(8)
-        .aspectRatio(1, contentMode: .fit)
         .overlay(alignment: .bottomLeading) {
             if !UIScreen.main.isSmall {
                 Image("arrow-cjit")
@@ -538,6 +537,10 @@ struct ReceiveQr: View {
                     .offset(x: 70, y: 110)
             }
         }
+        // Figma leaves 122 pt between the card and the button; the spacer above the button adds the last 8.
+        .padding(.bottom, UIScreen.main.isSmall ? 0 : 114)
+        // Ahead of the tab's bottom spacer, so the card takes the rest of the page.
+        .layoutPriority(1)
     }
 
     func detailsContent(for tab: ReceiveTab) -> some View {

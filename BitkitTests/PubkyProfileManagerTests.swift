@@ -13,6 +13,89 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testActiveSubscriptionStopsProfileRemovalBeforePrivateOrContactCleanup() async throws {
+        try await withEmptyIdentityStorage {
+            for entry in ["screen", "manager"] {
+                let key = "pubky" + String(repeating: "y", count: 52)
+                let manager = PubkyProfileManager(profileDeletionValidator: { expectedIdentity in
+                    XCTAssertEqual(expectedIdentity, key)
+                    throw PubkyServiceError.activeSubscription(endsAt: nil)
+                }, profileDeleter: { _ in
+                    XCTFail("An active subscription must preserve the profile")
+                })
+                manager.publicKey = key
+                manager.authState = .authenticated
+                let session = try XCTUnwrap(manager.currentSession)
+                let contacts = ContactsManager(contactRecords: {
+                    XCTFail("An active subscription must stop before contact cleanup")
+                    return []
+                })
+                UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+                UserDefaults.standard.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+                do {
+                    if entry == "screen" {
+                        try await manager.performProfileDeletion {
+                            try await EditProfileView.performDeleteProfile(
+                                session: session, pubkyProfile: manager, contactsManager: contacts
+                            ) { XCTFail("An active subscription must preserve private endpoints") }
+                        }
+                    } else {
+                        try await manager.deleteProfile()
+                    }
+                    XCTFail("Expected subscription refusal")
+                } catch PubkyServiceError.activeSubscription {}
+                XCTAssertEqual(manager.currentSession, session)
+                XCTAssertFalse(manager.isDeletingProfile)
+                XCTAssertTrue(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey))
+                XCTAssertTrue(UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+            }
+        }
+    }
+
+    @MainActor
+    func testProfileRemovalStopsBeforeDeletingWhenCleanupIsIncomplete() async throws {
+        snapshotAppDefaultsDomain()
+        for failure in ["private endpoints", "contacts"] {
+            let key = "pubky" + String(repeating: "y", count: 52)
+            let originalError = KeychainError.failedToDelete
+            let manager = PubkyProfileManager(profileDeletionValidator: { _ in }, profileDeleter: { _ in
+                XCTFail("Incomplete cleanup must not delete the profile")
+                throw PublicPaykitError.publicationFailed
+            })
+            manager.publicKey = key
+            manager.authState = .authenticated
+            let session = try XCTUnwrap(manager.currentSession)
+            let contact = Bitkit.PubkyProfile.placeholder(publicKey: key)
+            ContactsManager.restoreContactProfileOverrides([key: PubkyProfileData.from(profile: contact)])
+            let contacts = ContactsManager(contactRecords: {
+                XCTAssertEqual(failure, "contacts", "Private withdrawal failure must stop before contact removal")
+                throw originalError
+            })
+            contacts.contacts = [PubkyContact(publicKey: key, profile: contact)]
+
+            do {
+                try await manager.performProfileDeletion {
+                    try await EditProfileView.performDeleteProfile(
+                        session: session, pubkyProfile: manager, contactsManager: contacts
+                    ) {
+                        if failure == "private endpoints" {
+                            throw originalError
+                        }
+                    }
+                }
+                XCTFail("Incomplete cleanup must fail")
+            } catch {
+                XCTAssertTrue(error is KeychainError, "Preserve the cleanup failure, got \(error)")
+            }
+
+            XCTAssertEqual(contacts.contacts.map(\.publicKey), [key])
+            XCTAssertEqual(Set(ContactsManager.backupContactProfileOverrides()?.keys ?? [:].keys), [key])
+            XCTAssertEqual(manager.currentSession, session)
+            XCTAssertFalse(manager.isDeletingProfile)
+        }
+    }
+
+    @MainActor
     func testProfileDeletionPausesAutomaticWorkWithoutEndingTheSession() async throws {
         for outcome in ["success", "failure", "cancellation"] {
             let manager = PubkyProfileManager()
@@ -201,7 +284,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                 let started = expectation(description: "Profile delete admitted")
                 let (resume, continuation) = AsyncStream<Void>.makeStream()
                 defer { continuation.finish() }
-                let manager = PubkyProfileManager(profileDeleter: { expectedIdentity in
+                let manager = PubkyProfileManager(profileDeletionValidator: { _ in }, profileDeleter: { expectedIdentity in
                     XCTAssertEqual(expectedIdentity, original)
                     started.fulfill()
                     for await _ in resume {}
@@ -281,6 +364,43 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testProfileDeletionRequiresAcknowledgedCompletionBeforeSignOut() async throws {
+        try await withEmptyIdentityStorage {
+            let errors: [NSError?] = [
+                nil,
+                NSError(domain: "ProfileDeleteFixture", code: 404,
+                        userInfo: [NSLocalizedDescriptionKey: "Delete failed: HTTP 404 Not Found at session endpoint"]),
+                NSError(domain: NSCocoaErrorDomain, code: CocoaError.fileReadNoSuchFile.rawValue),
+            ]
+            for failure in errors {
+                let manager = PubkyProfileManager(profileDeletionValidator: { _ in }, profileDeleter: { _ in
+                    if let failure {
+                        throw failure
+                    }
+                })
+                manager.publicKey = "pubky" + String(repeating: "y", count: 52)
+                manager.authState = .authenticated
+                let session = try XCTUnwrap(manager.currentSession)
+                UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+                UserDefaults.standard.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+
+                do {
+                    try await manager.deleteProfile(cleanPrivatePaykitEndpoints: false)
+                    XCTAssertNil(failure, "An unavailable profile does not confirm its deletion")
+                } catch {
+                    XCTAssertEqual((error as NSError).domain, failure?.domain)
+                    XCTAssertEqual((error as NSError).code, failure?.code)
+                }
+
+                XCTAssertEqual(manager.currentSession, failure == nil ? nil : session)
+                XCTAssertEqual(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey), failure != nil)
+                XCTAssertEqual(UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey), failure != nil)
+                XCTAssertFalse(manager.isDeletingProfile)
+            }
+        }
+    }
+
+    @MainActor
     func testAutomaticPaykitSessionAppearsWhenTheSessionChangeEndsAndIsAnnounced() async throws {
         try await withEmptyIdentityStorage {
             let secret = String(repeating: "01", count: 32)
@@ -308,7 +428,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         try await withEmptyIdentityStorage {
             let secret = String(repeating: "01", count: 32)
             let original = try PubkyProfileManager.publicKeyFromSecretKey(secret)
-            let manager = PubkyProfileManager(profileDeleter: { _ in
+            let manager = PubkyProfileManager(profileDeletionValidator: { _ in }, profileDeleter: { _ in
                 XCTFail("A stale deletion must not reach profile storage")
             })
             manager.publicKey = original
@@ -1416,6 +1536,50 @@ final class PubkyProfileManagerTests: XCTestCase {
         } catch {
             XCTAssertTrue(manager.didDeriveKeys)
             XCTAssertFalse(manager.isProfileSetupPending)
+        }
+    }
+
+    @MainActor
+    func testCreateIdentityPreservesUnreadTagsFromTheRestoreFormAfterRefresh() async throws {
+        try await withRestoredProfileDefaults {
+            UserDefaults.standard.set(true, forKey: "pubky_profile_setup_pending")
+            var unread = makeProfile(publicKey: ringKeyA, name: "Alice")
+            unread.revision = "restored-revision"
+            unread.tagsUnread = true
+            let stub = RemoteProfileStub(profiles: [ringKeyA: unread])
+            let publications = ProfilePublications()
+            let manager = PubkyProfileManager(
+                remoteProfileResolver: { try await stub.resolve($0) },
+                profilePublisher: { try await publications.publish($0, expectedIdentity: $1) }
+            )
+            manager.publicKey = ringKeyA
+            await manager.loadProfile()
+            let restored = try XCTUnwrap(manager.profile)
+            XCTAssertTrue(restored.tagsUnread)
+            XCTAssertTrue(restored.tags.isEmpty)
+
+            let refreshed = unread.withTags(["friend", "work"])
+            var readable = refreshed
+            readable.tagsUnread = false
+            await stub.setProfile(readable, for: ringKeyA)
+            await manager.loadProfile()
+            XCTAssertEqual(manager.profile?.tags, ["friend", "work"])
+            XCTAssertEqual(manager.profile?.tagsUnread, false)
+
+            try await manager.createIdentity(
+                name: "Renamed",
+                bio: restored.bio,
+                links: restored.links,
+                tags: restored.tags,
+                baseRevision: restored.revision,
+                baseTagsUnread: restored.tagsUnread
+            )
+
+            let published = await publications.published
+            let profile = try XCTUnwrap(published.first)
+            XCTAssertEqual(published.count, 1)
+            XCTAssertEqual(profile.baseRevision, "restored-revision")
+            XCTAssertTrue(profile.baseTagsUnread, "The store must preserve the tags the restore form could not show")
         }
     }
 
@@ -3558,83 +3722,6 @@ final class PubkyProfileManagerTests: XCTestCase {
         )
 
         XCTAssertNil(resolved)
-    }
-
-    func testIsMissingBitkitProfileStorageErrorRecognizes404DeleteFailure() {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.WriteFailed(reason: "delete failed: Request failed: Server responded with an error: 404 Not Found - Not Found")"#
-        )
-
-        XCTAssertTrue(PubkyProfileManager.isMissingBitkitProfileStorageError(error))
-    }
-
-    func testIsMissingBitkitProfileStorageErrorRejectsNonMissingErrors() {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error")"#
-        )
-
-        XCTAssertFalse(PubkyProfileManager.isMissingBitkitProfileStorageError(error))
-    }
-
-    func testIsSessionRefreshableErrorRecognizesSessionTransportFailure() {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
-        )
-
-        XCTAssertTrue(PubkyProfileManager.isSessionRefreshableError(error))
-    }
-
-    func testRefreshSessionIfPossibleRefreshesSessionFromLocalSecret() async {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
-        )
-        let refreshed = await PubkyProfileManager.refreshSessionIfPossible(
-            after: error,
-            loadKeychainString: { key in
-                switch key {
-                case .pubkySecretKey:
-                    return "local-secret"
-                default:
-                    return nil
-                }
-            },
-            signInWithSecretKey: { secretKey in
-                XCTAssertEqual(secretKey, "local-secret")
-                return "fresh-session"
-            },
-            publicKeyFromSecretKey: { secretKey in
-                XCTAssertEqual(secretKey, "local-secret")
-                return "pubky_fresh"
-            }
-        )
-
-        XCTAssertTrue(refreshed)
-    }
-
-    func testRefreshSessionIfPossibleReturnsFalseWithoutLocalSecret() async {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
-        )
-
-        let refreshed = await PubkyProfileManager.refreshSessionIfPossible(
-            after: error,
-            loadKeychainString: { _ in nil },
-            signInWithSecretKey: { _ in
-                XCTFail("Expected refresh to stop when no local secret key exists")
-                return "fresh-session"
-            },
-            publicKeyFromSecretKey: { _ in
-                XCTFail("No public key should be derived without a local secret")
-                return "pubky_unused"
-            }
-        )
-
-        XCTAssertFalse(refreshed)
     }
 
     // MARK: - Session backup state

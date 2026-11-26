@@ -82,12 +82,7 @@ private struct ActivityScrollModifier: ViewModifier {
             .contentMargins(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
             .scrollDismissesKeyboard(.interactively)
             .refreshable {
-                do {
-                    try await wallet.sync()
-                    try await activity.syncLdkNodePayments()
-                } catch {
-                    app.toast(error)
-                }
+                await WalletPullRefresh.sync(wallet: wallet, activity: activity, app: app)
             }
     }
 }

@@ -321,6 +321,12 @@ enum PubkyService {
         return result.sessionAccess.exportSessionSecret()
     }
 
+    /// Signs in again with the stored key, to gain a scope an older session lacks, only while `expectedIdentity` is signed in
+    /// and the key is its own. See `PaykitSdkService.reauthenticate(expectedIdentity:)`.
+    static func reauthenticate(expectedIdentity: String) async throws {
+        _ = try await PaykitSdkService.shared.reauthenticate(expectedIdentity: expectedIdentity)
+    }
+
     // MARK: - File Fetching
 
     /// Fetch raw bytes from a `pubky://` URI via PKDNS resolution.
@@ -356,8 +362,44 @@ enum PubkyService {
         try await PaykitSdkService.shared.uploadAvatar(bytes: bytes, contentType: contentType, expectedIdentity: expectedIdentity)
     }
 
+    static func requireNoActiveSubscriptions(expectedIdentity: String) async throws {
+        try await PaykitSdkService.shared.requireNoActiveSubscriptions(expectedIdentity: expectedIdentity)
+    }
+
     static func deletePaykitProfile(expectedIdentity: String? = nil) async throws {
         try await PaykitSdkService.shared.deletePaykitProfile(expectedIdentity: expectedIdentity)
+    }
+
+    static func fetchPubkyProfileWithRevision(publicKey: String) async throws -> Paykit.PubkyProfileSnapshot? {
+        try await PaykitSdkService.shared.fetchPubkyProfileWithRevision(publicKey: publicKey)
+    }
+
+    static func fetchPaykitProfile(publicKey: String) async throws -> Paykit.PaykitProfileRecord? {
+        try await PaykitSdkService.shared.fetchPaykitProfile(publicKey: publicKey)
+    }
+
+    static func publishPubkyProfile(
+        _ update: Paykit.PubkyProfileUpdate,
+        expectedRevision: String?,
+        expectedIdentity: String
+    ) async throws -> Paykit.PubkyProfileSnapshot {
+        try await PaykitSdkService.shared.publishPubkyProfile(
+            update,
+            expectedRevision: expectedRevision,
+            expectedIdentity: expectedIdentity
+        )
+    }
+
+    static func deletePubkyProfile(expectedRevision: String, expectedIdentity: String) async throws {
+        try await PaykitSdkService.shared.deletePubkyProfile(expectedRevision: expectedRevision, expectedIdentity: expectedIdentity)
+    }
+
+    static func uploadPubkyAppAvatar(bytes: Data, contentType: String, expectedIdentity: String) async throws -> String {
+        try await PaykitSdkService.shared.uploadPubkyAppAvatar(
+            bytes: bytes,
+            contentType: contentType,
+            expectedIdentity: expectedIdentity
+        )
     }
 
     // MARK: - Contacts
@@ -391,6 +433,10 @@ enum PubkyService {
 
     static func removeContact(publicKey: String) async throws -> Paykit.ContactRecord? {
         try await PaykitSdkService.shared.removeContact(publicKey: publicKey)
+    }
+
+    static func removeContactsForProfile(publicKeys: [String]) async throws -> [Paykit.ContactRecord] {
+        try await PaykitSdkService.shared.removeContactsForProfile(publicKeys: publicKeys)
     }
 
     static func removeContacts(publicKeys: [String]) async throws -> [Paykit.ContactRecord] {
@@ -447,6 +493,8 @@ actor PaykitSdkService {
     static let shared = PaykitSdkService()
     /// Maximum plaintext size accepted by Paykit's pubky-noise transport.
     static let maximumMessageBytes = 1000
+    /// The Paykit App ID this SDK sends from.
+    static let appId = "bitkit"
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
@@ -678,7 +726,7 @@ actor PaykitSdkService {
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 homeserverPublicKey: homeserverPublicKey,
                 signupCode: signupCode,
-                requiredCapabilities: Self.requiredCapabilities()
+                requiredCapabilities: Self.sessionCapabilities()
             )
             try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             markWalletBackupDataChanged()
@@ -697,7 +745,7 @@ actor PaykitSdkService {
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 homeserverPublicKey: homeserverPublicKey,
                 signupCode: signupCode,
-                requiredCapabilities: Self.requiredCapabilities()
+                requiredCapabilities: Self.sessionCapabilities()
             )
             return PubkyRegisteredIdentity(result: result, walletGeneration: generation)
         }
@@ -717,11 +765,27 @@ actor PaykitSdkService {
         }
     }
 
+    /// Signs in again with the stored key only while `expectedIdentity` is signed in and the key is its own, both checked in
+    /// the same locked operation as the sign-in, so a sign-out or another identity's sign-in that lands first is never
+    /// undone and throws `identityChanged`.
+    func reauthenticate(
+        expectedIdentity: String,
+        secretKeyHex: () -> String? = { PubkyProfileManager.activeSecretKeyHex() }
+    ) async throws -> PubkySessionBootstrapResult {
+        try await operationLock.withLock {
+            try await Self.requireSignedInIdentity(expectedIdentity, in: handle())
+            guard let secretKeyHex = secretKeyHex(),
+                  PubkyPublicKeyFormat.matches(try? PubkyProfileManager.publicKeyFromSecretKey(secretKeyHex), expectedIdentity)
+            else { throw PubkyServiceError.identityChanged }
+            return try await signInLocked(secretKeyHex: secretKeyHex)
+        }
+    }
+
     private func signInLocked(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
         let previousPublicKey = try await cachedIdentityPublicKey()
         let result = try await bootstrap().signIn(
             localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
-            requiredCapabilities: Self.requiredCapabilities()
+            requiredCapabilities: Self.sessionCapabilities()
         )
         try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
         markWalletBackupDataChanged()
@@ -818,14 +882,74 @@ actor PaykitSdkService {
         return record.uri
     }
 
+    func requireNoActiveSubscriptions(expectedIdentity: String) async throws {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            try await Self.requireNoActiveSubscriptions(in: sdk)
+        }
+    }
+
+    private static func requireNoActiveSubscriptions(in sdk: PaykitSdk) async throws {
+        let requests = try await sdk.paymentRequests()
+        try Task.checkCancellation()
+        let now = Date()
+        let activeSubscriptions = requests.filter {
+            $0.state == .activeRecurring &&
+                ($0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate).map { $0 > now } ?? true)
+        }
+        guard !activeSubscriptions.isEmpty else { return }
+        let endDates = activeSubscriptions.compactMap {
+            $0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate)
+        }
+        let latestEndDate = endDates.count == activeSubscriptions.count ? endDates.max() : nil
+        throw PubkyServiceError.activeSubscription(endsAt: latestEndDate)
+    }
+
     func deletePaykitProfile(expectedIdentity: String? = nil) async throws {
         try await withStateRevisionTracking { sdk in
             if let expectedIdentity {
                 try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
             }
+            try await Self.requireNoActiveSubscriptions(in: sdk)
             guard let publicKey = try await sdk.identityStatus()?.publicKey else { throw PubkyServiceError.sessionNotActive }
             guard let current = try await sdk.fetchPaykitProfile(publicKey: publicKey) else { return }
             try await sdk.deletePaykitProfile(expectedRevision: current.revision)
+        }
+    }
+
+    func fetchPubkyProfileWithRevision(publicKey: String) async throws -> Paykit.PubkyProfileSnapshot? {
+        try await withPublicRead { try await $0.fetchPubkyProfileWithRevision(publicKey: publicKey) }
+    }
+
+    func fetchPaykitProfile(publicKey: String) async throws -> Paykit.PaykitProfileRecord? {
+        try await withPublicRead { try await $0.fetchPaykitProfile(publicKey: publicKey) }
+    }
+
+    /// Writes only while `expectedIdentity` is signed in, checked in the same locked operation as the write.
+    func publishPubkyProfile(
+        _ update: Paykit.PubkyProfileUpdate,
+        expectedRevision: String?,
+        expectedIdentity: String
+    ) async throws -> Paykit.PubkyProfileSnapshot {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            return try await sdk.publishPubkyProfile(update: update, expectedRevision: expectedRevision)
+        }
+    }
+
+    /// Deletes the pubky.app profile only while `expectedIdentity` is signed in.
+    func deletePubkyProfile(expectedRevision: String, expectedIdentity: String) async throws {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            try await sdk.deletePubkyProfile(expectedRevision: expectedRevision)
+        }
+    }
+
+    /// Uploads a pubky.app avatar blob and file only while `expectedIdentity` is signed in, and returns the file URI.
+    func uploadPubkyAppAvatar(bytes: Data, contentType: String, expectedIdentity: String) async throws -> String {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            return try await sdk.uploadPubkyAppAvatar(bytes: bytes, contentType: contentType)
         }
     }
 
@@ -940,6 +1064,14 @@ actor PaykitSdkService {
             }
             _ = try await sdk.blockPeer(counterparty: publicKey)
             return try await sdk.removeContact(publicKey: publicKey)
+        }
+    }
+
+    func removeContactsForProfile(publicKeys: [String]) async throws -> [Paykit.ContactRecord] {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireNoActiveSubscriptions(in: sdk)
+            guard !publicKeys.isEmpty else { return [] }
+            return try await sdk.removeContactsAndBlockPeers(publicKeys: publicKeys)
         }
     }
 
@@ -1623,8 +1755,14 @@ actor PaykitSdkService {
         secretKey.exportBytes().hex
     }
 
+    /// Scope a restored session must hold. Sessions from builds before pubky.app profile writes have only this.
     nonisolated static func requiredCapabilities() throws -> String {
         Paykit.paykitAuthorizerSessionCapabilities()
+    }
+
+    /// Scope for sessions Bitkit creates: Paykit plus the shared pubky.app profile and its avatar.
+    nonisolated static func sessionCapabilities() throws -> String {
+        try "\(requiredCapabilities()),\(Paykit.pubkyAppProfileSessionCapabilities())"
     }
 
     private func handle() throws -> PaykitSdk {
@@ -2065,7 +2203,7 @@ actor PaykitSdkService {
     }
 
     private nonisolated static func config() throws -> PaykitSdkConfig {
-        var config = try Paykit.defaultConfig(appId: "bitkit")
+        var config = try Paykit.defaultConfig(appId: appId)
         config.publicContactSharing = .privateOnly
         return config
     }
@@ -2086,7 +2224,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     }
 
     private enum Waiter {
-        case uncancellable(Priority, CheckedContinuation<Void, Never>)
+        case uncancellable(Priority, CheckedContinuation<Bool, Never>)
         case cancellable(UUID, Priority, CheckedContinuation<Void, Error>)
 
         var priority: Priority {
@@ -2106,6 +2244,14 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     private var activeWipeID: UUID?
     @TaskLocal private static var walletWipeOwner: UUID?
 
+    #if DEBUG
+        private let beforeAcquireForTesting: (@Sendable () async -> Void)?
+
+        init(beforeAcquireForTesting: (@Sendable () async -> Void)? = nil) {
+            self.beforeAcquireForTesting = beforeAcquireForTesting
+        }
+    #endif
+
     func withLock<T>(
         priority: Priority = .ordered,
         generation expectedGeneration: Int? = nil,
@@ -2115,7 +2261,10 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
             return try await operation()
         }
         let admittedGeneration = try admit()
-        await acquire(priority: priority)
+        #if DEBUG
+            await beforeAcquireForTesting?()
+        #endif
+        guard await acquire(priority: priority, generation: admittedGeneration) else { throw wipeError() }
         defer { release() }
         try validate(expectedGeneration ?? admittedGeneration)
         try Task.checkCancellation()
@@ -2149,7 +2298,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         if let acquireTimeout {
             try await acquire(within: acquireTimeout)
         } else {
-            await acquire(priority: .ordered)
+            _ = await acquire(priority: .ordered)
         }
         defer { release() }
         try Task.checkCancellation()
@@ -2214,23 +2363,30 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
             return try await operation()
         }
         let admittedGeneration = try admit()
-        try await acquireCancellable()
+        #if DEBUG
+            await beforeAcquireForTesting?()
+        #endif
+        try await acquireCancellable(generation: admittedGeneration)
         defer { release() }
         try validate(admittedGeneration)
         try Task.checkCancellation()
         return try await operation()
     }
 
-    private func acquire(priority: Priority) async {
+    private func acquire(priority: Priority, generation expectedGeneration: Int? = nil) async -> Bool {
         await withCheckedContinuation { continuation in
             lock.lock()
-            if isLocked {
+            // Recheck while inserting: an old outer owner must not queue behind a wipe draining it.
+            if let expectedGeneration, isWiping || generation != expectedGeneration {
+                lock.unlock()
+                continuation.resume(returning: false)
+            } else if isLocked {
                 waiters.append(.uncancellable(priority, continuation))
                 lock.unlock()
             } else {
                 isLocked = true
                 lock.unlock()
-                continuation.resume()
+                continuation.resume(returning: true)
             }
         }
     }
@@ -2254,7 +2410,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         }
     }
 
-    private func acquireCancellable() async throws {
+    private func acquireCancellable(generation admittedGeneration: Int) async throws {
         let id = UUID()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -2262,6 +2418,9 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
                 if Task.isCancelled {
                     lock.unlock()
                     continuation.resume(throwing: CancellationError())
+                } else if isWiping || generation != admittedGeneration {
+                    lock.unlock()
+                    continuation.resume(throwing: wipeError())
                 } else if isLocked {
                     waiters.append(.cancellable(id, .ordered, continuation))
                     lock.unlock()
@@ -2307,7 +2466,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         lock.unlock()
         switch nextWaiter {
         case let .uncancellable(_, continuation):
-            continuation.resume()
+            continuation.resume(returning: true)
         case let .cancellable(_, _, continuation):
             continuation.resume()
         case nil:

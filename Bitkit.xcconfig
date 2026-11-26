@@ -1,0 +1,5 @@
+// Base settings for the Bitkit app target.
+// Local secrets stay out of git: copy Secrets.xcconfig.template to Secrets.xcconfig and fill it in,
+// or store BREEZ_API_KEY in the macOS keychain (README.md, Build secrets).
+// Without it the app builds with Spark (Lightning without channels) off on mainnet.
+#include? "Secrets.xcconfig"

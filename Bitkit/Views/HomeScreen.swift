@@ -9,6 +9,10 @@ struct HomeScreen: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    private var canMoveToSpark: Bool {
+        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared))
+    }
+
     @State private var scrollPosition: Int? = 0
     @State private var isEditingWidgets = false
     @State private var pullRefreshState = HomePullRefreshState()
@@ -103,6 +107,12 @@ struct HomeScreen: View {
         .onDisappear {
             TimedSheetManager.shared.onPrimaryScreenExited()
         }
+        // Channels and Spark load after Home first checks its sheets, so the Move to Spark intro is checked again.
+        .onChange(of: canMoveToSpark) { _, canMove in
+            if canMove {
+                TimedSheetManager.shared.reevaluate()
+            }
+        }
         .onChange(of: app.requestedHomePage) { _, _ in
             consumeRequestedHomePage()
         }
@@ -117,12 +127,7 @@ struct HomeScreen: View {
         }
 
         if wallet.nodeLifecycleState == .running {
-            do {
-                try await wallet.sync()
-                try await activity.syncLdkNodePayments()
-            } catch {
-                app.toast(error)
-            }
+            await WalletPullRefresh.sync(wallet: wallet, activity: activity, app: app)
         }
 
         await currencyRefreshFeedback
@@ -298,5 +303,29 @@ private final class HomePullRefreshObserverView: UIView {
         let pullDistance = -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
         guard pullDistance >= Self.threshold else { return }
         onRefresh?()
+    }
+}
+
+/// Pull-to-refresh on the wallet screens. The activity list sync runs even when the node sync fails, so a payment
+/// LDK already knows about still reaches the list; the first failure is shown.
+enum WalletPullRefresh {
+    @MainActor
+    static func sync(wallet: WalletViewModel, activity: ActivityListViewModel, app: AppViewModel) async {
+        var firstError: Error?
+        do {
+            try await wallet.sync()
+        } catch is CancellationError {
+            return
+        } catch {
+            firstError = error
+        }
+        do {
+            try await activity.syncLdkNodePayments()
+        } catch {
+            firstError = firstError ?? error
+        }
+        if let firstError {
+            app.toast(firstError)
+        }
     }
 }
