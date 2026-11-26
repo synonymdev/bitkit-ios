@@ -123,7 +123,7 @@ final class SparkExitReviewTests: XCTestCase {
     }
 
     /// A savings send the node accepted holds the refused payment back, also before its txid is on the record.
-    func testAnAcceptedSavingsSendIsNeverPaidAgain() {
+    func testAnAcceptedSavingsSendIsNeverPaidAgain() throws {
         var record = SparkExitFixtures.record()
         record.savingsRefusal = SparkExitRecord.SavingsRefusal(sats: 20000, feeSats: 650)
         let address = record.funding[0].address
@@ -136,6 +136,17 @@ final class SparkExitReviewTests: XCTestCase {
         let accepted = SparkExitManager.hasSavingsSend(record, isRefused: false, sendAddresses: [nil, address])
         XCTAssertNil(SparkExitManager.savingsRefusal(record, fundingState: nil, hasSavingsSend: accepted))
         XCTAssertNil(SparkExitManager.savingsRefusalToPay(record, utxos: [], hasSavingsSend: accepted, feeSats: 650))
+
+        // A tick keeps it as the exit's payment, before a later send can take its place in the journal.
+        let paid = SparkExitManager.keepingAcceptedSend(record, address: address, txid: "accepted")
+        XCTAssertEqual(paid?.fundingPaymentTxid, "accepted")
+        XCTAssertNil(paid?.savingsRefusal)
+        XCTAssertNil(SparkExitManager.keepingAcceptedSend(record, address: "bcrt1qelsewhere", txid: "other"))
+        XCTAssertNil(SparkExitManager.keepingAcceptedSend(record, address: address, txid: nil))
+        var kept = record
+        kept.fundingPaymentTxid = "kept"
+        XCTAssertNil(SparkExitManager.keepingAcceptedSend(kept, address: address, txid: "accepted"))
+        XCTAssertFalse(try SparkExitManager.canCancel(XCTUnwrap(paid), fundingSeenSats: 0))
     }
 
     /// Paying a refused start again reads the address first: funding that reached it shows on progress, as a tick

@@ -1097,10 +1097,10 @@ actor OnchainSendAttemptService {
         return attempt.address
     }
 
-    /// The address of the send a node accepted, kept after its local follow-up, if any.
-    func acceptedSendAddress() -> String? {
+    /// The send a node accepted, kept after its local follow-up, if any.
+    func acceptedSend() -> (address: String, txid: String?)? {
         guard let attempt = try? currentAttempt(), attempt.status == .accepted else { return nil }
-        return attempt.address
+        return (attempt.address, attempt.txid)
     }
 
     private func currentAttempt() throws -> OnchainSendAttempt? {
