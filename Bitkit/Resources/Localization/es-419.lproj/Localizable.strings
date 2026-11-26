@@ -704,6 +704,7 @@
 "other__lnurl_auth_auth_title" = "Autenticar";
 "other__lnurl_auth_link_prompt" = "¿Vincular la cuenta a {domain}?";
 "other__lnurl_auth_link_title" = "Vincular";
+"other__lnurl_auth_login_button" = "Iniciar sesión";
 "other__lnurl_auth_login_prompt" = "¿Iniciar sesión en {domain}?";
 "other__lnurl_auth_login_title" = "Iniciar sesión";
 "other__lnurl_auth_register_prompt" = "¿Registrarse en {domain}?";

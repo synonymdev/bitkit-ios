@@ -668,6 +668,7 @@
 "other__lnurl_auth_auth_title" = "Autenticar";
 "other__lnurl_auth_link_prompt" = "Vincular el compte a {domain}?";
 "other__lnurl_auth_link_title" = "Vincular";
+"other__lnurl_auth_login_button" = "Iniciar sessió";
 "other__lnurl_auth_login_prompt" = "Iniciar sessió a {domain}?";
 "other__lnurl_auth_login_title" = "Iniciar sessió";
 "other__lnurl_auth_register_prompt" = "Registrar-se a {domain}?";

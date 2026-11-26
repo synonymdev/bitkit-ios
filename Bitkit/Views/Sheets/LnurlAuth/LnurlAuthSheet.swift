@@ -19,33 +19,58 @@ struct LnurlAuthSheetItem: SheetItem {
     let authData: LnurlAuthData
 }
 
+/// LUD-04 `action` of an LNURL-auth request; bitkit-core reports every LNURL-auth with tag `login`.
+enum LnurlAuthAction {
+    case login, register, link, auth
+
+    init(uri: String) {
+        let action = URLComponents(string: uri)?.queryItems?.first { $0.name == "action" }?.value?.lowercased()
+        switch action {
+        case "login": self = .login
+        case "register": self = .register
+        case "link": self = .link
+        default: self = .auth
+        }
+    }
+
+    var titleKey: String {
+        switch self {
+        case .login: "other__lnurl_auth_login_title"
+        case .register: "other__lnurl_auth_register_title"
+        case .link: "other__lnurl_auth_link_title"
+        case .auth: "other__lnurl_auth_auth_title"
+        }
+    }
+
+    var promptKey: String {
+        switch self {
+        case .login: "other__lnurl_auth_login_prompt"
+        case .register: "other__lnurl_auth_register_prompt"
+        case .link: "other__lnurl_auth_link_prompt"
+        case .auth: "other__lnurl_auth_auth_prompt"
+        }
+    }
+
+    var buttonKey: String {
+        self == .login ? "other__lnurl_auth_login_button" : titleKey
+    }
+}
+
 struct LnurlAuthSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     let config: LnurlAuthSheetItem
 
-    /// LUD-04 `action` of the request; bitkit-core reports every LNURL-auth with tag `login`.
-    private var action: String? {
-        URLComponents(string: config.authData.uri)?.queryItems?.first { $0.name == "action" }?.value?.lowercased()
+    private var action: LnurlAuthAction {
+        LnurlAuthAction(uri: config.authData.uri)
     }
 
     private var actionText: String {
-        switch action {
-        case "login": t("other__lnurl_auth_login_title")
-        case "register": t("other__lnurl_auth_register_title")
-        case "link": t("other__lnurl_auth_link_title")
-        default: t("other__lnurl_auth_auth_title")
-        }
+        t(action.titleKey)
     }
 
     private var text: String {
-        let variables = ["domain": extractedDomain]
-        return switch action {
-        case "login": t("other__lnurl_auth_login_prompt", variables: variables)
-        case "register": t("other__lnurl_auth_register_prompt", variables: variables)
-        case "link": t("other__lnurl_auth_link_prompt", variables: variables)
-        default: t("other__lnurl_auth_auth_prompt", variables: variables)
-        }
+        t(action.promptKey, variables: ["domain": extractedDomain])
     }
 
     var body: some View {
@@ -80,7 +105,7 @@ struct LnurlAuthSheet: View {
                     }
                     .accessibilityIdentifier("LnurlAuthCancel")
 
-                    CustomButton(title: actionText) {
+                    CustomButton(title: t(action.buttonKey)) {
                         Task {
                             await onContinue()
                         }

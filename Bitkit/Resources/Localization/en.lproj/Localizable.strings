@@ -693,6 +693,7 @@
 "other__lnurl_auth_auth_title" = "Authenticate";
 "other__lnurl_auth_link_prompt" = "Link account to {domain}?";
 "other__lnurl_auth_link_title" = "Link";
+"other__lnurl_auth_login_button" = "Log In";
 "other__lnurl_auth_login_prompt" = "Log in to {domain}?";
 "other__lnurl_auth_login_title" = "Log In";
 "other__lnurl_auth_register_prompt" = "Register at {domain}?";

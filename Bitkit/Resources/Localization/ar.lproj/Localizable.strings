@@ -602,6 +602,7 @@
 "other__lnurl_auth_auth_title" = "مصادقة";
 "other__lnurl_auth_link_prompt" = "ربط الحساب بـ {domain}؟";
 "other__lnurl_auth_link_title" = "ربط";
+"other__lnurl_auth_login_button" = "تسجيل الدخول";
 "other__lnurl_auth_login_prompt" = "تسجيل الدخول إلى {domain}؟";
 "other__lnurl_auth_login_title" = "تسجيل الدخول";
 "other__lnurl_auth_register_prompt" = "التسجيل في {domain}؟";

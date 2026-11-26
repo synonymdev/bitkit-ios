@@ -701,6 +701,7 @@
 "other__lnurl_auth_auth_title" = "Authenticeren";
 "other__lnurl_auth_link_prompt" = "Account koppelen aan {domain}?";
 "other__lnurl_auth_link_title" = "Koppelen";
+"other__lnurl_auth_login_button" = "Inloggen";
 "other__lnurl_auth_login_prompt" = "Inloggen bij {domain}?";
 "other__lnurl_auth_login_title" = "Inloggen";
 "other__lnurl_auth_register_prompt" = "Registreren bij {domain}?";
