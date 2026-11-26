@@ -791,6 +791,33 @@ extension ChannelFreeRailTests {
         XCTAssertNotNil(service.railSendHolds[hash], "the hold ended under its retry")
     }
 
+    func testASparkSendInDoubtKeepsItsHoldWhenARetryStartsAsItsExpiryIsRecorded() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let previousRecord = service.railSendExpired
+        defer { service.railSendExpired = previousRecord }
+        service.railSendExpired = { hash in
+            XCTAssertTrue(service.beginRailSend(paymentHash: hash))
+            service.endRailSend(paymentHash: hash)
+            return .failed
+        }
+        final class Failures: @unchecked Sendable { var hashes: [String] = [] }
+        let failures = Failures()
+        service.setEventCallback { event in
+            if case let .paymentFailed(_, paymentHash?, _) = event {
+                failures.hashes.append(paymentHash)
+            }
+        }
+        try await sendInDoubtAfterALeafFailure()
+        rail.syncedAfter = { _ in true }
+        service.now = { try! Date(timeIntervalSince1970: Self.invoiceExpiresAt()) }
+
+        await service.endExpiredRailSendUncertainties()
+
+        XCTAssertNotNil(service.railSendHolds[hash], "the hold ended under the retry")
+        XCTAssertEqual(failures.hashes, [], "the retry was reported failed")
+    }
+
     func testASparkRetryOfASendInDoubtRefusedBeforeItGoesOutStaysPending() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         try await sendInDoubtAfterALeafFailure()
