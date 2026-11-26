@@ -85,6 +85,140 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), [])
     }
 
+    /// A start whose savings payment was refused before it went out for a higher fee keeps that payment with the exit,
+    /// so progress offers it at the new fee, also after a relaunch, until something reached the address.
+    func testAStartWhoseSavingsFeeRoseIsOfferedAgainOnProgress() throws {
+        let record = SparkExitFixtures.record()
+        let changed = OnchainSendAttemptError.preDispatch(SparkFundingChanged(preparedFeeSats: 650))
+        let refused = try XCTUnwrap(SparkExitManager.refusing(record, sats: 20000, after: changed))
+        let refusal = SparkExitRecord.SavingsRefusal(sats: 20000, feeSats: 650)
+
+        XCTAssertEqual(try SparkExitRecordCoder.decode(SparkExitRecordCoder.encode(refused)).savingsRefusal, refusal)
+        XCTAssertEqual(SparkExitManager.savingsRefusal(refused, fundingState: nil, hasSavingsSend: false), refusal)
+        XCTAssertEqual(SparkExitManager.savingsRefusal(refused, fundingState: .ask(sats: 20000), hasSavingsSend: false), refusal)
+        XCTAssertNil(
+            SparkExitManager.savingsRefusal(refused, fundingState: .ask(sats: 20000), hasSavingsSend: false, fundingSeenSats: 8000),
+            "funding seen before, with the address unread since"
+        )
+        XCTAssertNil(SparkExitManager.savingsRefusal(refused, fundingState: .ask(sats: 12000, receivedSats: 8000), hasSavingsSend: false))
+        XCTAssertNil(SparkExitManager.savingsRefusal(refused, fundingState: .seen(txid: "other"), hasSavingsSend: false))
+        var paid = refused
+        paid.fundingPaymentTxid = "paid"
+        XCTAssertNil(SparkExitManager.savingsRefusal(paid, fundingState: nil, hasSavingsSend: false))
+        XCTAssertNil(SparkExitManager.savingsRefusal(refused, fundingState: nil, hasSavingsSend: true), "a savings send went out")
+        var funded = refused
+        funded.funding[0].txid = "ext"
+        funded.funding[0].vout = 0
+        funded.funding[0].valueSats = 20000
+        XCTAssertNil(SparkExitManager.savingsRefusal(funded, fundingState: nil, hasSavingsSend: false), "the exit holds funding")
+
+        // Paid only over a fresh read of the address, at no less than the refused fee.
+        XCTAssertEqual(SparkExitManager.savingsRefusalToPay(refused, utxos: [], hasSavingsSend: false, feeSats: 650), refusal)
+        XCTAssertNil(SparkExitManager.savingsRefusalToPay(refused, utxos: nil, hasSavingsSend: false, feeSats: 650), "unread")
+        XCTAssertNil(SparkExitManager.savingsRefusalToPay(refused, utxos: [], hasSavingsSend: false, feeSats: 600), "older fee")
+        let arrived = [EsploraUtxo(txid: "ext", vout: 0, value: 8000, status: .init(confirmed: false, blockHeight: nil))]
+        XCTAssertNil(SparkExitManager.savingsRefusalToPay(refused, utxos: arrived, hasSavingsSend: false, feeSats: 650), "funding arrived")
+        let higher = OnchainSendAttemptError.preDispatch(SparkFundingChanged(preparedFeeSats: 800))
+        XCTAssertEqual(SparkExitManager.refusing(refused, sats: 20000, after: higher)?.savingsRefusal?.feeSats, 800)
+        XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: OnchainSendAttemptError.blocked(nil)), "nothing went out")
+        let wentOut = AppError(message: "refused", debugMessage: nil)
+        XCTAssertNotNil(SparkExitManager.refusing(refused, sats: 20000, after: wentOut), "a payment that went out is never offered again")
+        XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: wentOut)?.savingsRefusal)
+    }
+
+    /// A savings send the node accepted holds the refused payment back, also before its txid is on the record.
+    func testAnAcceptedSavingsSendIsNeverPaidAgain() throws {
+        var record = SparkExitFixtures.record()
+        record.savingsRefusal = SparkExitRecord.SavingsRefusal(sats: 20000, feeSats: 650)
+        let address = record.funding[0].address
+
+        XCTAssertFalse(SparkExitManager.hasSavingsSend(record, isRefused: false, sendAddresses: [nil, nil]))
+        XCTAssertFalse(SparkExitManager.hasSavingsSend(record, isRefused: false, sendAddresses: [nil, "bcrt1qelsewhere"]))
+        XCTAssertTrue(SparkExitManager.hasSavingsSend(record, isRefused: false, sendAddresses: [nil, address]), "accepted")
+        XCTAssertTrue(SparkExitManager.hasSavingsSend(record, isRefused: false, sendAddresses: [address, nil]), "unresolved")
+        XCTAssertTrue(SparkExitManager.hasSavingsSend(record, isRefused: true, sendAddresses: [nil, nil]), "refused")
+        let accepted = SparkExitManager.hasSavingsSend(record, isRefused: false, sendAddresses: [nil, address])
+        XCTAssertNil(SparkExitManager.savingsRefusal(record, fundingState: nil, hasSavingsSend: accepted))
+        XCTAssertNil(SparkExitManager.savingsRefusalToPay(record, utxos: [], hasSavingsSend: accepted, feeSats: 650))
+
+        // A tick keeps it as the exit's payment, before a later send can take its place in the journal.
+        let paid = SparkExitManager.keepingAcceptedSend(record, address: address, txid: "accepted")
+        XCTAssertEqual(paid?.fundingPaymentTxid, "accepted")
+        XCTAssertNil(paid?.savingsRefusal)
+        XCTAssertNil(SparkExitManager.keepingAcceptedSend(record, address: "bcrt1qelsewhere", txid: "other"))
+        XCTAssertNil(SparkExitManager.keepingAcceptedSend(record, address: address, txid: nil))
+        var kept = record
+        kept.fundingPaymentTxid = "kept"
+        XCTAssertNil(SparkExitManager.keepingAcceptedSend(kept, address: address, txid: "accepted"))
+        // Kept once: a payment the exit forgot since (dropped, or short) has no refusal left and is never kept again.
+        var forgotten = try XCTUnwrap(paid)
+        forgotten.fundingPaymentTxid = nil
+        XCTAssertNil(SparkExitManager.keepingAcceptedSend(forgotten, address: address, txid: "accepted"))
+        XCTAssertTrue(SparkExitManager.canCancel(forgotten, fundingSeenSats: 0), "a forgotten payment kept the exit from cancelling")
+    }
+
+    /// Paying a refused start again reads the address first: funding that reached it shows on progress, as a tick
+    /// shows it, and savings pays nothing.
+    @MainActor func testPayingARefusedStartAgainShowsFundingThatReachedTheAddress() async throws {
+        let walletIndex = 9995
+        let store = SparkExitStore(walletIndex: walletIndex)
+        defer {
+            try? store.delete()
+            try? SparkExitEarlierAddressStore(walletIndex: walletIndex).delete()
+            try? SparkExitLostLeafStore(walletIndex: walletIndex).delete()
+        }
+        var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 20000))
+        record.savingsRefusal = SparkExitRecord.SavingsRefusal(sats: 20000, feeSats: 650)
+        try store.save(record)
+        let address = try XCTUnwrap(record.funding.first?.address)
+        chain.utxosByAddress[address] = [SparkExitFixtures.utxo(String(repeating: "e", count: 64), value: 8000)]
+        let exit = SparkExitManager(walletIndex: walletIndex, chain: chain)
+        exit.load(walletIndex: walletIndex)
+
+        do {
+            try await exit.paySavingsRefusal(satsPerVbyte: 4, feeSats: 650)
+            XCTFail("savings paid after funding reached the address")
+        } catch {
+            XCTAssertTrue("\(error)".contains("No refused Spark exit savings payment"), "refused only at dispatch: \(error)")
+        }
+
+        XCTAssertEqual(exit.fundingSeenSats, 8000, "progress kept the funding seen before the read")
+        if case let .ask(_, receivedSats) = exit.fundingState {
+            XCTAssertEqual(receivedSats, 8000)
+        } else {
+            XCTFail("progress shows \(String(describing: exit.fundingState)), not the funding received")
+        }
+        XCTAssertNil(exit.record?.fundingPaymentTxid)
+    }
+
+    /// An exit that needs no funding keeps its funding as a tick leaves it, whatever the address holds.
+    @MainActor func testPayingARefusedStartAgainLeavesFundingAloneOnceTheExitNeedsNone() async throws {
+        let walletIndex = 9994
+        let store = SparkExitStore(walletIndex: walletIndex)
+        defer {
+            try? store.delete()
+            try? SparkExitEarlierAddressStore(walletIndex: walletIndex).delete()
+            try? SparkExitLostLeafStore(walletIndex: walletIndex).delete()
+        }
+        var record = SparkExitFixtures.record(phase: .running)
+        record.savingsRefusal = SparkExitRecord.SavingsRefusal(sats: 20000, feeSats: 650)
+        try store.save(record)
+        let address = try XCTUnwrap(record.funding.first?.address)
+        chain.utxosByAddress[address] = [SparkExitFixtures.utxo(String(repeating: "e", count: 64), value: 8000)]
+        let exit = SparkExitManager(walletIndex: walletIndex, chain: chain)
+        exit.load(walletIndex: walletIndex)
+
+        do {
+            try await exit.paySavingsRefusal(satsPerVbyte: 4, feeSats: 650)
+            XCTFail("savings paid for an exit that needs no funding")
+        } catch {
+            XCTAssertTrue("\(error)".contains("No refused Spark exit savings payment"), "refused only at dispatch: \(error)")
+        }
+
+        XCTAssertEqual(exit.fundingSeenSats, 0, "a running exit counted funding still to come")
+        XCTAssertNil(exit.fundingState)
+    }
+
     // MARK: H1 cancel
 
     func testCancelIsOffAfterAPaymentFromSavings() {

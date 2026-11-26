@@ -1402,6 +1402,23 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(store.snapshot().first?.status, .pending)
     }
 
+    /// A Spark exit reads both sends from one read: one still unresolved, then the accepted one, kept after its follow-up.
+    func testSendAddressesReadTheUnresolvedThenTheAcceptedSend() async throws {
+        let service = OnchainSendAttemptService(store: MemoryAttemptStore())
+        let id = try await admit(service)
+        let pending = await service.sendAddresses()
+        XCTAssertEqual(pending.unresolved, "bcrt1qexample")
+        XCTAssertNil(pending.accepted)
+
+        try await service.record(.accepted(txid: txid), attemptId: id)
+        try await service.acknowledgeLocalFollowup(txid: txid)
+        let accepted = await service.sendAddresses()
+
+        XCTAssertNil(accepted.unresolved)
+        XCTAssertEqual(accepted.accepted?.address, "bcrt1qexample")
+        XCTAssertEqual(accepted.accepted?.txid, txid)
+    }
+
     func testAcceptedOrderCannotBeFundedAgain() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)

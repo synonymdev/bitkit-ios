@@ -343,6 +343,129 @@ final class ScannerManagerTests: XCTestCase {
         XCTAssertNil(sheets.activeSheetConfiguration)
     }
 
+    func testSetupSheetQueuedBeforeALockDoesNotOpenAfterIt() async throws {
+        let defaults = UserDefaults.standard
+        let previousEnabled = defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey)
+        defer { defaults.set(previousEnabled, forKey: PaykitFeatureFlags.uiEnabledKey) }
+        defaults.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let previousAdopted = AdoptedPubkyReference.current
+        defer { AdoptedPubkyReference.current = previousAdopted }
+        AdoptedPubkyReference.current = nil
+        // Pubky sign-up opens its approval sheet only without a stored identity.
+        let previousSession = try Keychain.loadString(key: .paykitSession)
+        let previousSecretKey = try Keychain.loadString(key: .pubkySecretKey)
+        try Keychain.delete(key: .paykitSession)
+        try Keychain.delete(key: .pubkySecretKey)
+        defer {
+            if let previousSession {
+                try? Keychain.saveString(key: .paykitSession, str: previousSession)
+            }
+            if let previousSecretKey {
+                try? Keychain.saveString(key: .pubkySecretKey, str: previousSecretKey)
+            }
+        }
+        XCTAssertFalse(try PubkyProfileManager.hasStoredIdentity())
+        let routes: [(uri: String, sheet: SheetID)] = [
+            ("https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123", .btcpayConnection),
+            (
+                "pubkyring://signup?hs=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo" +
+                    "&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
+                    "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&caps=%2Fpub%2Fexample%2F%3Arw",
+                .pubkyAuthApproval
+            ),
+        ]
+
+        func scanFromTheScanner(_ uri: String, lockingBeforeTheSheetOpens: Bool) async throws -> SheetConfiguration? {
+            let sheets = SheetViewModel()
+            sheets.showSheet(.scanner)
+            let scanner = ScannerManager {}
+            let app = configure(scanner, sheets: sheets)
+            scanner.configure(
+                app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+                settings: SettingsViewModel.shared, sheets: sheets
+            )
+            await scanner.handleScan(uri, context: .main)
+            // The scanner sheet is closing; the setup sheet opens after the replacement delay.
+            XCTAssertNil(sheets.activeSheetConfiguration, uri)
+            if lockingBeforeTheSheetOpens {
+                scanner.invalidateScansForAppLock()
+                app.noteAppLocked()
+            }
+            try await Task.sleep(nanoseconds: UInt64((SheetViewModel.replacementDelaySeconds + 0.3) * 1_000_000_000))
+            return sheets.activeSheetConfiguration
+        }
+
+        for route in routes {
+            let unlocked = try await scanFromTheScanner(route.uri, lockingBeforeTheSheetOpens: false)
+            XCTAssertEqual(unlocked?.id, route.sheet, "Without a lock the scan opens its sheet")
+            let locked = try await scanFromTheScanner(route.uri, lockingBeforeTheSheetOpens: true)
+            XCTAssertNil(locked, "A \(route.sheet) sheet queued before the lock must not open after it")
+        }
+    }
+
+    func testDeepLinkLookupFromBeforeALockIsDropped() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let started = expectation(description: "Deep link lookup suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let app = configure(ScannerManager {}, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        let link = Task { try await app.handleDeepLinkData(paymentURI) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // The app locks while the lookup runs, and the user unlocks before it returns.
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        do {
+            try await link.value
+            XCTFail("A deep link lookup from before the lock must be dropped")
+        } catch is CancellationError {}
+
+        XCTAssertNil(app.scannedOnchainInvoice)
+        XCTAssertNil(sheets.activeSheetConfiguration)
+    }
+
+    func testDeepLinkLookupFailingAfterALockIsDroppedWithoutItsError() async throws {
+        let sheets = SheetViewModel()
+        let started = expectation(description: "Deep link lookup suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let app = configure(ScannerManager {}, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        let link = Task { try await app.handleDeepLinkData(paymentURI) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // The app locks while the lookup runs, and the lookup then fails.
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume(throwing: URLError(.timedOut))
+        do {
+            try await link.value
+            XCTFail("A deep link lookup from before the lock must be dropped")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("A lookup failing after the lock must not surface its error: \(error)")
+        }
+        XCTAssertNil(sheets.activeSheetConfiguration)
+    }
+
+    func testDeepLinkLookupFailingBeforeALockKeepsItsError() async {
+        let app = configure(ScannerManager {}, decodeInvoice: { _ in throw URLError(.timedOut) })
+
+        do {
+            try await app.handleDeepLinkData(paymentURI)
+            XCTFail("The lookup must fail")
+        } catch {
+            XCTAssertFalse(error is CancellationError, "Without a lock the error reaches the caller")
+        }
+    }
+
     private func imageTestLnurl(amount: UInt64) -> LnurlPayData {
         LnurlPayData(uri: "https://example.com/pay", callback: "https://example.com/callback",
                      minSendable: amount, maxSendable: amount,

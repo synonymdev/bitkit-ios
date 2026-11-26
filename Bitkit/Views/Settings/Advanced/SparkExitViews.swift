@@ -725,11 +725,89 @@ struct SparkExitProgressView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var currency: CurrencyViewModel
 
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
+    @EnvironmentObject var wallet: WalletViewModel
+
     private let exit = SparkExitManager.shared
     @State private var isConfirmingCancel = false
+    /// The start's savings payment, refused before it went out for a higher fee, priced again at the new fee.
+    @State private var savingsRetry: (rate: UInt32, feeSats: UInt64)?
+    @State private var isPayingSavings = false
 
     private var record: SparkExitRecord? {
         exit.record
+    }
+
+    private var savingsRefusal: SparkExitRecord.SavingsRefusal? {
+        record.flatMap {
+            SparkExitManager.savingsRefusal(
+                $0,
+                fundingState: fundingState,
+                hasSavingsSend: exit.hasSavingsSend,
+                fundingSeenSats: exit.fundingSeenSats
+            )
+        }
+    }
+
+    /// What leaves savings for the refused payment at its new fee, while savings can cover it: the fee to confirm.
+    private var savingsRetryTotalSats: UInt64? {
+        // A price below the refused fee is from before the latest refusal.
+        guard let savingsRefusal, let savingsRetry, savingsRetry.feeSats >= savingsRefusal.feeSats,
+              SparkExitMath.canFundFromSavings(
+                  spendableSats: UInt64(max(0, wallet.spendableOnchainBalanceSats)),
+                  fundingSats: savingsRefusal.sats,
+                  paymentFeeSats: savingsRetry.feeSats,
+                  // Paid by the node alone, to an address the exit already holds: Spark need not be connected.
+                  readsBitkitChain: SparkManager.shared.readsSavingsChain
+              )
+        else { return nil }
+        return savingsRefusal.sats + savingsRetry.feeSats
+    }
+
+    /// Progress says the savings payment didn't go through and offers to pay it again.
+    private var offersSavingsRetry: Bool {
+        exit.isSavingsPaymentRefused || savingsRetryTotalSats != nil
+    }
+
+    /// Prices the refused payment, again every 15 seconds after a failed price, such as before the node runs, while
+    /// progress can still offer it.
+    private func priceSavingsRetry() async {
+        // No refusal to offer: an older price is never offered for a later one.
+        guard savingsRefusal != nil else {
+            savingsRetry = nil
+            return
+        }
+        while !Task.isCancelled, savingsRefusal != nil {
+            if await priceSavingsRetryOnce() {
+                return
+            }
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+        }
+    }
+
+    /// A failed price keeps the last one, which is never offered below a fee refused since. Whether it priced the
+    /// refusal progress offers now.
+    @discardableResult
+    private func priceSavingsRetryOnce() async -> Bool {
+        guard let savingsRefusal, let address = record?.funding.first?.address else {
+            savingsRetry = nil
+            return false
+        }
+        let wallet = wallet
+        let feeEstimatesManager = feeEstimatesManager
+        let priced = await SparkExitFundingView.priceSavingsFee(
+            address: address,
+            fundingSats: savingsRefusal.sats,
+            refusedFeeSats: savingsRefusal.feeSats,
+            estimates: { await feeEstimatesManager.getEstimates(refresh: true) },
+            calculate: { try await wallet.calculateTotalFee(address: $0, amountSats: $1, satsPerVByte: $2) }
+        )
+        // A cancelled price, or one for a refusal since replaced, changes nothing.
+        guard !Task.isCancelled, self.savingsRefusal == savingsRefusal, case let .priced(rate, feeSats) = priced else {
+            return false
+        }
+        savingsRetry = (rate, feeSats)
+        return true
     }
 
     private var fundingState: SparkExitFundingState? {
@@ -846,7 +924,7 @@ struct SparkExitProgressView: View {
                                 .accessibilityIdentifier("SparkExitReturned")
                         }
 
-                        if exit.isSavingsPaymentRefused {
+                        if offersSavingsRetry {
                             BodySText(t("lightning__spark_exit__savings_refused"), textColor: .redAccent)
                                 .padding(.top, 24)
                                 .accessibilityIdentifier("SparkExitSavingsRefused")
@@ -868,6 +946,12 @@ struct SparkExitProgressView: View {
                                     .padding(.top, 24)
                                     .accessibilityElement(children: .contain)
                                     .accessibilityIdentifier("SparkExitProgressFundingAmount")
+                                // The new fee to confirm: what leaves savings once Pay from savings is tapped.
+                                if let savingsRetryTotalSats {
+                                    SparkExitAmountRow(label: t("lightning__spark_exit__fees_savings"), sats: savingsRetryTotalSats)
+                                        .accessibilityElement(children: .contain)
+                                        .accessibilityIdentifier("SparkExitProgressSavingsTotal")
+                                }
                                 SparkExitFundingAddress(
                                     address: address,
                                     receivedSats: receivedSats,
@@ -962,6 +1046,7 @@ struct SparkExitProgressView: View {
             .refreshable {
                 await SparkManager.shared.refreshState()
                 await exit.tick()
+                await priceSavingsRetryOnce()
             }
             // Over the bottom inset: content cut at the edge fades out above the buttons, and scrolled to the end the
             // last line clears it.
@@ -981,12 +1066,29 @@ struct SparkExitProgressView: View {
                 .accessibilityIdentifier("SparkExitNotificationSettings")
             }
 
-            if exit.isSavingsPaymentRefused {
-                CustomButton(title: t("lightning__spark_exit__fund_savings"), variant: .secondary) {
-                    do {
-                        try await exit.retrySavingsPayment()
-                    } catch {
-                        app.toast(error)
+            if offersSavingsRetry {
+                // The price on screen when tapped, never one published after: a fee refused since is refused again.
+                let shown = savingsRetry
+                CustomButton(title: t("lightning__spark_exit__fund_savings"), variant: .secondary, isLoading: isPayingSavings) {
+                    guard !isPayingSavings else { return }
+                    isPayingSavings = true
+                    defer { isPayingSavings = false }
+                    if exit.isSavingsPaymentRefused {
+                        do {
+                            try await exit.retrySavingsPayment()
+                        } catch {
+                            app.toast(error)
+                        }
+                    } else if let shown {
+                        do {
+                            try await exit.paySavingsRefusal(satsPerVbyte: shown.rate, feeSats: shown.feeSats)
+                        } catch let OnchainSendAttemptError.preDispatch(error) where error is SparkFundingChanged {
+                            // Savings never pays more than the fee shown: progress shows the higher one to confirm.
+                            app.toast(type: .info, title: t("lightning__spending_confirm__fees_changed_title"))
+                        } catch {
+                            app.toast(error)
+                        }
+                        await priceSavingsRetryOnce()
                     }
                 }
                 .padding(.bottom, 16)
@@ -1052,6 +1154,9 @@ struct SparkExitProgressView: View {
         }
         .task(id: record?.hasUnseenResult) {
             exit.markResultSeen()
+        }
+        .task(id: savingsRefusal) {
+            await priceSavingsRetry()
         }
     }
 }

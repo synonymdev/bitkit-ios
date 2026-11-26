@@ -82,6 +82,12 @@ struct MainNavView: View {
             navigationContent
         }
         .environment(sparkTransfer)
+        .onChange(of: SparkManager.shared.isReady, initial: true) { _, isReady in
+            // A relaunch cut short the claims it took back; they go on once Spark can quote them.
+            if isReady {
+                sparkTransfer.resumeSentDeposits()
+            }
+        }
         .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             // The swipe's funding can resolve while another screen of the transfer shows.
             guard resolution.isSparkFunding else { return }
@@ -971,7 +977,7 @@ struct MainNavView: View {
                 await scannerManager.handleScan(publicKey, context: .main)
                 return
             }
-            try await app.handleScannedData(
+            try await app.handleDeepLinkData(
                 url.absoluteString,
                 alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
             )
