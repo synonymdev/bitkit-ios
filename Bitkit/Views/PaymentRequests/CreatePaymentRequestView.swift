@@ -44,6 +44,7 @@ struct RequestOrPayView: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let publicKey: String
     let onRequest: (PaykitPaymentRequestTarget) -> Void
@@ -64,26 +65,36 @@ struct RequestOrPayView: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__payment_request_or_pay"))
 
-            Spacer()
+            // The illustration shrinks on small screens; when the copy still does not fit, it scrolls so the
+            // actions below stay on screen.
+            ViewThatFits(in: .vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    illustration
+                        .frame(minHeight: 0, idealHeight: 0, maxHeight: 256)
+                        .frame(maxHeight: .infinity)
+                        .layoutPriority(-1)
 
-            Image("coin-stack-4")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 256, height: 256)
-                .frame(maxWidth: .infinity)
-                .accessibilityHidden(true)
+                    introduction
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
+                }
 
-            Spacer()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        illustration
+                            .frame(height: 256)
 
-            DisplayText(t("wallet__payment_request_or_pay_headline"), accentColor: .purpleAccent)
-                .padding(.bottom, 8)
-            BodyMText(
-                t("wallet__payment_request_or_pay_description", variables: ["contact": contactName]),
-                textColor: .white64
-            )
-            .padding(.bottom, 24)
+                        introduction
+                    }
+                }
+                .scrollIndicators(.hidden)
+            }
+            .frame(maxHeight: .infinity, alignment: .bottom)
 
-            HStack(spacing: 16) {
+            let buttonLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: 16))
+                : AnyLayout(HStackLayout(spacing: 16))
+            buttonLayout {
                 CustomButton(
                     title: t("common__pay"),
                     variant: .secondary,
@@ -94,6 +105,7 @@ struct RequestOrPayView: View {
                     payTask = task
                     await task.value
                 }
+                .accessibilityIdentifier("RequestOrPayPay")
                 CustomButton(
                     title: t("wallet__payment_request_request"),
                     icon: Image("arrow-down").resizable().frame(width: 16, height: 16),
@@ -103,6 +115,7 @@ struct RequestOrPayView: View {
                         onRequest(target)
                     }
                 }
+                .accessibilityIdentifier("RequestOrPayRequest")
             }
         }
         .padding(.horizontal, 16)
@@ -113,6 +126,27 @@ struct RequestOrPayView: View {
         .onDisappear {
             payTask?.cancel()
         }
+    }
+
+    private var illustration: some View {
+        Image("coin-stack-4")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
+    }
+
+    private var introduction: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DisplayText(t("wallet__payment_request_or_pay_headline"), accentColor: .purpleAccent)
+                .padding(.bottom, 8)
+            BodyMText(
+                t("wallet__payment_request_or_pay_description", variables: ["contact": contactName]),
+                textColor: .white64
+            )
+        }
+        .padding(.top, 24)
+        .padding(.bottom, 24)
     }
 
     private func payContact() async {

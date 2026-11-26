@@ -1,0 +1,16 @@
+<journey name="Contact Request Or Pay On A Compact Screen">
+  <description>
+    Verifies that the Request or Pay sheet keeps its Pay and Request actions on screen on a compact display and with enlarged text: the illustration shrinks first, then the headline and description scroll, while the action row stays pinned above the bottom edge. Uses the same two linked Bitkit instances as contact-request-or-pay.xml; see README.md. The payer runs on an iPhone SE (3rd generation) simulator, the compact size; there is no wm size equivalent, so the device stands in for the Android 320 x 640 dp display. Enlarge text with `xcrun simctl ui booted content_size accessibility-extra-extra-extra-large` and restore with `xcrun simctl ui booted content_size large`. Open the contact with xcrun simctl openurl booted "bitkit://contact?pubky=&lt;requester-public-key&gt;".
+  </description>
+  <actions>
+    <action>Boot the payer on an iPhone SE (3rd generation) simulator</action>
+    <action>Open bitkit://contact?pubky=&lt;requester-public-key&gt; on the payer and tap Pay (id "ContactPay")</action>
+    <action>Verify the Request or Pay sheet (id "RequestOrPaySheet") shows the Pay (id "RequestOrPayPay") and Request (id "RequestOrPayRequest") buttons side by side, both fully inside the screen bounds</action>
+    <action>Close the sheet and run `xcrun simctl ui booted content_size accessibility-extra-extra-extra-large`</action>
+    <action>Tap Pay (id "ContactPay") again</action>
+    <action>Verify Pay (id "RequestOrPayPay") and Request (id "RequestOrPayRequest") are stacked, both fully inside the screen bounds, and the headline and description can be scrolled to their last line without moving the buttons</action>
+    <action>Tap Pay on the sheet and verify its button shows a loading spinner and Request is disabled until the send amount screen opens; close it without paying</action>
+    <action>Tap Pay (id "ContactPay"), tap Request (id "RequestOrPayRequest") and verify the Payment Request amount screen (id "PaymentRequestAmount") opens; go back</action>
+    <action>Run `xcrun simctl ui booted content_size large`</action>
+  </actions>
+</journey>
