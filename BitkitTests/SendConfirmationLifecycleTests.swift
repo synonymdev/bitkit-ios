@@ -29,6 +29,50 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         XCTAssertEqual(wallet.sendAmountSats, 10000)
     }
 
+    func testASparkFundedOnchainRequestKeepsItsOnchainPriceOnSpending() throws {
+        snapshotAppDefaultsDomain()
+        let request = try onchainRequest(rates: [
+            ConversionRate(asset: "btc", value: "0.000002188"),
+            ConversionRate(asset: "btc-lightning", value: "0.00002"),
+        ])
+        let app = AppViewModel()
+        app.scannedOnchainInvoice = invoice
+        let onchainTerms = try request.payment(using: app.paykitPaymentMethod)
+
+        // Spending funds the Spark leg, which still pays the request's on-chain endpoint.
+        app.selectedWalletToPayFrom = .lightning
+
+        XCTAssertEqual(try request.payment(using: app.paykitPaymentMethod), onchainTerms)
+    }
+
+    func testASparkLegIgnoresTheUnselectedLnurlsPrice() throws {
+        snapshotAppDefaultsDomain()
+        let request = try onchainRequest(acceptsLightning: true, rates: [
+            ConversionRate(asset: "btc", value: "0.000002188"),
+            ConversionRate(asset: "btc-lightning", value: "0.00002"),
+        ])
+        let app = AppViewModel()
+        app.scannedOnchainInvoice = invoice
+        let onchainTerms = try request.payment(using: app.paykitPaymentMethod)
+        let endpoint = PaykitEndpoint(methodId: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue, value: invoice.address)
+        app.lnurlPayData = LnurlPayData(
+            uri: "lnurl1contact", callback: "https://example.com/callback", minSendable: 5_000_000, maxSendable: 100_000_000,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        app.paykitRoute = PaykitRouteUi(
+            endpoints: [endpoint],
+            offersSparkLeg: true,
+            serviceLeg: ServiceRouteLeg(
+                service: SparkManager.routeService, endpoint: endpoint, deliveredSat: 5000, debitSat: 5300,
+                atomicity: "trusted", validUntilUnix: 0
+            )
+        )
+
+        app.selectedWalletToPayFrom = .lightning
+
+        XCTAssertEqual(try request.payment(using: app.paykitPaymentMethod), onchainTerms, "The leg pays the on-chain endpoint")
+    }
+
     func testQuotedWalletSwitchRebindsAmountOnConfirmation() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
@@ -1198,6 +1242,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
             proposalAppId: "bitkit",
+            proposalRecordedAt: nil,
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
@@ -1217,6 +1262,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             ),
             acceptedEventId: nil,
             acceptedOutboundStatus: nil,
+            acceptanceRecordedAt: nil,
             rejectedEventId: nil,
             rejectedOutboundStatus: nil,
             canceledEventId: nil,

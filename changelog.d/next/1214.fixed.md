@@ -1,0 +1,1 @@
+Automatic allowance payments stay paused after a wallet restore until you resume them, and requests under an allowance with a lifetime, payment count or additional period limit always ask for your approval.

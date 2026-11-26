@@ -49,7 +49,7 @@ struct AllowancesTab: View {
     private var pausedNotice: some View {
         VStack(alignment: .leading, spacing: 0) {
             BodyMSBText(t("subscriptions__allowances_paused_title"))
-            BodySText(t("subscriptions__allowances_paused_description"), textColor: .white64)
+            BodySText(pausedDescription, textColor: .white64)
                 .padding(.top, 4)
             CustomButton(
                 title: t("subscriptions__allowances_paused_resume"),
@@ -74,6 +74,15 @@ struct AllowancesTab: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("AllowancesPaused")
+    }
+
+    private var pausedDescription: String {
+        switch allowances.automaticPaymentPause {
+        case .walletRestored:
+            t("subscriptions__allowances_paused_restore_description")
+        case .ledgerBehind, nil:
+            t("subscriptions__allowances_paused_description")
+        }
     }
 
     private var emptyState: some View {

@@ -4,6 +4,10 @@ import SwiftUI
 func sendFailureMessage(for error: Error) -> String {
     let fallbackMessage = t("wallet__payment_failed_description")
 
+    if isRestoredInvoiceRefusal(error) {
+        return t("wallet__payment_restored_invoice")
+    }
+
     if error is QuickPayConversionError {
         return t("wallet__send_quickpay__currency_conversion")
     }
@@ -17,6 +21,23 @@ func sendFailureMessage(for error: Error) -> String {
     }
 
     return fallbackMessage
+}
+
+/// Also when the refusal is wrapped in another error.
+func isRestoredInvoiceRefusal(_ error: Error) -> Bool {
+    var current: Error? = error
+    for _ in 0 ..< 8 {
+        guard let error = current else { return false }
+        if let refusal = error as? ChannelFreeRailSendRefused {
+            if refusal.isRestoredInvoiceUnverified {
+                return true
+            }
+            current = refusal.underlying
+        } else {
+            current = (error as? AppError)?.underlyingError
+        }
+    }
+    return false
 }
 
 func shouldResetRoutingCachesOnRetry(for error: Error) -> Bool {

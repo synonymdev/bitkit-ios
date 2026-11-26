@@ -52,7 +52,7 @@ final class SavingsSwapTests: XCTestCase {
         await transfer.loadSavingsSwapQuote(requestedSat: 100_000, spendableSats: 100_000)
         XCTAssertNil(transfer.savingsSwapState.quote)
 
-        transfer.onTransferToSavingsConfirm(channels: [])
+        transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: false)
 
         XCTAssertEqual(transfer.savingsTransferMode, .close)
     }
@@ -66,10 +66,10 @@ final class SavingsSwapTests: XCTestCase {
             maxSat: 100_000
         )
 
-        transfer.onTransferToSavingsConfirm(channels: [])
+        transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: false)
         XCTAssertEqual(transfer.savingsTransferMode, .swap)
 
-        transfer.onTransferToSavingsConfirm(channels: [], mode: .close)
+        transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: false, mode: .close)
         XCTAssertEqual(transfer.savingsTransferMode, .close)
     }
 

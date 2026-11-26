@@ -208,6 +208,7 @@ struct GeneralSettingsView: View {
                 ProgressView()
                     .opacity(isUpdating ? 1 : 0)
                     .accessibilityHidden(!isUpdating)
+                    .accessibilityIdentifier("\(identifier)Loading")
                     .frame(width: 20)
                 SettingsRow(
                     title: title,

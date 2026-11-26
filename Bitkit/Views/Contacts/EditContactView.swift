@@ -160,7 +160,7 @@ struct EditContactView: View {
             ) {
                 fillFormFromContact()
                 let uploadedImageUrl = if let avatarImage {
-                    try await pubkyProfile.uploadAvatar(image: avatarImage, expectedIdentity: session.publicKey)
+                    try await pubkyProfile.uploadContactAvatar(image: avatarImage, expectedIdentity: session.publicKey)
                 } else {
                     form.imageUrl
                 }

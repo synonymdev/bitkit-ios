@@ -17,6 +17,7 @@ final class UsdtWalletUITests: XCTestCase {
     func testUnknownBalanceAndManualEntryUseConsistentAmountsInCommaRegion() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments += ["-appUpdateIgnoreTimestamp", String(Date().timeIntervalSince1970)]
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "de_DE"]
         app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:1"
         app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:1"
@@ -30,7 +31,8 @@ final class UsdtWalletUITests: XCTestCase {
             XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
             app.buttons["NewWallet"].tap()
         }
-        XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
+        try app.skipIfBitcoinNodeUnavailable(waitingFor: app.otherElements["TotalBalance-primary"], timeout: 90)
+        XCTAssertTrue(app.otherElements["TotalBalance-primary"].exists)
         if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) {
             app.buttons["UsdtIntroEnable"].tap()
         }
@@ -49,7 +51,8 @@ final class UsdtWalletUITests: XCTestCase {
         capture(app, "USDT unknown wallet in German region")
         try tapBack(in: app)
         app.buttons["Send"].tap()
-        XCTAssertTrue(app.buttons["RecipientManual"].waitForExistence(timeout: 5))
+        try app.skipIfBitcoinNodeUnavailable(waitingFor: app.buttons["RecipientManual"], timeout: 30)
+        XCTAssertTrue(app.buttons["RecipientManual"].exists)
         app.buttons["RecipientManual"].tap()
         let input = app.textViews["RecipientInput"]
         XCTAssertTrue(input.waitForExistence(timeout: 5))
@@ -219,6 +222,7 @@ final class UsdtWalletUITests: XCTestCase {
     func testReceiveAndInvalidPaymentStaySeparateFromBitcoin() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments += ["-appUpdateIgnoreTimestamp", String(Date().timeIntervalSince1970)]
         app.resetAuthorizationStatus(for: .camera)
         app.launchEnvironment["USDT_RPC_URL"] = rpcURL
         app.launchEnvironment["USDT_BUNDLER_URL"] = bundlerURL
@@ -310,12 +314,30 @@ final class UsdtWalletUITests: XCTestCase {
                 "ethereum:0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9@42161/transfer?address=0x0000000000000000000000000000000000000001&uint256=1.23e6"
             )
         app.buttons["UsdtRecipientContinue"].tap()
-        // A URI with an amount fixes it: the review opens instead of the editable Amount step.
-        XCTAssertTrue(app.descendants(matching: .any)["UsdtConfirmLoading"].waitForExistence(timeout: 5))
+        // A fixed URI opens review. Back is disabled while the quote is being prepared.
+        let retryQuote = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ OR (identifier == %@ AND label == %@)",
+            "UsdtRetryQuote", "UsdtConfirmLoading", "Try Again"
+        )).firstMatch
+        let reviewDetails = app.buttons["UsdtReviewDetails"]
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            reviewDetails.exists || (retryQuote.exists && retryQuote.isEnabled)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 30), .completed, app.debugDescription)
         XCTAssertTrue(app.staticTexts["$ 1.23"].exists)
         XCTAssertFalse(app.buttons["N1"].exists)
-        // Back, then a different recipient: Amount opens editable with the earlier amount.
-        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
+
+        // The wallet behind the sheet also has a Back button. Use the one in the Confirm header.
+        let title = app.staticTexts["Confirm"]
+        XCTAssertTrue(title.exists, app.debugDescription)
+        let titleY = title.frame.midY
+        let headerButtons = app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.filter {
+            $0.isHittable && $0.frame.minY <= titleY && titleY <= $0.frame.maxY
+        }
+        XCTAssertEqual(headerButtons.count, 1, app.debugDescription)
+        let back = try XCTUnwrap(headerButtons.first)
+        XCTAssertTrue(back.isEnabled, app.debugDescription)
+        back.tap()
         XCTAssertTrue(recipient.waitForExistence(timeout: 5))
         recipient.tap()
         recipient.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 60))

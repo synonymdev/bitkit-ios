@@ -60,6 +60,7 @@ struct PaykitUsdtStateBackup: Codable {
         let receivedAtMillis: Int64
         let underpaid: Bool
         let afterExpiry: Bool
+        let beforeRequest: Bool?
 
         init(_ value: PaykitUsdtPaymentService.Receipt) {
             wallet = value.wallet
@@ -76,6 +77,7 @@ struct PaykitUsdtStateBackup: Codable {
             receivedAtMillis = Int64(value.receivedAt.timeIntervalSince1970 * 1000)
             underpaid = value.underpaid
             afterExpiry = value.afterExpiry
+            beforeRequest = value.beforeRequest
         }
 
         func restored() throws -> PaykitUsdtPaymentService.Receipt {
@@ -89,7 +91,8 @@ struct PaykitUsdtStateBackup: Codable {
                                  billingPeriodStartsAt: periodStart),
                 paymentId: paymentId, proofEventId: proofEventId, verified: verified, transferId: transferId,
                 amount: PaykitAmount(asset: .usdt, atomic: amountAtomic),
-                receivedAt: Date(timeIntervalSince1970: Double(receivedAtMillis) / 1000), underpaid: underpaid, afterExpiry: afterExpiry
+                receivedAt: Date(timeIntervalSince1970: Double(receivedAtMillis) / 1000), underpaid: underpaid, afterExpiry: afterExpiry,
+                beforeRequest: beforeRequest ?? false
             )
         }
     }

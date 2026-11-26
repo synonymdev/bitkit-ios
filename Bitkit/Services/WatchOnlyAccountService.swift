@@ -3,7 +3,7 @@ import Combine
 import CryptoKit
 import Foundation
 import LDKNode
-import secp256k1
+import P256K
 
 enum WatchOnlyAccountSetupState: String, Codable {
     case pendingDelivery
@@ -994,6 +994,6 @@ enum WatchOnlyAccountClaimCodec {
     }
 
     private static func isValidCompressedPublicKey(_ key: Data) -> Bool {
-        (try? secp256k1.KeyAgreement.PublicKey(dataRepresentation: key, format: .compressed)) != nil
+        (try? P256K.KeyAgreement.PublicKey(dataRepresentation: key, format: .compressed)) != nil
     }
 }

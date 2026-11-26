@@ -2,6 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>to.bitkit.spark-exit</string>
+		<string>to.bitkit.spark-exit.processing</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
 	<key>UIDesignRequiresCompatibility</key>
 	<true/>
 	<key>USDT_BRIDGE_NETWORKS</key>
@@ -32,6 +42,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>BREEZ_API_KEY</key>
+	<string>$(BREEZ_API_KEY)</string>
 	<key>E2E_BACKEND</key>
 	<string>$(E2E_BACKEND)</string>
 	<key>E2E_HOMEGATE_URL</key>
