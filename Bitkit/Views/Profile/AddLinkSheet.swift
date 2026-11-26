@@ -87,7 +87,9 @@ struct AddLinkSheet: View {
         .presentationCornerRadius(32)
         .presentationDragIndicator(.visible)
         .onChange(of: label) { _, value in
-            let printable = String(String.UnicodeScalarView(value.unicodeScalars.filter { $0.properties.generalCategory != .control }))
+            let printable = String(String.UnicodeScalarView(value.unicodeScalars.map {
+                $0.properties.generalCategory == .control ? " " : $0
+            }))
             if printable != value {
                 label = printable
             }
@@ -153,9 +155,11 @@ extension String {
         let url = hasScheme ? value : "https://\(value)"
         guard let colon = url.firstIndex(of: ":") else { return false }
         let afterScheme = url[url.index(after: colon)...]
-        guard ["http", "https"].contains(url[..<colon].lowercased()), afterScheme.hasPrefix("//"),
-              !afterScheme.dropFirst(2).prefix(while: { !"/?#".contains($0) }).contains("\\"),
-              var host = PubkyAppProfileStore.linkUrlHost(url)
+        guard ["http", "https"].contains(url[..<colon].lowercased()), afterScheme.hasPrefix("//") else { return false }
+        let authority = afterScheme.dropFirst(2).prefix { !"/?#".contains($0) }
+        let hostAndPort = authority.split(separator: "@", omittingEmptySubsequences: false).last ?? ""
+        let rawHost = hostAndPort.hasPrefix("[") ? hostAndPort : hostAndPort.prefix { $0 != ":" }
+        guard !authority.contains("\\"), !rawHost.isEmpty, var host = PubkyAppProfileStore.linkUrlHost(url)
         else { return false }
         if host.hasSuffix(".") {
             host.removeLast()

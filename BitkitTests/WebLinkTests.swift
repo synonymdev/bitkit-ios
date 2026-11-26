@@ -28,6 +28,7 @@ final class WebLinkTests: XCTestCase {
             "mailto:a@b.c", "a@b.c", "tel:+123456789", "+1 234 567 890", "123.456.7890",
             "ftp://example.com", "example.com:8080", "example", "two words.com", "",
             "https:example.com", "https:/example.com", "https:\\\\example.com", "https://\\example.com",
+            "https:///example.com", "https:////example.com", "/example.com", "https://.", "https://..",
         ]
         for link in links {
             XCTAssertFalse(link.isWebLink, link)
