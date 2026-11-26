@@ -900,7 +900,9 @@ final class SparkExitManager {
             setFunding(nil, for: record)
             return nil
         }
-        await noteFundingSeen(record, utxos: try? chain.utxos(address: address))
+        let utxos = try? await chain.utxos(address: address)
+        noteFundingSeen(record, utxos: utxos)
+        return utxos
     }
 
     /// What `utxos` at the funding address, nil when unread, says the exit still needs.
@@ -909,7 +911,6 @@ final class SparkExitManager {
             fundingSeenSats = SparkExitMath.newFunding(utxos, record: record).reduce(0) { $0 + $1.value }
         }
         setFunding(SparkExitMath.fundingState(record, utxos: utxos), askTotal: SparkExitMath.fundingAskTotal(record, utxos: utxos), for: record)
-        return utxos
     }
 
     private func setFunding(_ state: SparkExitFundingState?, askTotal: UInt64? = nil, for record: SparkExitRecord) {
