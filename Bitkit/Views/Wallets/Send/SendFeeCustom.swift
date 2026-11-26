@@ -181,7 +181,7 @@ struct SendFeeCustom: View {
         Task {
             do {
                 // A rate that lands after a later choice or for an earlier payment is dropped, and so is its navigation.
-                try await wallet.setFeeRate(speed: speed) { wallet.isCurrentFeeRateChoice(choice) }
+                try await wallet.setFeeRate(speed: speed) { wallet.isCurrentFeeRateChoice(choice, speed: speed) }
                 app.selectedWalletToPayFrom = .onchain
                 if navigationPath.last == .feeCustom {
                     navigationPath.removeLast()

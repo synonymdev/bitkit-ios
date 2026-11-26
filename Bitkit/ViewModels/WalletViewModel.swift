@@ -2199,8 +2199,9 @@ class WalletViewModel: ObservableObject {
         return choice
     }
 
-    func isCurrentFeeRateChoice(_ choice: UUID) -> Bool {
-        feeRateChoice == choice
+    /// The speed is checked too: a screen that sets another speed without a choice, such as the Lightning default, ends it.
+    func isCurrentFeeRateChoice(_ choice: UUID, speed: TransactionSpeed) -> Bool {
+        feeRateChoice == choice && selectedSpeed == speed
     }
 
     func resetSendState(speed: TransactionSpeed) {
