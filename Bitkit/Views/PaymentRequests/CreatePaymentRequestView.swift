@@ -49,7 +49,6 @@ struct RequestOrPayView: View {
     let publicKey: String
     let onRequest: (PaykitPaymentRequestTarget) -> Void
 
-    /// Smallest height the illustration is shown at; below it the illustration is hidden.
     private static let minIllustrationHeight: CGFloat = 72
 
     @State private var isPayLoading = false
@@ -84,6 +83,7 @@ struct RequestOrPayView: View {
 
                 ScrollView {
                     introduction
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .scrollBounceBehavior(.basedOnSize)
             }
