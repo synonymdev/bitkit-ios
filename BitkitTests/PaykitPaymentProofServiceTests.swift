@@ -4312,11 +4312,15 @@ final class SparkExitFundingReleaseServiceTests: XCTestCase {
     func testExitFundingTheExitNoLongerNeedsIsReleased() async throws {
         let other = String(repeating: "f1", count: 32)
         let cancelled = SparkExitEarlierAddress(address: fundingAddress, path: "m/0", kind: .cancelledFunding, date: Date())
+        var stalePayment = exitRecord(.running, fundingTxid: other)
+        stalePayment.fundingPaymentTxid = PreparedAttemptNodeMock().txid
         let exits: [SparkExitFundingRelease.Exit] = [
             .init(record: exitRecord(.running, fundingTxid: other), earlier: []),
             .init(record: exitRecord(.done, fundingTxid: other), earlier: []),
             .init(record: exitRecord(.failed(reason: "cancelled")), earlier: []),
             .init(record: nil, earlier: [cancelled]),
+            // Funded by another wallet while this send's txid stayed behind as the exit's own payment.
+            .init(record: stalePayment, earlier: []),
         ]
         for exit in exits {
             let (service, attempts, attempt) = try await unresolvedSavingsSend(to: fundingAddress, exit: exit)
@@ -4368,6 +4372,15 @@ final class SparkExitFundingReleaseServiceTests: XCTestCase {
         let approved = try await attemptService.approveRelease(attempt)
         let hasEnded = try await service.onchainRequestHasEnded(approved)
         XCTAssertFalse(hasEnded)
+
+        var sweptBack = exitRecord(.failed(reason: "cancelled"))
+        sweptBack.leftover = [.init(txid: sent, vout: 0, valueSats: 5000)]
+        let (leftoverService, leftoverAttempts, leftoverAttempt) = try await unresolvedSavingsSend(
+            to: fundingAddress, exit: .init(record: sweptBack, earlier: [])
+        )
+        let approvedLeftover = try await OnchainSendAttemptService(store: leftoverAttempts).approveRelease(leftoverAttempt)
+        let leftoverHasEnded = try await leftoverService.onchainRequestHasEnded(approvedLeftover)
+        XCTAssertFalse(leftoverHasEnded, "It landed as leftover")
     }
 
     func testSendPendingNeverRetriesTheFundingOfARunningExit() async throws {

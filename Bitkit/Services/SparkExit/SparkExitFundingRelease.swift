@@ -23,9 +23,17 @@ enum SparkExitFundingRelease {
         guard let record = exit.record, record.funding.first?.address == attempt.address else {
             return exit.earlier.contains { $0.address == attempt.address }
         }
-        let landed = record.funding.compactMap(\.txid) + record.leftover.map(\.txid) + [record.fundingPaymentTxid].compactMap { $0 }
+        // A payment the exit still waits for; once other funding filled it, the txid stays behind unwatched.
+        let awaited = record.isAwaitingOwnPayment || record.isEndedPaymentPending ? record.fundingPaymentTxid : nil
+        let landed = record.funding.compactMap(\.txid) + record.leftover.map(\.txid) + [awaited].compactMap { $0 }
         guard !landed.contains(where: { attempt.containsCandidate($0) }) else { return false }
         return !record.isActive || record.fundingShortfallSats == nil
+    }
+
+    /// Whether one of `attempt`'s transactions landed at the exit, as funding or as leftover: it reached the network.
+    static func isAdopted(_ attempt: OnchainSendAttempt, exit: Exit) -> Bool {
+        guard let record = exit.record else { return false }
+        return (record.funding.compactMap(\.txid) + record.leftover.map(\.txid)).contains { attempt.containsCandidate($0) }
     }
 
     /// Whether savings may pay `attempt` to the exit again now, over what its funding address holds (`utxos`, nil when
@@ -36,7 +44,7 @@ enum SparkExitFundingRelease {
         guard let record = exit.record, record.isActive, record.funding.first?.address == attempt.address, let utxos else { return false }
         switch SparkExitMath.fundingState(record, utxos: utxos) {
         case .ask(_, 0): return true
-        case let .paid(txid): return attempt.containsCandidate(txid)
+        case let .paid(txid): return attempt.containsCandidate(txid) && utxos.allSatisfy { attempt.containsCandidate($0.txid) }
         default: return false
         }
     }

@@ -750,7 +750,7 @@ actor PaykitPaymentProofService {
     private func sparkExitFundingHasEnded(_ attempt: OnchainSendAttempt) async throws -> Bool {
         guard attempt.canBeAbandoned, let exit = await sparkExit(attempt) else { return false }
         if attempt.releaseApproved == true {
-            return !(exit.record?.funding.contains { $0.txid.map { attempt.containsCandidate($0) } ?? false } ?? false)
+            return !SparkExitFundingRelease.isAdopted(attempt, exit: exit)
         }
         return SparkExitFundingRelease.exitNoLongerNeeds(attempt, exit: exit)
     }

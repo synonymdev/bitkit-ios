@@ -49,6 +49,9 @@ final class SparkExitFundingReleaseTests: XCTestCase {
         var awaiting = record(.awaitingFunding(requiredSats: 5000))
         awaiting.fundingPaymentTxid = candidate
         XCTAssertTrue(SparkExitFundingRelease.mayPayAgain(send, exit: .init(record: awaiting, earlier: []), utxos: []))
+        XCTAssertFalse(SparkExitFundingRelease.mayPayAgain(send, exit: .init(record: awaiting, earlier: []),
+                                                           utxos: [utxo(String(repeating: "f1", count: 32))]),
+                       "Another wallet funded the address")
         awaiting.fundingPaymentTxid = String(repeating: "f1", count: 32)
         XCTAssertFalse(SparkExitFundingRelease.mayPayAgain(send, exit: .init(record: awaiting, earlier: []), utxos: []))
 
