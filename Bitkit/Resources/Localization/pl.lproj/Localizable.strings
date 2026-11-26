@@ -1017,6 +1017,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay obsługuje wyłącznie płatności z Twojego salda wydatków.";
 "wallet__send_quickpay__currency_conversion" = "Przeliczenie waluty nie powiodło się";
+"wallet__send_quickpay__already_paid" = "Ta faktura została już opłacona.";
 "settings__security__title" = "Bezpieczeństwo i prywatność";
 "settings__security__swipe_balance_to_hide" = "Przesuń saldo, aby ukryć";
 "settings__security__hide_balance_on_open" = "Ukryj saldo po otwarciu";

@@ -401,4 +401,50 @@ final class SendConfirmationViewTests: XCTestCase {
         )
         guard case .failure = refused else { return XCTFail("A leg Spark refused before sending can be tried again") }
     }
+
+    func testRepayingAnInvoiceShowsTheAmountItsEarlierSendPaid() throws {
+        let earlier = Self.sentLightning(invoice: "lnbcrt1amountless", value: 1000, status: .succeeded)
+        XCTAssertEqual(try SendConfirmationView.earlierLightningSendSats(earlier, bolt11: "LNBCRT1AMOUNTLESS"), 1000)
+        XCTAssertNil(try SendConfirmationView.earlierLightningSendSats(nil, bolt11: "lnbcrt1amountless"))
+    }
+
+    func testRepayingAnInvoiceWhoseEarlierSendFailedPaysNormally() throws {
+        let earlier = Self.sentLightning(invoice: "lnbcrt1failed", value: 1000, status: .failed)
+        XCTAssertNil(try SendConfirmationView.earlierLightningSendSats(earlier, bolt11: "lnbcrt1failed"))
+    }
+
+    func testAnEarlierSendRecordedWithoutItsInvoicePaysNormally() throws {
+        for placeholder in ["No invoice", "migrated:42"] {
+            let earlier = Self.sentLightning(invoice: placeholder, value: 1000, status: .succeeded)
+            XCTAssertNil(try SendConfirmationView.earlierLightningSendSats(earlier, bolt11: "lnbcrt1original"))
+        }
+    }
+
+    func testAnInvoiceSharingThePaymentHashOfAnotherPaidInvoiceIsRefusedAsPaid() {
+        let earlier = Self.sentLightning(invoice: "lnbcrt1otherpayee", value: 1000, status: .succeeded)
+        XCTAssertThrowsError(try SendConfirmationView.earlierLightningSendSats(earlier, bolt11: "lnbcrt1samehash")) {
+            XCTAssertEqual(sendFailureMessage(for: $0), t("wallet__send_quickpay__already_paid"))
+        }
+    }
+
+    private static func sentLightning(invoice: String, value: UInt64, status: PaymentState) -> Activity {
+        .lightning(
+            LightningActivity(
+                walletId: WalletScope.default,
+                id: "hash",
+                txType: .sent,
+                status: status,
+                value: value,
+                fee: 0,
+                invoice: invoice,
+                message: "",
+                timestamp: 0,
+                preimage: nil,
+                contact: nil,
+                createdAt: nil,
+                updatedAt: nil,
+                seenAt: nil
+            )
+        )
+    }
 }

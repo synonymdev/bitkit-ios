@@ -958,6 +958,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay només admet pagaments des del teu saldo de despesa.";
 "wallet__send_quickpay__currency_conversion" = "Ha fallat la conversió de moneda";
+"wallet__send_quickpay__already_paid" = "Aquesta factura ja s'ha pagat.";
 "settings__security__title" = "Seguretat i privadesa";
 "settings__security__swipe_balance_to_hide" = "Llisca el saldo per amagar";
 "settings__security__hide_balance_on_open" = "Amaga el saldo en obrir";

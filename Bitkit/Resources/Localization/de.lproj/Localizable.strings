@@ -1015,6 +1015,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay unterstützt ausschließlich Zahlungen von Ihrem Guthaben.";
 "wallet__send_quickpay__currency_conversion" = "Währungsumrechnung fehlgeschlagen";
+"wallet__send_quickpay__already_paid" = "Diese Rechnung wurde bereits bezahlt.";
 "settings__security__title" = "Sicherheit Und Privatsphäre";
 "settings__security__swipe_balance_to_hide" = "Wischen um Kontostand zu verbergen";
 "settings__security__hide_balance_on_open" = "Kontostand beim Start verbergen";

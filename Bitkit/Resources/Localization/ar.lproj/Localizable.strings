@@ -869,6 +869,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* يدعم Bitkit QuickPay حصريًا المدفوعات من رصيد الإنفاق الخاص بك.";
 "wallet__send_quickpay__currency_conversion" = "فشل تحويل العملة";
+"wallet__send_quickpay__already_paid" = "تم دفع هذه الفاتورة بالفعل.";
 "settings__security__swipe_balance_to_hide" = "اسحب الرصيد للإخفاء";
 "settings__security__hide_balance_on_open" = "إخفاء الرصيد عند الفتح";
 "settings__security__clipboard" = "قراءة الحافظة لسهولة الاستخدام";

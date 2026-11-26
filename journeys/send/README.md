@@ -9,3 +9,5 @@ Use an onboarded regtest wallet with at least 100,000 sats in Savings and Quickp
 The native-binding tests also cover labels, proof-of-payment aliases and question marks in notes. App tests cover manual entry and the Shop rejection path; a malformed `payment_intent` from the real third-party Shop cannot be generated through this journey environment. Automatic clipboard prompting additionally has a manual check because arbitrary OS clipboard injection is not listed in the Capabilities table.
 
 The shared journey verifies the recipient and amount in the payment UI. Metadata preservation, including `bitcoin:donation`, is asserted by the native-binding and app regression tests. Neither platform’s confirmation displays a standalone BIP21 note. Inspect the full recipient through its editable address field when the confirmation summary truncates it.
+
+`repay-paid-invoice.xml` pays an amountless invoice twice with two amounts and checks that the second Success shows the amount the first payment sent, with nothing sent twice. Android's journey of the same name does the same.
