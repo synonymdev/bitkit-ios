@@ -49,6 +49,9 @@ struct RequestOrPayView: View {
     let publicKey: String
     let onRequest: (PaykitPaymentRequestTarget) -> Void
 
+    /// Smallest height the illustration is shown at; below it the illustration is hidden.
+    private static let minIllustrationHeight: CGFloat = 72
+
     @State private var isPayLoading = false
     @State private var payTask: Task<Void, Never>?
 
@@ -65,8 +68,8 @@ struct RequestOrPayView: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__payment_request_or_pay"))
 
-            // The illustration shrinks on small screens; when the copy still does not fit, it scrolls so the
-            // actions below stay on screen.
+            // The illustration shrinks on small screens and hides when too little room is left; when the copy
+            // still does not fit, it scrolls so the actions below stay on screen.
             ViewThatFits(in: .vertical) {
                 VStack(alignment: .leading, spacing: 0) {
                     illustration
@@ -80,14 +83,9 @@ struct RequestOrPayView: View {
                 }
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        illustration
-                            .frame(height: 256)
-
-                        introduction
-                    }
+                    introduction
                 }
-                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
 
@@ -129,11 +127,15 @@ struct RequestOrPayView: View {
     }
 
     private var illustration: some View {
-        Image("coin-stack-4")
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .accessibilityHidden(true)
+        GeometryReader { geometry in
+            if geometry.size.height >= Self.minIllustrationHeight {
+                Image("coin-stack-4")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+            }
+        }
+        .accessibilityHidden(true)
     }
 
     private var introduction: some View {
