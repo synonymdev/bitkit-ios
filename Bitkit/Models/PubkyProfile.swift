@@ -262,12 +262,15 @@ enum PubkyAppProfileLimits {
 
 /// Why pubky.app would refuse a profile link, checked on the label and URL a profile save sends.
 enum PubkyAppLinkError: Equatable {
+    case labelEmpty
     case labelTooLong
     case urlTooLong
     case urlInvalid
 
     var message: String {
         switch self {
+        case .labelEmpty:
+            t("profile__link_error_label_stored")
         case .labelTooLong:
             t("profile__link_error_label_length")
         case .urlTooLong:
@@ -275,5 +278,15 @@ enum PubkyAppLinkError: Equatable {
         case .urlInvalid:
             t("profile__link_error_url_invalid")
         }
+    }
+
+    var isLabelError: Bool {
+        self == .labelEmpty || self == .labelTooLong
+    }
+
+    /// The message under a profile form row, which edits only the URL: a label pubky.app refuses means adding the link
+    /// again.
+    var rowMessage: String {
+        isLabelError ? t("profile__link_error_label_stored") : message
     }
 }

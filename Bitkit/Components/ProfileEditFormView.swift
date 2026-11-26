@@ -223,7 +223,7 @@ struct ProfileEditFormView<Avatar: View>: View {
             .cornerRadius(8)
 
             if let linkError = linkErrors[index] {
-                BodySText(linkError.message, textColor: .redAccent)
+                BodySText(linkError.rowMessage, textColor: .redAccent)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("ProfileEditLinkError_\(index)")
             }

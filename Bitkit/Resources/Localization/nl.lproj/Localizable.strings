@@ -1398,6 +1398,7 @@
 "profile__edit_tags_error" = "Bitkit kon je tags niet opslaan. Je andere wijzigingen zijn opgeslagen, dus probeer de tags opnieuw.";
 "profile__edit_link_error" = "Corrigeer de link {label} om je profiel op te slaan.";
 "profile__link_error_label_length" = "Het label mag maximaal 100 tekens bevatten.";
+"profile__link_error_label_stored" = "Het label van deze link kan niet worden opgeslagen. Verwijder de link en voeg hem opnieuw toe.";
 "profile__link_error_url_invalid" = "Voer een geldige weblink in, zoals example.com.";
 "profile__link_error_url_length" = "De link mag maximaal 300 tekens bevatten.";
 "profile__delete_title" = "Profiel verwijderen?";

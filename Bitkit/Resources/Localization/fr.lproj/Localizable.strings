@@ -1403,6 +1403,7 @@
 "profile__edit_tags_error" = "Bitkit n'a pas pu enregistrer vos étiquettes. Vos autres modifications ont été enregistrées, réessayez pour les étiquettes.";
 "profile__edit_link_error" = "Corrigez le lien {label} pour enregistrer votre profil.";
 "profile__link_error_label_length" = "Le libellé doit contenir 100 caractères au maximum.";
+"profile__link_error_label_stored" = "Le libellé de ce lien ne peut pas être enregistré. Supprimez le lien et ajoutez-le à nouveau.";
 "profile__link_error_url_invalid" = "Saisissez un lien web valide, par exemple example.com.";
 "profile__link_error_url_length" = "Le lien doit contenir 300 caractères au maximum.";
 "profile__delete_title" = "Supprimer le profil ?";

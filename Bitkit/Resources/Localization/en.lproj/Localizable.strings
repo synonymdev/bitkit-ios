@@ -1405,6 +1405,7 @@
 "profile__edit_tags_error" = "Bitkit could not save your tags. Your other changes were saved, so try the tags again.";
 "profile__edit_link_error" = "Fix the {label} link to save your profile.";
 "profile__link_error_label_length" = "Label must be 100 characters or fewer.";
+"profile__link_error_label_stored" = "This link's label can't be saved. Remove the link and add it again.";
 "profile__link_error_url_invalid" = "Enter a valid web link, such as example.com.";
 "profile__link_error_url_length" = "Link must be 300 characters or fewer.";
 "profile__delete_title" = "Delete Profile?";

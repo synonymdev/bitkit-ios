@@ -563,21 +563,24 @@ actor PubkyAppProfileStore {
     }
 
     /// The first rule pubky.app's publisher would refuse `label` and `url` for, after the normalization a profile save
-    /// applies, or nil when it accepts them. A blank label or URL is left to the caller. `webOnly` also requires an
-    /// http(s) link, as a social v1 profile does.
+    /// applies, or nil when it accepts them. A blank URL is left to the caller; a label that is empty once on one line is
+    /// reported last, so a URL error shows while the label is still blank. `webOnly` also requires an http(s) link, as a
+    /// social v1 profile does.
     static func linkError(label: String, url: String, webOnly: Bool) -> PubkyAppLinkError? {
         if singleLine(label).unicodeScalars.count > linkTitleMaxLength {
             return .labelTooLong
         }
-        if url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return nil
+        if !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let normalized = normalizedLinkUrl(url), linkUrlHost(normalized) != nil else { return .urlInvalid }
+            if webOnly, !url.isWebLink {
+                return .urlInvalid
+            }
+            if normalized.unicodeScalars.count > linkUrlMaxLength {
+                return .urlTooLong
+            }
         }
-        guard let normalized = normalizedLinkUrl(url), isParsableLinkUrl(normalized) else { return .urlInvalid }
-        if webOnly, !url.isWebLink {
-            return .urlInvalid
-        }
-        if normalized.unicodeScalars.count > linkUrlMaxLength {
-            return .urlTooLong
+        if singleLine(label).isEmpty {
+            return .labelEmpty
         }
         return nil
     }
@@ -603,30 +606,94 @@ actor PubkyAppProfileStore {
         return errors
     }
 
-    /// The link pubky.app refused a social v1 profile for: the first that is not a web link, as the others passed.
+    /// Protocol error context Paykit 0.1.1-rc9 raises when a social v1 profile holds a link that is not an http(s) URL
+    /// (`paykit-sdk/src/domain/contacts/pubky_app.rs`). Check it again when Paykit is updated.
+    static let paykitNonWebLinkContext = "Pubky profile link URL must be a canonical http or https URL"
+
+    /// The link pubky.app refused a social v1 profile for because it is not a web link: the first such link, as the others
+    /// passed. Any other refusal names no link.
     static func rejectedLinkIndex(for error: Error, links: [PubkyProfileData.Link]) -> Int? {
-        guard case let .Protocol(_, context)? = error as? PaykitError, context.contains("Pubky profile link") else { return nil }
+        guard case let .Protocol(_, context)? = error as? PaykitError, context == paykitNonWebLinkContext else { return nil }
         return links.firstIndex { !$0.url.isWebLink }
     }
 
     /// Bitkit accepted links without a scheme (a site, an email address, a phone number); pubky.app needs full URLs.
     /// Free text that is none of these is not a link pubky.app can hold.
     static func linkUrl(_ value: String) -> String? {
-        guard let url = normalizedLinkUrl(value), url.unicodeScalars.count <= linkUrlMaxLength, isParsableLinkUrl(url)
+        guard let url = normalizedLinkUrl(value), url.unicodeScalars.count <= linkUrlMaxLength, linkUrlHost(url) != nil
         else { return nil }
         return url
     }
 
-    private static func isParsableLinkUrl(_ url: String) -> Bool {
-        guard let parsed = URL(string: url) else { return false }
-        return hasValidHost(parsed)
+    private static let specialSchemes: Set<String> = ["http", "https", "ws", "wss", "ftp", "file"]
+    /// Characters `url::Url::parse` refuses in the host of a special URL, as WHATWG's forbidden domain code points.
+    private static let forbiddenHostCharacters = Set(" #%/:<>?@[\\]^|")
+    private static let maxPort = 65535
+
+    private static func urlScheme(_ value: String) -> String? {
+        guard let range = value.range(of: "^[A-Za-z][A-Za-z0-9+.-]*:", options: .regularExpression) else { return nil }
+        return String(value[range].dropLast())
+    }
+
+    /// The host `url::Url::parse`, which Paykit validates links with, reads from `url`, or nil when it would refuse it;
+    /// empty for a scheme without a host, such as `mailto`. A WHATWG-style check of what that parser rejects: a control
+    /// character, a special URL (http, https, ws, wss, ftp) with an empty host, a forbidden host character or a port over
+    /// 65535, and a host ending in an all-digit label that is not an IPv4 address (one to four numbers, as in `127.1`).
+    /// Paths, queries and other schemes are accepted, as the parser accepts them.
+    static func linkUrlHost(_ url: String) -> String? {
+        guard !url.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }),
+              let scheme = urlScheme(url)?.lowercased()
+        else { return nil }
+        guard specialSchemes.contains(scheme) else { return "" }
+        let afterScheme = url.dropFirst(scheme.count + 1).drop { $0 == "/" || $0 == "\\" }
+        let authority = afterScheme.prefix { !"/?#\\".contains($0) }
+        let hostAndPort = authority.split(separator: "@", omittingEmptySubsequences: false).last.map(String.init) ?? ""
+        guard let host = hostPart(hostAndPort), isValidPort(String(hostAndPort.dropFirst(host.count))) else { return nil }
+        if scheme == "file" {
+            return host
+        }
+        guard !host.isEmpty, host.hasPrefix("[") || !host.contains(where: forbiddenHostCharacters.contains),
+              isValidIpv4Ending(host)
+        else { return nil }
+        return host.lowercased()
+    }
+
+    private static func hostPart(_ hostAndPort: String) -> String? {
+        guard hostAndPort.hasPrefix("[") else { return String(hostAndPort.prefix { $0 != ":" }) }
+        guard let end = hostAndPort.firstIndex(of: "]"), hostAndPort.distance(from: hostAndPort.startIndex, to: end) > 1
+        else { return nil }
+        let address = hostAndPort[hostAndPort.index(after: hostAndPort.startIndex) ..< end]
+        guard address.allSatisfy({ $0.isHexDigit || $0 == ":" || $0 == "." }) else { return nil }
+        return String(hostAndPort[...end])
+    }
+
+    private static func isValidPort(_ rest: String) -> Bool {
+        if rest.isEmpty {
+            return true
+        }
+        guard rest.hasPrefix(":") else { return false }
+        let port = rest.dropFirst()
+        guard port.allSatisfy({ ("0" ... "9").contains($0) }) else { return false }
+        let digits = port.drop { $0 == "0" }
+        return digits.count <= String(maxPort).count && (Int(digits) ?? 0) <= maxPort
+    }
+
+    private static func isValidIpv4Ending(_ host: String) -> Bool {
+        guard !host.hasPrefix("["), let last = host.split(separator: ".", omittingEmptySubsequences: false).last,
+              last.allSatisfy(\.isNumber)
+        else { return true }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false).map { UInt64($0) }
+        guard (1 ... 4).contains(parts.count), parts.allSatisfy({ $0 != nil }) else { return false }
+        let numbers = parts.compactMap { $0 }
+        let lastLimit = (UInt64(1) << (8 * UInt64(5 - numbers.count))) - 1
+        return numbers.dropLast().allSatisfy { $0 <= 255 } && numbers[numbers.count - 1] <= lastLimit
     }
 
     private static func normalizedLinkUrl(_ value: String) -> String? {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !value.contains(where: \.isWhitespace) || isPhoneNumber(value) else { return nil }
         let url: String
-        if let scheme = URL(string: value)?.scheme, !isPhoneNumber(value) {
+        if let scheme = urlScheme(value), !isPhoneNumber(value) {
             url = scheme.lowercased() + value.dropFirst(scheme.count)
         } else if isEmailAddress(value) {
             url = "mailto:\(value)"
@@ -638,19 +705,6 @@ actor PubkyAppProfileStore {
             return nil
         }
         return url
-    }
-
-    /// Paykit's URL parser reads a web URL's host that ends in an all-digit label as an IPv4 address (one to four
-    /// numbers, as in `127.1`) and rejects it when it is not one; other schemes keep such hosts as they are.
-    private static func hasValidHost(_ url: URL) -> Bool {
-        guard ["http", "https", "ws", "wss", "ftp"].contains(url.scheme?.lowercased() ?? ""),
-              let host = url.host, let last = host.split(separator: ".").last, last.allSatisfy(\.isNumber)
-        else { return true }
-        let parts = host.split(separator: ".", omittingEmptySubsequences: false).map { UInt64($0) }
-        guard (1 ... 4).contains(parts.count), parts.allSatisfy({ $0 != nil }) else { return false }
-        let numbers = parts.compactMap { $0 }
-        let lastLimit = (UInt64(1) << (8 * UInt64(5 - numbers.count))) - 1
-        return numbers.dropLast().allSatisfy { $0 <= 255 } && numbers[numbers.count - 1] <= lastLimit
     }
 
     private static func isEmailAddress(_ value: String) -> Bool {

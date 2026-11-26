@@ -1389,6 +1389,7 @@
 "profile__edit_tags_error" = "Bitkit не удалось сохранить ваши теги. Остальные изменения сохранены, поэтому попробуйте сохранить теги ещё раз.";
 "profile__edit_link_error" = "Исправьте ссылку {label}, чтобы сохранить профиль.";
 "profile__link_error_label_length" = "Метка должна содержать не более 100 символов.";
+"profile__link_error_label_stored" = "Не удаётся сохранить метку этой ссылки. Удалите ссылку и добавьте её снова.";
 "profile__link_error_url_invalid" = "Введите корректную веб-ссылку, например example.com.";
 "profile__link_error_url_length" = "Ссылка должна содержать не более 300 символов.";
 "profile__delete_title" = "Удалить Профиль?";

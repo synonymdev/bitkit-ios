@@ -1171,6 +1171,7 @@
 "profile__edit_tags_error" = "تعذّر على Bitkit حفظ وسومك. حُفظت تغييراتك الأخرى، لذا حاول حفظ الوسوم مرة أخرى.";
 "profile__edit_link_error" = "أصلح رابط {label} لحفظ ملفك الشخصي.";
 "profile__link_error_label_length" = "يجب ألا يزيد التصنيف عن 100 حرفًا.";
+"profile__link_error_label_stored" = "لا يمكن حفظ تصنيف هذا الرابط. احذف الرابط وأضفه مرة أخرى.";
 "profile__link_error_url_invalid" = "أدخل رابط ويب صالحًا، مثل example.com.";
 "profile__link_error_url_length" = "يجب ألا يزيد الرابط عن 300 حرفًا.";
 "profile__delete_title" = "حذف الملف الشخصي؟";

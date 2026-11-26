@@ -1402,6 +1402,7 @@
 "profile__edit_tags_error" = "Bitkit nie mógł zapisać Twoich tagów. Pozostałe zmiany zostały zapisane, więc spróbuj ponownie z tagami.";
 "profile__edit_link_error" = "Popraw link {label}, aby zapisać profil.";
 "profile__link_error_label_length" = "Etykieta może mieć maksymalnie 100 znaków.";
+"profile__link_error_label_stored" = "Nie można zapisać etykiety tego linku. Usuń link i dodaj go ponownie.";
 "profile__link_error_url_invalid" = "Wpisz prawidłowy link internetowy, np. example.com.";
 "profile__link_error_url_length" = "Link może mieć maksymalnie 300 znaków.";
 "profile__delete_title" = "Usunąć profil?";

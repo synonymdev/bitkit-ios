@@ -20,7 +20,7 @@ struct AddLinkSheet: View {
     }
 
     private var urlError: String? {
-        linkError != .labelTooLong ? linkError?.message : nil
+        linkError?.isLabelError == false ? linkError?.message : nil
     }
 
     private var canSave: Bool {

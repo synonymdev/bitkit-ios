@@ -1370,6 +1370,7 @@
 "profile__edit_tags_error" = "Bitkit non è riuscito a salvare i tuoi tag. Le altre modifiche sono state salvate, quindi riprova con i tag.";
 "profile__edit_link_error" = "Correggi il link {label} per salvare il tuo profilo.";
 "profile__link_error_label_length" = "L'etichetta deve avere al massimo 100 caratteri.";
+"profile__link_error_label_stored" = "L'etichetta di questo link non può essere salvata. Rimuovi il link e aggiungilo di nuovo.";
 "profile__link_error_url_invalid" = "Inserisci un link web valido, ad esempio example.com.";
 "profile__link_error_url_length" = "Il link deve avere al massimo 300 caratteri.";
 "profile__delete_title" = "Eliminare il Profilo?";
