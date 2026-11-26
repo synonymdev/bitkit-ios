@@ -737,8 +737,8 @@ actor PaykitPaymentProofService {
         }
     }
 
-    /// Whether `attempt` pays a Spark exit's funding address, current or earlier, or the exit cannot be read: its Progress
-    /// owns that payment, so Send Pending never pays it again.
+    /// Whether `attempt` pays a Spark exit's funding address, current or earlier, or the exit cannot be read: Send Pending
+    /// pays it again only while the exit still asks for it, and offers its release once the exit no longer does.
     func isSparkExitFunding(_ attempt: OnchainSendAttempt) async -> Bool {
         guard attempt.mayFundSparkExit else { return false }
         // An approved release is finished from here, even once the exit's record is gone.

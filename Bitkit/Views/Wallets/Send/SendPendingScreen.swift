@@ -384,7 +384,7 @@ struct SendPendingScreen: View {
     /// Whether "Retry original payment" shows: for a Spark exit's funding only while its release is not offered, so the
     /// exit no longer needing it shows the release in its place. The retry itself checks the exit again before dispatch.
     static func offersRetry(_ attempt: OnchainSendAttempt?, isSparkExitFunding: Bool, releaseOffered: Bool) -> Bool {
-        attempt?.canRetrySamePayment == true && !(isSparkExitFunding && releaseOffered)
+        attempt?.canRetrySamePayment == true && !(isSparkExitFunding && (releaseOffered || attempt?.releaseApproved == true))
     }
 
     static func abandonNoteKey(_ attempt: OnchainSendAttempt?) -> String {

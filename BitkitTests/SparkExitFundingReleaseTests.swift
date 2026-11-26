@@ -57,6 +57,9 @@ final class SparkExitFundingReleaseTests: XCTestCase {
         var approved = send
         approved.releaseApproved = true
         XCTAssertFalse(SparkExitFundingRelease.mayPayAgain(approved, exit: asking, utxos: []), "Its release is Send Pending's to finish")
+        XCTAssertFalse(SparkExitFundingRelease.mayPayAgain(approved, exit: .init(record: nil, earlier: []), utxos: []),
+                       "Not even once the exit's record is gone")
+        XCTAssertFalse(SendPendingScreen.offersRetry(approved, isSparkExitFunding: true, releaseOffered: false))
         awaiting.fundingPaymentTxid = String(repeating: "f1", count: 32)
         XCTAssertFalse(SparkExitFundingRelease.mayPayAgain(send, exit: .init(record: awaiting, earlier: []), utxos: []))
 

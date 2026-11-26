@@ -41,9 +41,10 @@ enum SparkExitFundingRelease {
     /// waits for this very payment, and never once its release was approved. A send to no exit's address is not this
     /// check's to refuse.
     static func mayPayAgain(_ attempt: OnchainSendAttempt, exit: Exit, utxos: [EsploraUtxo]?) -> Bool {
+        // A release approved for it is Send Pending's to finish, even once the exit's record is gone.
+        guard !(attempt.mayFundSparkExit && attempt.releaseApproved == true) else { return false }
         guard isExitFunding(attempt, exit: exit) else { return true }
-        // A release approved for it is Send Pending's to finish.
-        guard attempt.releaseApproved != true, let record = exit.record, record.isActive,
+        guard let record = exit.record, record.isActive,
               record.funding.first?.address == attempt.address, let utxos
         else { return false }
         switch SparkExitMath.fundingState(record, utxos: utxos) {
@@ -82,7 +83,7 @@ enum SparkExitFundingRelease {
 
     /// Refuses paying `attempt` to a Spark exit again once the exit no longer asks for it, read right before dispatch.
     static func authorizePayAgain(_ attempt: OnchainSendAttempt, exit: Exit, chain: SparkExitChain?) async throws {
-        guard isExitFunding(attempt, exit: exit) else { return }
+        guard attempt.releaseApproved == true || isExitFunding(attempt, exit: exit) else { return }
         let utxos = try? await chain?.utxos(address: attempt.address)
         guard mayPayAgain(attempt, exit: exit, utxos: utxos) else {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "The Spark exit no longer asks for this funding")
