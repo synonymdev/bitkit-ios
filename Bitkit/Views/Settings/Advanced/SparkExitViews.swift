@@ -1134,7 +1134,7 @@ struct SparkExitProgressView: View {
         .task(id: record?.hasUnseenResult) {
             exit.markResultSeen()
         }
-        .task(id: record?.savingsRefusal) {
+        .task(id: savingsRefusal) {
             await priceSavingsRetry()
         }
     }

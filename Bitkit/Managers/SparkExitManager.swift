@@ -505,7 +505,7 @@ final class SparkExitManager {
         }
         // Progress shows what the read found, so it stops offering savings once funding arrived.
         if let current = record, let utxos {
-            setFunding(SparkExitMath.fundingState(current, utxos: utxos), for: current)
+            noteFundingSeen(current, utxos: utxos)
         }
         guard let current = record, let address,
               let refusal = Self.savingsRefusalToPay(current, utxos: utxos, hasSavingsSend: hasSavingsSend, feeSats: feeSats)
@@ -817,7 +817,11 @@ final class SparkExitManager {
             setFunding(nil, for: record)
             return
         }
-        let utxos = try? await chain.utxos(address: address)
+        await noteFundingSeen(record, utxos: try? chain.utxos(address: address))
+    }
+
+    /// What `utxos` at the funding address, nil when unread, says the exit still needs.
+    private func noteFundingSeen(_ record: SparkExitRecord, utxos: [EsploraUtxo]?) {
         if let utxos {
             fundingSeenSats = SparkExitMath.newFunding(utxos, record: record).reduce(0) { $0 + $1.value }
         }
