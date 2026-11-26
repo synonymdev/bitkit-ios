@@ -821,12 +821,12 @@ final class SparkExitManager {
             }
             await refreshRefusedSavingsPayment()
             await refreshNetworkFees(chain: chain)
-            await refreshFundingSeen(chain: chain, record: current)
+            let seen = await refreshFundingSeen(chain: chain, record: current)
             var updated = try await driver.tick(current)
             // A tick that adopted the funding and came up short would otherwise keep showing that payment as seen, and
             // one that forgot the exit's own payment would keep hiding the ask.
             if updated.phase != current.phase || updated.fundingPaymentTxid != current.fundingPaymentTxid {
-                await refreshFundingSeen(chain: chain, record: updated)
+                await refreshFundingSeen(chain: chain, record: updated, earlier: seen)
             }
             // The result may have been opened while this tick ran; a reset the driver made, such as for change kept
             // after the result was opened, stays.
@@ -907,17 +907,29 @@ final class SparkExitManager {
     }
 
     /// Only new funding counts: the adopted inputs and the CPFP change at the address are already part of the exit.
-    private func refreshFundingSeen(chain: SparkExitChain, record: SparkExitRecord) async {
-        guard let address = record.funding.first?.address else { return }
+    /// Reads the funding address for `record`, falling back to `earlier` when the read fails; the UTXOs it went by.
+    @discardableResult
+    private func refreshFundingSeen(
+        chain: SparkExitChain, record: SparkExitRecord, earlier: [EsploraUtxo]? = nil
+    ) async -> [EsploraUtxo]? {
+        guard let address = record.funding.first?.address else { return nil }
         fundingAddress = address
         guard record.fundingShortfallSats != nil else {
             // Adopted, or nothing to fund: what was seen is part of the exit now, never funding still to count.
             fundingSeenSats = 0
             fundingSeenCount = 0
             setFunding(nil, for: record)
-            return
+            return nil
         }
-        await noteFundingSeen(record, utxos: try? chain.utxos(address: address))
+        let utxos = await Self.fundingReread(try? chain.utxos(address: address), earlier: earlier)
+        noteFundingSeen(record, utxos: utxos)
+        return utxos
+    }
+
+    /// The funding address read again after a tick changed the exit, or the tick's first read when that one failed: a
+    /// short savings payment the first read saw still counts, so the ask is for the rest, never the whole shortfall.
+    nonisolated static func fundingReread(_ read: [EsploraUtxo]?, earlier: [EsploraUtxo]?) -> [EsploraUtxo]? {
+        read ?? earlier
     }
 
     /// What `utxos` at the funding address, nil when unread, says the exit still needs.

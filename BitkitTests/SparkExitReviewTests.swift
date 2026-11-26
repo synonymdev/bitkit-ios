@@ -792,6 +792,20 @@ final class SparkExitReviewTests: XCTestCase {
         guard case .ask = SparkExitMath.fundingState(record, utxos: nil) else { return XCTFail("the ask comes back") }
     }
 
+    /// A tick that forgot a short savings payment and failed to read the address again still asks only for the rest.
+    func testAShortSavingsPaymentKeepsItsRemainderAskedWhenTheRereadFails() {
+        var record = SparkExitFixtures.record()
+        let short = [SparkExitFixtures.utxo("short", value: 8000)]
+        let utxos = SparkExitManager.fundingReread(nil, earlier: short)
+        XCTAssertEqual(utxos?.map(\.txid), ["short"])
+        record.fundingPaymentTxid = nil
+        guard case let .ask(_, receivedSats) = SparkExitMath.fundingState(record, utxos: utxos) else {
+            return XCTFail("the rest is asked for")
+        }
+        XCTAssertEqual(receivedSats, 8000, "the payment the first read found still counts")
+        XCTAssertEqual(SparkExitManager.fundingReread([], earlier: short)?.count, 0, "a read that worked wins")
+    }
+
     /// The unknown payment confirming late is adopted like any funding, and the exit builds.
     func testALateConfirmationOfAnUnknownFundingSendIsAdopted() async throws {
         var record = SparkExitFixtures.record()
