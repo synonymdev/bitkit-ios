@@ -121,6 +121,8 @@ final class SparkExitReviewTests: XCTestCase {
         let higher = OnchainSendAttemptError.preDispatch(SparkFundingChanged(preparedFeeSats: 800))
         XCTAssertEqual(SparkExitManager.refusing(refused, sats: 20000, after: higher)?.savingsRefusal?.feeSats, 800)
         XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: OnchainSendAttemptError.blocked(nil)), "nothing went out")
+        let journalFailed = OnchainSendAttemptError.preDispatch(CocoaError(.fileWriteUnknown))
+        XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: journalFailed), "nothing went out: the offer stays")
         let wentOut = AppError(message: "refused", debugMessage: nil)
         XCTAssertNotNil(SparkExitManager.refusing(refused, sats: 20000, after: wentOut), "a payment that went out is never offered again")
         XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: wentOut)?.savingsRefusal)
