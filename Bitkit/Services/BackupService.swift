@@ -1121,7 +1121,7 @@ class BackupService {
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .metadata)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // APP STATE (UserDefaults changes, etc.)
         SettingsViewModel.shared.appStatePublisher
