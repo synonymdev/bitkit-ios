@@ -1093,6 +1093,8 @@ final class SparkExitManager {
                 await refreshRefusedSavingsPayment()
                 throw error
             }
+            // One of unknown outcome holds the funding ask at once.
+            await refreshRefusedSavingsPayment()
             // Saved before the lock is released, so a cancel after the payment finds it and refuses.
             started.fundingPaymentTxid = txid
             do {
