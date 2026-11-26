@@ -675,7 +675,7 @@ struct SubscriptionSheet: View {
             }
             switch route {
             case .create, .createRecipient:
-                await paymentRequests.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+                await paymentRequests.refreshEligibleTargets(contactsManager: contactsManager)
             default:
                 break
             }

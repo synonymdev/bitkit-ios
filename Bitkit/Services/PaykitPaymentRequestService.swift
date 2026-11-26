@@ -1615,6 +1615,24 @@ final class PaykitPaymentRequestManager {
         }
     }
 
+    /// Checks the saved contacts once they have loaded, so an empty list read before the load is not taken as final.
+    func refreshEligibleTargets(contactsManager: ContactsManager, waitingAtMost timeout: Duration = .seconds(30)) async {
+        await contactsManager.waitUntilLoaded(timeout: timeout)
+        guard !Task.isCancelled else { return }
+        guard contactsManager.hasLoaded else {
+            markEligibleTargetsUnknown()
+            return
+        }
+        await refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+    }
+
+    /// Saved contacts could not be loaded, so a first load cannot tell whether any of them can receive a request.
+    func markEligibleTargetsUnknown() {
+        if eligibleTargetsStatus == .loading {
+            eligibleTargetsStatus = .failed
+        }
+    }
+
     func refreshEligibleTargets(savedPublicKeys: [String]) async {
         updateSavedPublicKeys(savedPublicKeys)
         eligibilityGeneration += 1

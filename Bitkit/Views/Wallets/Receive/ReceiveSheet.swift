@@ -86,7 +86,7 @@ struct ReceiveSheet: View {
         }
         .task(id: paymentRequestPickerOpenCount) {
             guard paymentRequestPickerOpenCount > 0 else { return }
-            await paymentRequests.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+            await paymentRequests.refreshEligibleTargets(contactsManager: contactsManager)
         }
         .onAppear {
             navigationPath = []

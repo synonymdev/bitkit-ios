@@ -9516,6 +9516,43 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(peerReads, 0)
     }
 
+    func testPickerRefreshWaitsForSavedContactsToLoad() async throws {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [savedKey: true]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        let contactsManager = ContactsManager()
+
+        let pickerRefresh = Task { await manager.refreshEligibleTargets(contactsManager: contactsManager) }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loading)
+        var peerReads = await sdk.linkedPeersCalls()
+        XCTAssertEqual(peerReads, 0)
+
+        contactsManager.contacts = [PubkyContact(publicKey: savedKey, profile: PubkyProfile.placeholder(publicKey: savedKey))]
+        contactsManager.hasLoaded = true
+        await pickerRefresh.value
+
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loaded)
+        XCTAssertEqual(manager.eligibleTargets, [PaykitPaymentRequestTarget(publicKey: savedKey)])
+        peerReads = await sdk.linkedPeersCalls()
+        XCTAssertEqual(peerReads, 1)
+    }
+
+    func testPickerRefreshFailsWhenSavedContactsDoNotLoad() async {
+        let sdk = PaymentRequestSdkMock(records: [])
+        let manager = paymentRequestManager(sdk: sdk)
+
+        await manager.refreshEligibleTargets(contactsManager: ContactsManager(), waitingAtMost: .milliseconds(20))
+
+        XCTAssertEqual(manager.eligibleTargetsStatus, .failed)
+        let peerReads = await sdk.linkedPeersCalls()
+        XCTAssertEqual(peerReads, 0)
+    }
+
     func testRecipientEmptyStateWaitsForFinishedDiscovery() {
         func state(_ query: String, _ status: PaykitPaymentRequestTargetsStatus, hasTargets: Bool = false) -> PaykitRecipientEmptyState? {
             PaykitRecipientEmptyState(hasRecipients: false, hasEligibleTargets: hasTargets, query: query, status: status)
