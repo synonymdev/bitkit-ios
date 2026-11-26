@@ -56,10 +56,10 @@ final class SparkExitManager {
         return Self.currentFundingState(storedFundingState, record: record)
     }
 
-    /// A payment the exit forgot since the funding was read, as a background run or a tick may, no longer holds the
-    /// ask: Progress reads the record's own state until the next read.
+    /// A payment the exit forgot or adopted since the funding was read, as a background run or a tick may, no longer
+    /// holds the ask: Progress reads the record's own state until the next read.
     nonisolated static func currentFundingState(_ stored: SparkExitFundingState?, record: SparkExitRecord?) -> SparkExitFundingState? {
-        if case let .paid(txid) = stored, record?.fundingPaymentTxid != txid {
+        if case let .paid(txid) = stored, record?.isAwaitingOwnPayment != true || record?.fundingPaymentTxid != txid {
             return nil
         }
         return stored
