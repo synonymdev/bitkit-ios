@@ -1700,6 +1700,7 @@
 "wallet__payment_request_expiry_month" = "1 měsíc";
 "wallet__payment_request_choose_recipient" = "Vybrat příjemce";
 "wallet__payment_request_recipient" = "Příjemce";
+"wallet__payment_request_recipient_failed" = "Nepodařilo se ověřit, které kontakty mohou přijmout žádost o platbu. Zkontrolujte připojení.";
 "wallet__payment_request_recipient_no_match" = "Žádný odpovídající uložený kontakt se soukromým spojením.";
 "wallet__payment_request_recipient_unavailable" = "Žádosti o platbu lze posílat pouze uloženým kontaktům se soukromým spojením.";
 "wallet__payment_request_enter_pubky" = "Zadejte pubky";

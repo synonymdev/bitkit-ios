@@ -150,6 +150,26 @@ struct PaymentRequestRecipientView: View {
     }
 }
 
+/// What the recipient picker shows instead of recipients; nil when it has some to list.
+enum PaykitRecipientEmptyState: Equatable {
+    case loading
+    case failed
+    case unavailable
+    case noMatch
+
+    init?(hasRecipients: Bool, query: String, status: PaykitPaymentRequestTargetsStatus) {
+        if hasRecipients {
+            return nil
+        }
+        switch status {
+        case .loading: self = .loading
+        case .failed: self = .failed
+        case .loaded:
+            self = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .unavailable : .noMatch
+        }
+    }
+}
+
 struct PaykitRecipientPicker<Header: View, Footer: View>: View {
     @EnvironmentObject private var contactsManager: ContactsManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
@@ -188,19 +208,27 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
                     CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64, lineHeight: 18)
                         .padding(.bottom, 16)
                     CustomDivider()
-                    if recipientTargets.isEmpty {
-                        BodyMText(
-                            t(
-                                recipientQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    ? "wallet__payment_request_recipient_unavailable"
-                                    : "wallet__payment_request_recipient_no_match"
-                            ),
-                            textColor: .white64
-                        )
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 24)
-                        .accessibilityIdentifier("\(testIdentifierPrefix)RecipientUnavailable")
+                    switch PaykitRecipientEmptyState(
+                        hasRecipients: !recipientTargets.isEmpty,
+                        query: recipientQuery,
+                        status: paymentRequests.eligibleTargetsStatus
+                    ) {
+                    case nil:
+                        EmptyView()
+                    case .loading:
+                        ActivityIndicator(size: 32)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 24)
+                            .accessibilityIdentifier("\(testIdentifierPrefix)RecipientLoading")
+                    case .failed:
+                        emptyMessage("wallet__payment_request_recipient_failed")
+                            .accessibilityIdentifier("\(testIdentifierPrefix)RecipientFailed")
+                    case .unavailable:
+                        emptyMessage("wallet__payment_request_recipient_unavailable")
+                            .accessibilityIdentifier("\(testIdentifierPrefix)RecipientUnavailable")
+                    case .noMatch:
+                        emptyMessage("wallet__payment_request_recipient_no_match")
+                            .accessibilityIdentifier("\(testIdentifierPrefix)RecipientUnavailable")
                     }
                     ForEach(recipientTargets) { target in
                         recipientRow(target)
@@ -215,6 +243,13 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
         .navigationBarHidden(true)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private func emptyMessage(_ key: String) -> some View {
+        BodyMText(t(key), textColor: .white64)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 24)
     }
 
     private var recipientInput: some View {

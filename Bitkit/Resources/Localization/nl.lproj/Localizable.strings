@@ -1706,6 +1706,7 @@
 "wallet__payment_request_expiry_month" = "1 maand";
 "wallet__payment_request_choose_recipient" = "Ontvanger kiezen";
 "wallet__payment_request_recipient" = "Ontvanger";
+"wallet__payment_request_recipient_failed" = "Kon niet controleren welke contacten een betaalverzoek kunnen ontvangen. Controleer je verbinding.";
 "wallet__payment_request_recipient_no_match" = "Geen overeenkomend opgeslagen contact met een privéverbinding.";
 "wallet__payment_request_recipient_unavailable" = "Betaalverzoeken kunnen alleen worden verzonden naar een opgeslagen contact met een privéverbinding.";
 "wallet__payment_request_enter_pubky" = "Voer pubky in";

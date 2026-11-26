@@ -497,6 +497,13 @@ struct PaykitPaymentRequestTarget: Identifiable, Equatable, Hashable {
     }
 }
 
+/// Whether the saved contacts' payment request eligibility is known.
+enum PaykitPaymentRequestTargetsStatus: Equatable {
+    case loading
+    case loaded
+    case failed
+}
+
 struct PaykitPaymentRequestTargetDiscovery: Equatable {
     let targets: [PaykitPaymentRequestTarget]
     let isComplete: Bool
@@ -1418,6 +1425,8 @@ final class PaykitPaymentRequestManager {
     private(set) var subscriptions: [PaykitSubscription] = []
     private(set) var receivedPaymentContacts = PaykitReceivedPaymentContacts()
     private(set) var eligibleTargets: [PaykitPaymentRequestTarget] = []
+    /// Loading until a discovery for the current identity finishes; failed when it could not check every contact.
+    private(set) var eligibleTargetsStatus: PaykitPaymentRequestTargetsStatus = .loading
     private(set) var requestedPresentationId: PaykitPaymentRequest.ID?
     private(set) var requestedSubscriptionProposalId: PaykitSubscription.ID?
     private(set) var isCreatingRequest = false
@@ -1612,6 +1621,10 @@ final class PaykitPaymentRequestManager {
             eligibleTargets = []
             return
         }
+        let statusBeforeRefresh = eligibleTargetsStatus
+        if eligibleTargetsStatus != .loaded {
+            eligibleTargetsStatus = .loading
+        }
 
         do {
             let discovery = try await service.discoverEligibleTargets(
@@ -1631,6 +1644,7 @@ final class PaykitPaymentRequestManager {
                 newerSingleRefreshKeys.contains(Self.eligibilityKey($0.publicKey))
             }
             eligibleTargets = discovery.targets.filter { !isNewerSingleRefresh($0) } + eligibleTargets.filter(isNewerSingleRefresh)
+            eligibleTargetsStatus = discovery.isComplete ? .loaded : .failed
             lastFullEligibilityWriteGeneration = generation
             if discovery.isComplete {
                 let checkedAt = now()
@@ -1640,14 +1654,19 @@ final class PaykitPaymentRequestManager {
                 }
             }
         } catch is CancellationError {
+            if generation == eligibilityGeneration, currentStateGeneration == stateGeneration {
+                eligibleTargetsStatus = statusBeforeRefresh
+            }
             return
         } catch {
             guard generation == eligibilityGeneration,
                   currentStateGeneration == stateGeneration
             else { return }
             if case PaykitPaymentRequestError.operationInProgress = error {
+                eligibleTargetsStatus = statusBeforeRefresh
                 return
             }
+            eligibleTargetsStatus = .failed
             eligibleTargets = eligibleTargets.filter { target in
                 savedPublicKeys.contains { PubkyPublicKeyFormat.matches($0, target.publicKey) }
             }
@@ -1759,6 +1778,7 @@ final class PaykitPaymentRequestManager {
         eligibilityCheckDates = [:]
         savedPublicKeys = []
         eligibleTargets = []
+        eligibleTargetsStatus = .loading
     }
 
     func propose(_ draft: PaykitPaymentRequestDraft, to target: PaykitPaymentRequestTarget) async throws -> PaykitPaymentRequest {
@@ -2314,6 +2334,7 @@ final class PaykitPaymentRequestManager {
         subscriptions = []
         receivedPaymentContacts = PaykitReceivedPaymentContacts()
         eligibleTargets = []
+        eligibleTargetsStatus = .loading
         processingRequestIds = []
         approvedPaymentRequestIds = []
         acceptedRequestIds = []

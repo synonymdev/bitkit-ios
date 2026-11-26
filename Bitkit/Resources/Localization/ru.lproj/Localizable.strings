@@ -1695,6 +1695,7 @@
 "wallet__payment_request_expiry_month" = "1 месяц";
 "wallet__payment_request_choose_recipient" = "Выберите Получателя";
 "wallet__payment_request_recipient" = "Получатель";
+"wallet__payment_request_recipient_failed" = "Не удалось проверить, какие контакты могут получить запрос на оплату. Проверьте подключение.";
 "wallet__payment_request_recipient_no_match" = "Нет подходящего сохранённого контакта с приватным соединением.";
 "wallet__payment_request_recipient_unavailable" = "Запросы на оплату можно отправлять только сохранённому контакту с приватным соединением.";
 "wallet__payment_request_enter_pubky" = "Введите pubky";

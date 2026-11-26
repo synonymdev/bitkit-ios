@@ -1698,6 +1698,7 @@
 "wallet__payment_request_expiry_month" = "1 Monat";
 "wallet__payment_request_choose_recipient" = "Empfänger wählen";
 "wallet__payment_request_recipient" = "Empfänger";
+"wallet__payment_request_recipient_failed" = "Es konnte nicht geprüft werden, welche Kontakte eine Zahlungsanforderung empfangen können. Prüfe deine Verbindung.";
 "wallet__payment_request_recipient_no_match" = "Kein passender gespeicherter Kontakt mit privater Verbindung.";
 "wallet__payment_request_recipient_unavailable" = "Zahlungsanforderungen können nur an einen gespeicherten Kontakt mit privater Verbindung gesendet werden.";
 "wallet__payment_request_enter_pubky" = "pubky eingeben";

@@ -1578,6 +1578,7 @@
 "wallet__payment_request_expiry_month" = "1 mes";
 "wallet__payment_request_choose_recipient" = "Triar destinatari";
 "wallet__payment_request_recipient" = "Destinatari";
+"wallet__payment_request_recipient_failed" = "No s'ha pogut comprovar quins contactes poden rebre una sol·licitud de pagament. Comprova la connexió.";
 "wallet__payment_request_recipient_no_match" = "Cap contacte desat coincident amb una connexió privada.";
 "wallet__payment_request_recipient_unavailable" = "Les sol·licituds de pagament només es poden enviar a un contacte desat amb una connexió privada.";
 "wallet__payment_request_enter_pubky" = "Introdueix un pubky";
