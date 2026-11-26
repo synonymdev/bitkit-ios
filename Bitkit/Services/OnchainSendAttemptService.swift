@@ -697,7 +697,7 @@ actor OnchainSendAttemptService {
         // Every send either sends the kept transaction or drops it, so it never outlives a later spend of its coins.
         let held = heldCandidate
         heldCandidate = nil
-        if let prior = try beforeAdmission({ try currentAdmissionAttempt() }), prior.status == .accepted, let txid = prior.txid,
+        if let prior = try currentAdmissionAttempt(), prior.status == .accepted, let txid = prior.txid,
            prior.walletId == Self.walletId(index: walletIndex),
            prior.recoveryContext?.paymentIdentity == nil || prior.recoveryContext?.paymentIdentity == paymentIdentity,
            (requestId != nil && prior.requestId == requestId) || (orderId != nil && prior.orderId == orderId)
@@ -1011,8 +1011,8 @@ actor OnchainSendAttemptService {
         return .accepted(txid: txid)
     }
 
-    /// A send journal read or write that failed before the attempt was admitted: nothing went out, so it is a
-    /// pre-dispatch failure, which callers may offer again. The journal's own refusals keep their meaning.
+    /// A send journal write that failed before the attempt was admitted: nothing went out, so it is a pre-dispatch
+    /// failure, which callers may offer again. The journal's own refusals, and an unreadable journal, keep their meaning.
     private func beforeAdmission<T>(_ body: () throws -> T) throws -> T {
         do {
             return try body()
