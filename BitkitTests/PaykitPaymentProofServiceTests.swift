@@ -3313,54 +3313,62 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
     }
 
     func testAuthorizationRollbackFailureKeepsMatchingAttemptWithoutBroadcast() async throws {
-        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
-        let record = try paymentRequestRecord(endpoints: [endpoint])
-        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
-        let store = PaymentProofMemoryStore()
-        let attemptsStore = MemoryAttemptStore()
-        let attempts = OnchainSendAttemptService(store: attemptsStore)
-        let sender = PreparedAttemptNodeMock()
-        sender.amount = request.amount.atomic
-        let service = paymentProofService(
-            sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store, attemptService: attempts
-        )
-        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
-        do {
-            _ = try await SendConfirmationView.sendOnchainPayment(
-                request: request,
-                prepareBroadcast: { request in
-                    try await service.markOnchainPaymentStarted(request, address: self.onchainAddress, paymentIdentity: self.identity)
-                },
-                authorize: { _ in
-                    await store.failNextSave()
-                    throw CancellationError()
-                },
-                onAuthorizationFailure: { _ in
-                    guard await service.failOnchainPayment(request, paymentIdentity: self.identity) else {
-                        throw OnchainSendAttemptError.preDispatchCleanupFailed
-                    }
-                },
-                onAuthorized: { _ in },
-                send: { beforeBroadcast in
-                    try await attempts.send(
-                        using: sender, address: self.onchainAddress, amountSats: request.amount.atomic,
-                        satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
-                        requestId: request.id, paymentIdentity: self.identity, beforeBroadcastAttempt: beforeBroadcast
-                    )
-                }
+        // Refused up front, or at the recheck right before the broadcast, after the allowance attempt is marked sending.
+        for refusedAtRecheck in [false, true] {
+            var authorizations = 0
+            let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+            let record = try paymentRequestRecord(endpoints: [endpoint])
+            let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+            let store = PaymentProofMemoryStore()
+            let attemptsStore = MemoryAttemptStore()
+            let attempts = OnchainSendAttemptService(store: attemptsStore)
+            let sender = PreparedAttemptNodeMock()
+            sender.amount = request.amount.atomic
+            let service = paymentProofService(
+                sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store, attemptService: attempts
             )
-            XCTFail("Cancelled authorization completed")
-        } catch {}
-        let proofs = await store.snapshot()
-        XCTAssertEqual(proofs.first?.paymentStarted, true)
-        XCTAssertNil(proofs.first?.paymentIdentifier)
-        XCTAssertEqual(attemptsStore.snapshot().first?.requestId, request.id,
-                       "Failed proof rollback must keep its matching recovery guard")
-        XCTAssertEqual(sender.broadcasts, 0)
-        let rolledBack = await service.failOnchainPayment(request, paymentIdentity: identity)
-        XCTAssertTrue(rolledBack, "A later successful cleanup must remove the retained proof")
-        let remainingProofs = await store.snapshot()
-        XCTAssertTrue(remainingProofs.isEmpty)
+            try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+            do {
+                _ = try await SendConfirmationView.sendOnchainPayment(
+                    request: request,
+                    prepareBroadcast: { request in
+                        try await service.markOnchainPaymentStarted(request, address: self.onchainAddress, paymentIdentity: self.identity)
+                    },
+                    authorize: { _ in
+                        authorizations += 1
+                        if refusedAtRecheck, authorizations == 1 {
+                            return
+                        }
+                        await store.failNextSave()
+                        throw CancellationError()
+                    },
+                    onAuthorizationFailure: { _ in
+                        guard await service.failOnchainPayment(request, paymentIdentity: self.identity) else {
+                            throw OnchainSendAttemptError.preDispatchCleanupFailed
+                        }
+                    },
+                    onAuthorized: { _ in },
+                    send: { beforeBroadcast in
+                        try await attempts.send(
+                            using: sender, address: self.onchainAddress, amountSats: request.amount.atomic,
+                            satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                            requestId: request.id, paymentIdentity: self.identity, beforeBroadcastAttempt: beforeBroadcast
+                        )
+                    }
+                )
+                XCTFail("Cancelled authorization completed")
+            } catch {}
+            let proofs = await store.snapshot()
+            XCTAssertEqual(proofs.first?.paymentStarted, true)
+            XCTAssertNil(proofs.first?.paymentIdentifier)
+            XCTAssertEqual(attemptsStore.snapshot().first?.requestId, request.id,
+                           "Failed proof rollback must keep its matching recovery guard")
+            XCTAssertEqual(sender.broadcasts, 0, "\(refusedAtRecheck)")
+            let rolledBack = await service.failOnchainPayment(request, paymentIdentity: identity)
+            XCTAssertTrue(rolledBack, "A later successful cleanup must remove the retained proof")
+            let remainingProofs = await store.snapshot()
+            XCTAssertTrue(remainingProofs.isEmpty)
+        }
     }
 
     func testDefiniteOnchainFailureClearsStartedProof() async throws {

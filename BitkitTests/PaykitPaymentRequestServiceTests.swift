@@ -2274,6 +2274,42 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testOnchainSendRechecksAuthorizationAfterItsAttemptIsMarkedSending() async throws {
+        let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        try await manager.prepareForPayment(request)
+        var sent = false
+        var authorizationFailureCalls = 0
+        do {
+            try await SendConfirmationView.sendOnchainPayment(
+                request: request,
+                prepareBroadcast: { _ in },
+                authorize: { try await manager.ensurePaymentAllowed($0) },
+                onAuthorizationFailure: { _ in authorizationFailureCalls += 1 },
+                onAuthorized: { _ in
+                    // Allowed up front, then the contact is blocked while the allowance attempt is marked sending.
+                    await sdk.configureRecipients(
+                        peers: [self.linkedPeer(counterparty: record.counterparty, state: .blocked)],
+                        requestCapabilitiesByPublicKey: [:]
+                    )
+                },
+                send: { beforeBroadcastAttempt in
+                    try await beforeBroadcastAttempt()
+                    sent = true
+                }
+            )
+            XCTFail("Expected the on-chain send to be refused before its broadcast")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        XCTAssertFalse(sent)
+        XCTAssertEqual(authorizationFailureCalls, 1, "The started proof fails before the send's guard is cleared")
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
     func testRefreshMapsSupportedOneTimeBitcoinRequest() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let currentOnchain = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)

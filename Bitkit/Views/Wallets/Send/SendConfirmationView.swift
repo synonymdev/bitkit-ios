@@ -1393,14 +1393,21 @@ struct SendConfirmationView: View {
     ) async throws -> Result {
         try await send {
             guard let request else { return }
-            try await prepareBroadcast(request)
-            do {
-                try await authorize(request)
-            } catch {
-                try await onAuthorizationFailure(error)
-                throw error
+            // A refusal fails the started proof before the send's guard is cleared, so a kill between the two can't
+            // leave a started proof without its guard.
+            func authorizeOrRollBack() async throws {
+                do {
+                    try await authorize(request)
+                } catch {
+                    try await onAuthorizationFailure(error)
+                    throw error
+                }
             }
+            try await prepareBroadcast(request)
+            try await authorizeOrRollBack()
             await onAuthorized(request)
+            // `onAuthorized` awaits, so the request is authorized again after it, right before the broadcast.
+            try await authorizeOrRollBack()
         }
     }
 
@@ -2187,6 +2194,11 @@ struct SendConfirmationView: View {
                     authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
                     onAuthorizationFailure: { _ in
                         guard let incomingPaymentRequest else { return }
+                        // A refusal after the manual allowance is marked sending ends it as failed before the proof
+                        // rolls back, so a kill in between can't leave it sending with nothing sent.
+                        if onchainPaymentStarted, let manualAllowanceAttemptId {
+                            await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .failed)
+                        }
                         guard await PaykitPaymentProofService.shared.failOnchainPayment(
                             incomingPaymentRequest, paymentIdentity: originalPaymentIdentity
                         ) else { throw OnchainSendAttemptError.preDispatchCleanupFailed }
