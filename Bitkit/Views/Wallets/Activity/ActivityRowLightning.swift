@@ -33,6 +33,10 @@ struct ActivityRowLightning: View {
             return titleOverride
         }
 
+        if item.isMoveToSpark {
+            return t("wallet__activity_move_to_spark")
+        }
+
         switch item.status {
         case .failed:
             return t("wallet__activity_failed")
@@ -44,11 +48,18 @@ struct ActivityRowLightning: View {
     }
 
     private var description: String {
+        if item.isMoveToSpark {
+            switch item.status {
+            case .failed: return t("wallet__activity_failed")
+            case .pending: return t("wallet__activity_pending")
+            case .succeeded: return formattedTime
+            }
+        }
         return item.message.isEmpty ? formattedTime : item.message
     }
 
     var body: some View {
-        ActivityRowContent(title: status, subtitle: description) {
+        ActivityRowContent(title: status, subtitle: description, receiptPaymentId: item.txType == .received ? item.id : nil) {
             if let contact {
                 PubkyContactAvatar(contact: contact, size: 40)
             } else {

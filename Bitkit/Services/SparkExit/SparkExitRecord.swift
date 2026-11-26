@@ -254,6 +254,9 @@ struct SparkExitRecord: Codable, Equatable {
     /// The fee funding asked for came from a rebuild over a step the SDK could not read, while the generation out there
     /// is valid: funding it resumes that rebuild with its guard, and the ask ends once every step reads again.
     var isUnverifiedAsk: Bool?
+    /// The fee funding asked for came while a Redo rebuild was pending: that rebuild may run on the funding the exit
+    /// holds, and the ask then ends. Kept until a tick starts past that ask.
+    var isRedoAsk: Bool?
     /// The tip of the last rebuild over a step the SDK could not read, so it rebuilds at most once a block.
     var unverifiedRebuiltAtHeight: UInt32?
     /// A higher fee rate the steps out there are not built at yet: a fee bump whose build kept the valid generation
@@ -278,6 +281,9 @@ struct SparkExitRecord: Codable, Equatable {
     var rebuiltFromChainConfirmedCount: Int?
     /// What confirmed sweeps and cooperative recoveries of replaced generations paid to savings, by txid.
     var earlierReceivedSats: [String: UInt64]?
+    /// The unspent fee funding confirmed sweeps of replaced generations returned to savings, by txid: part of
+    /// `earlierReceivedSats` that counts as fees, not spending balance.
+    var earlierReturnedFundingSats: [String: UInt64]?
     var leftBehindLeaves: [LeftBehindLeaf]?
     /// Set once the user opened the result of an exit that failed or lost leaves.
     var isResultSeen: Bool?
@@ -419,6 +425,10 @@ struct SparkExitRecord: Codable, Equatable {
             }
             if let sweep = recovery.response.transactions.first(where: { $0.kind == .sweep }), case .confirmed = sweep.status {
                 landedSweepTxid = sweep.txid
+                let funding = SparkExitMath.returnedFundingSats(self)
+                if funding > 0 {
+                    earlierReturnedFundingSats = (earlierReturnedFundingSats ?? [:]).merging([sweep.txid: funding]) { $1 }
+                }
             }
         }
         generation += 1
@@ -746,6 +756,7 @@ enum SparkExitRecordCoder {
         record.exitStateSnapshot = kept.exitStateSnapshot
         record.fundingStrategy = kept.fundingStrategy
         record.earlierReceivedSats = kept.earlierReceivedSats
+        record.earlierReturnedFundingSats = kept.earlierReturnedFundingSats
         record.outsideSats = kept.outsideSats
         // Change and fan-out outputs of earlier generations at the funding address stay the exit's own, not new funding.
         let chained = (kept.earlierCpfpTxids ?? []) + (kept.recovery.map { SparkExitTxid.chainedTxids($0.response) } ?? [])
@@ -772,12 +783,13 @@ enum SparkExitRecordCoder {
         let recovery: StoredRecovery?
         let fundingStrategy: String?
         let earlierReceivedSats: [String: UInt64]?
+        let earlierReturnedFundingSats: [String: UInt64]?
         let outsideSats: UInt64?
 
         private enum CodingKeys: String, CodingKey {
             case network, createdAt, phase, feeRateSatPerVbyte, destination, leafIds, leafTotalSats, funding, transferId, expectedSats
             case lostLeaves, leftBehindLeaves, exitStateSnapshot, earlierCpfpTxids, recovery, fundingStrategy, earlierReceivedSats
-            case outsideSats
+            case earlierReturnedFundingSats, outsideSats
         }
 
         init(from decoder: Decoder) throws {
@@ -799,6 +811,7 @@ enum SparkExitRecordCoder {
             recovery = try? c.decodeIfPresent(StoredRecovery.self, forKey: .recovery)
             fundingStrategy = try? c.decodeIfPresent(String.self, forKey: .fundingStrategy)
             earlierReceivedSats = try? c.decodeIfPresent([String: UInt64].self, forKey: .earlierReceivedSats)
+            earlierReturnedFundingSats = try? c.decodeIfPresent([String: UInt64].self, forKey: .earlierReturnedFundingSats)
             outsideSats = try? c.decodeIfPresent(UInt64.self, forKey: .outsideSats)
         }
     }

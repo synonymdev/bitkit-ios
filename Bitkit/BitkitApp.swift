@@ -72,6 +72,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
     {
+        BackgroundTime.beginTask = { name, expiration in
+            UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: expiration)
+        }
+        BackgroundTime.endTask = { UIApplication.shared.endBackgroundTask($0) }
         UNUserNotificationCenter.current().delegate = self
         SparkExitManager.registerBackgroundTask()
 
@@ -128,6 +132,20 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         Logger.error("🔔 AppDelegate: didFailToRegisterForRemoteNotificationsWithError: \(error)")
+    }
+
+    /// Background pushes (`content-available`), which carry most wakes. The completion handler is always called, within
+    /// the 30 seconds iOS allows.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        let pushJson = WakePush.json(from: userInfo)
+        Task { @MainActor in
+            let result = await WakeManager.shared.handleBackgroundPush(pushJson: pushJson)
+            completionHandler(result)
+        }
     }
 
     /// Foreground notification presentation

@@ -30,6 +30,13 @@ struct ReceiveQr: View {
     @State private var verifyTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
     @State private var engagedSession = HwEngagedSession()
+    @State private var nearbyAdvertiser = NearbyPaymentAdvertiser()
+    /// Whether the QR page is on screen. The view stays mounted as the navigation root while Edit or another route is
+    /// pushed, and still sees app and request changes then.
+    @State private var isShown = false
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(TrezorManager.self) private var trezorManager
+    @Environment(\.isCoveredByOfflineSheet) private var isCoveredByOfflineSheet
 
     init(
         navigationPath: Binding<[ReceiveRoute]>,
@@ -74,22 +81,29 @@ struct ReceiveQr: View {
     }
 
     private var availableTabItems: [TabItem<ReceiveTab>] {
-        var items: [TabItem<ReceiveTab>] = [
-            TabItem(.savings),
-            TabItem(.spending),
-        ]
+        Self.visibleTabs(
+            hasHardwareWallet: selectedHardwareWalletId != nil,
+            canReceiveLightning: canShowUnifiedReceive,
+            isUsdtEnabled: settings.isUsdtEnabled
+        ).map { $0 == .hardware ? TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName) : TabItem($0) }
+    }
 
-        if canShowUnifiedReceive {
-            items.insert(TabItem(.unified), at: 1)
-        }
+    /// Auto and Spending hide when Lightning stops receiving with no invoice change, as when Spark disconnects, so their
+    /// selection goes to Savings.
+    static func tab(_ selected: ReceiveTab, canShowUnifiedReceive: Bool) -> ReceiveTab {
+        !canShowUnifiedReceive && (selected == .unified || selected == .spending) ? .savings : selected
+    }
 
-        if selectedHardwareWalletId != nil {
-            items.insert(TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName), at: 0)
+    /// The receive tabs in order. Without a Lightning invoice, from a usable Spark wallet or channel, Auto and Spending hide.
+    static func visibleTabs(hasHardwareWallet: Bool, canReceiveLightning: Bool, isUsdtEnabled: Bool) -> [ReceiveTab] {
+        var tabs: [ReceiveTab] = hasHardwareWallet ? [.hardware, .savings] : [.savings]
+        if canReceiveLightning {
+            tabs += [.unified, .spending]
         }
-        if settings.isUsdtEnabled {
-            items.append(TabItem(.usdt))
+        if isUsdtEnabled {
+            tabs.append(.usdt)
         }
-        return items
+        return tabs
     }
 
     private var selectedHardwareWallet: HwWallet? {
@@ -156,10 +170,6 @@ struct ReceiveQr: View {
         )
     }
 
-    var showingSpendingOnboarding: Bool {
-        return !wallet.canCreateReceiveLightningInvoice && selectedTab == .spending
-    }
-
     var body: some View {
         if selectedTab == .usdt, !settings.isUsdtEnabled {
             UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
@@ -195,9 +205,8 @@ struct ReceiveQr: View {
 
                     if canShowUnifiedReceive {
                         tabContent(for: .unified)
+                        tabContent(for: .spending)
                     }
-
-                    tabContent(for: .spending)
                     if settings.isUsdtEnabled {
                         Color.clear.tag(ReceivePage.tab(.usdt))
                     }
@@ -212,18 +221,7 @@ struct ReceiveQr: View {
                 Spacer()
 
                 Group {
-                    if showingSpendingOnboarding {
-                        CustomButton(
-                            title: t("wallet__receive_spending"),
-                            icon: Image("bolt")
-                                .resizable()
-                                .frame(width: 16, height: 16)
-                                .foregroundColor(.purpleAccent),
-                            isDisabled: wallet.nodeLifecycleState != .running
-                        ) {
-                            navigationPath.append(.transferUnavailable)
-                        }
-                    } else if showDetails {
+                    if showDetails {
                         VStack(spacing: 16) {
                             if selectedTab == .hardware {
                                 CustomButton(
@@ -279,6 +277,17 @@ struct ReceiveQr: View {
         .sheetBackground()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ReceiveScreen")
+        .onAppear {
+            isShown = true
+            updateNearbyAdvertising()
+        }
+        .onChange(of: nearbyRequest) { updateNearbyAdvertising() }
+        .onChange(of: scenePhase) { updateNearbyAdvertising() }
+        .onChange(of: isQrCovered) { updateNearbyAdvertising() }
+        .onDisappear {
+            isShown = false
+            nearbyAdvertiser.stop()
+        }
         .sheet(isPresented: passphrasePromptBinding) {
             HwPassphrasePromptSheet(
                 isVerifying: isVerifyingPassphrase,
@@ -318,11 +327,15 @@ struct ReceiveQr: View {
             }
         }
         .onChange(of: wallet.bolt11) { _, bolt11 in
-            if bolt11.isEmpty && !wallet.canCreateReceiveLightningInvoice && selectedTab == .unified {
+            // Without a Lightning invoice the Auto and Spending tabs hide, so their selection goes to Savings.
+            if bolt11.isEmpty && !wallet.canCreateReceiveLightningInvoice && (selectedTab == .unified || selectedTab == .spending) {
                 selectedTab = .savings
             }
 
             applyDefaultTabIfNeeded()
+        }
+        .onChange(of: canShowUnifiedReceive, initial: true) { _, canShow in
+            selectedTab = Self.tab(selectedTab, canShowUnifiedReceive: canShow)
         }
         .onDisappear {
             verifyTask?.cancel()
@@ -389,8 +402,6 @@ struct ReceiveQr: View {
                 } else {
                     ProgressView()
                 }
-            } else if tab == .spending && !wallet.canCreateReceiveLightningInvoice {
-                cjitOnboarding
             } else if receiveUnavailable(for: tab) {
                 receiveRefreshStatus(for: tab)
             } else if showDetails {
@@ -419,6 +430,7 @@ struct ReceiveQr: View {
                     imageAsset: "btc-circle-blue",
                     accentColor: .blueAccent,
                     copyValue: uri.contains("?") ? uri : hardwareAddress.address,
+                    showsTapToPay: nearbyAdvertiser.isAdvertising,
                     onEdit: { navigationPath.append(.edit(tab: .hardware, onchainOnly: true)) }
                 )
             } else if hardwareAddressLoadFailed {
@@ -442,6 +454,7 @@ struct ReceiveQr: View {
                     uri: config.uri,
                     imageAsset: config.imageAsset,
                     accentColor: config.accentColor,
+                    showsTapToPay: nearbyAdvertiser.isAdvertising,
                     onEdit: editRoute(for: tab).map { route in
                         { navigationPath.append(route) }
                     }
@@ -453,10 +466,66 @@ struct ReceiveQr: View {
         }
     }
 
+    /// The request offered to nearby phones over Bluetooth, or nil when nothing should be advertised. Only a request
+    /// the payer can check on screen is offered: none while the connection-issues screen covers Receive or the page
+    /// shows a spinner, Retry or an error in its place, and none for a tab that is hidden but not yet left.
+    private var nearbyRequest: String? {
+        guard settings.enableNearbyPayments,
+              Self.tab(selectedTab, canShowUnifiedReceive: canShowUnifiedReceive) == selectedTab,
+              !isCoveredByOfflineSheet else { return nil }
+        switch selectedTab {
+        case .usdt:
+            return nil
+        case .hardware:
+            guard let address = displayedHardwareAddress?.address else { return nil }
+            return NearbyPaymentUri.from(Bip21Utils.hardwareInvoice(
+                address: address,
+                amountSats: wallet.invoiceAmountSats,
+                message: wallet.invoiceNote
+            ))
+        default:
+            guard Self.showsRequest(
+                needsInvoiceRefresh: needsInvoiceRefresh,
+                isReceiveUnavailable: receiveUnavailable(for: selectedTab)
+            ) else { return nil }
+            return NearbyPaymentUri.from(qrConfig(for: selectedTab).uri)
+        }
+    }
+
+    /// Whether a Savings, Spending or Unified page shows its request, as `tabContent` decides: a page waiting for
+    /// its first refresh shows a spinner or Retry, and an updating or failed invoice shows its status instead.
+    static func showsRequest(needsInvoiceRefresh: Bool, isReceiveUnavailable: Bool) -> Bool {
+        !needsInvoiceRefresh && !isReceiveUnavailable
+    }
+
+    /// The request to advertise: only while the QR page is on screen, with nothing pushed or presented over it, and
+    /// the app active.
+    static func advertisedRequest(_ request: String?, isShown: Bool, isCovered: Bool, isActive: Bool) -> String? {
+        isShown && !isCovered && isActive ? request : nil
+    }
+
+    /// Whether a pushed route (Edit), the passphrase prompt or the hardware pairing sheet covers the QR page. A
+    /// presented sheet or a pop by swipe does not trigger `onAppear` or `onDisappear` when it changes.
+    private var isQrCovered: Bool {
+        !navigationPath.isEmpty || isPassphraseRequired || trezorManager.showPairingCode
+    }
+
+    private func updateNearbyAdvertising() {
+        if let request = Self.advertisedRequest(
+            nearbyRequest, isShown: isShown, isCovered: isQrCovered, isActive: scenePhase == .active
+        ) {
+            nearbyAdvertiser.start(request: request)
+        } else {
+            nearbyAdvertiser.stop()
+        }
+    }
+
     private func receiveUnavailable(for tab: ReceiveTab) -> Bool {
         guard tab == .unified || tab == .spending else { return false }
         return wallet.isReceiveInvoiceUpdating || wallet.receiveInvoiceError != nil ||
-            (tab == .unified && !wallet.hasCoherentReceiveInvoice)
+            (tab == .unified && !wallet.hasCoherentReceiveInvoice) ||
+            // A cached invoice keeps Spending shown until the refresh, but with no way to receive it may have expired.
+            (tab == .spending && !wallet.canCreateReceiveLightningInvoice)
     }
 
     private func receiveRefreshStatus(for tab: ReceiveTab) -> some View {
@@ -504,43 +573,6 @@ struct ReceiveQr: View {
         case .hardware:
             return (uri: "", imageAsset: "btc-circle-blue", accentColor: .blueAccent)
         }
-    }
-
-    var cjitOnboarding: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            DisplayText(t("wallet__receive_spending_title"), accentColor: .purpleAccent)
-                .padding(.bottom, 8)
-
-            BodyMText(t("wallet__receive_spending_text"))
-
-            Spacer()
-
-            HStack {
-                Spacer()
-                Image("bolt")
-                    .resizable()
-                    .frame(width: 64, height: 64)
-                    .foregroundColor(.purpleAccent)
-                Spacer()
-            }
-        }
-        .padding(32)
-        .frame(maxHeight: .infinity)
-        .background(Color.black)
-        .cornerRadius(8)
-        .overlay(alignment: .bottomLeading) {
-            if !UIScreen.main.isSmall {
-                Image("arrow-cjit")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 210)
-                    .offset(x: 70, y: 110)
-            }
-        }
-        // Figma leaves 122 pt between the card and the button; the spacer above the button adds the last 8.
-        .padding(.bottom, UIScreen.main.isSmall ? 0 : 114)
-        // Ahead of the tab's bottom spacer, so the card takes the rest of the page.
-        .layoutPriority(1)
     }
 
     func detailsContent(for tab: ReceiveTab) -> some View {

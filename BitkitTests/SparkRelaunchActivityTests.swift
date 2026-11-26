@@ -97,4 +97,43 @@ final class SparkRelaunchActivityTests: XCTestCase {
         guard case let .lightning(lightning)? = activity else { return XCTFail("The send wasn't recorded") }
         XCTAssertEqual(lightning.contact, "pk:contact")
     }
+
+    func testAnOlderSparkAttemptsFailureKeepsTheLaterFailedAttemptsRow() async throws {
+        let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "e7", count: 16)
+        func failed(at timestamp: UInt64, amountMsat: UInt64, feeMsat: UInt64) -> PaymentDetails {
+            PaymentDetails(
+                id: hash,
+                kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+                amountMsat: amountMsat, feePaidMsat: feeMsat, direction: .outbound, status: .failed, latestUpdateTimestamp: timestamp
+            )
+        }
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(at: 200, amountMsat: 300_000, feeMsat: 3000))
+
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(at: 100, amountMsat: 250_000, feeMsat: 1000))
+
+        let activity = try await CoreService.shared.activity.getActivity(id: hash)
+        guard case let .lightning(lightning)? = activity else { return XCTFail("The send wasn't recorded") }
+        XCTAssertEqual(lightning.value, 300)
+        XCTAssertEqual(lightning.fee, 3)
+        XCTAssertEqual(lightning.timestamp, 200, "the earlier attempt's failure replaced the later attempt's row")
+    }
+
+    func testALaterSparkAttemptsFailureReplacesAnEarlierFailedAttemptsRow() async throws {
+        let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "f8", count: 16)
+        func failed(at timestamp: UInt64, amountMsat: UInt64) -> PaymentDetails {
+            PaymentDetails(
+                id: hash,
+                kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+                amountMsat: amountMsat, feePaidMsat: 1000, direction: .outbound, status: .failed, latestUpdateTimestamp: timestamp
+            )
+        }
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(at: 100, amountMsat: 250_000))
+
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(at: 200, amountMsat: 300_000))
+
+        let activity = try await CoreService.shared.activity.getActivity(id: hash)
+        guard case let .lightning(lightning)? = activity else { return XCTFail("The send wasn't recorded") }
+        XCTAssertEqual(lightning.value, 300)
+        XCTAssertEqual(lightning.timestamp, 200)
+    }
 }

@@ -80,6 +80,9 @@ receive the request.
 without delivering secrets. Open the fixture's `bitkit://pubky-auth/setup` URL with
 `xcrun simctl openurl <simulator-id> "<url>"`.
 
+`approval-before-node-starts.xml` checks that a Bitcoin watch-only setup approved on a cold start, before the
+node has started, completes on the first Authorize and is tracked once the node starts.
+
 For successful delivery, use a controlled live relay. Verify a Paykit-only recipient
 receives the current Paykit key/generation but no account material, and that no account
 is allocated. For reconnect, the server requests only Paykit access for the existing
@@ -106,7 +109,7 @@ artifacts at each boundary:
 | --- | --- | --- |
 | Combined claim | `PubkyAuthWatchOnlyConsent`, `PubkyAuthWatchOnlyApprove`, `PubkyAuthPaykitAccess`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | Setup completion for the seller identity, with no spending key |
 | Marketplace grant | Authorization screen with the single `/pub/app.locks` row from `locks.app`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | `bitkit_seller.marketplace_grant` and a non-null `bitkit_seller.setup_completed_at` |
-| Linked buyer | Enabled `PrivateContactPaymentsToggle`, `Contact_<seller-public-key>`, and `Contact_<buyer-public-key>` snapshots | Seller and buyer peer-link state |
+| Linked buyer | `Contact_<seller-public-key>` and `Contact_<buyer-public-key>` snapshots | Seller and buyer peer-link state |
 | Incoming request | `ReviewAmount`, `PaymentRequestsBell`, `PaymentRequestsSheet`, and `PaymentRequestRow-<payment-request-id>-one-time` snapshots showing the automatic review, seller, amount, and note when present | Delivery record and exact Payment Request id |
 | Payment approval | `PaymentRequestPay-<payment-request-id>`, `ReviewAmount`, and `ReviewContactRecipient` snapshots | Derived regtest address and expected amount |
 | Broadcast | `SendSuccess` snapshot and buyer activity details | Transaction in the fixture mempool with an amount-matched output |

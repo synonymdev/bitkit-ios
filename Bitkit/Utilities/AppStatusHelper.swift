@@ -22,10 +22,16 @@ enum HealthStatus: String {
     }
 }
 
-/// The step of a running emergency exit, named like its App Status subtitle key.
+/// The step of a running force transfer, which picks its App Status subtitle: `settings__status__exit__funding` while it
+/// asks for fee funding, `settings__status__spark__exit` otherwise.
 enum ExitStatusStep: String {
     case funding
     case pending
+
+    /// The Spark row's text while the force transfer runs, on App Status and Spark's connection screen.
+    var descriptionKey: String {
+        self == .funding ? "settings__status__exit__funding" : "settings__status__spark__exit"
+    }
 }
 
 @MainActor
@@ -95,6 +101,11 @@ struct AppStatusHelper {
         )
     }
 
+    /// Spark can take payments only while the device is online, the same check that shows it "Offline...".
+    static func isSparkReceiving(network: NetworkMonitor) -> Bool {
+        network.isConnected && SparkManager.shared.isReceiving
+    }
+
     /// Nil where Spark is unsupported.
     static func sparkStatus(network: NetworkMonitor) -> HealthStatus? {
         let spark = SparkManager.shared
@@ -104,6 +115,11 @@ struct AppStatusHelper {
             isReady: spark.isReady,
             hasStartFailed: spark.hasStartFailed
         )
+    }
+
+    /// Spark's detail shows a zero balance until Spark has read its state; once it has, the detail opens offline too.
+    nonisolated static func opensSparkDetail(status: HealthStatus, isReady: Bool) -> Bool {
+        status == .ready || isReady
     }
 
     /// Spark carries Lightning when no channel can, so the connection is ready through it; red only when neither can pay.
@@ -145,19 +161,24 @@ struct AppStatusHelper {
         let bitcoinNodeState = bitcoinNodeStatus(from: wallet, network: network)
         let nodeState = nodeStatus(from: wallet, network: network)
 
-        let states = [internetState, bitcoinNodeState, nodeState]
+        let exit = SparkExitManager.shared
+        let sparkState: HealthStatus? = exitStep(record: exit.record, fundingState: exit.fundingState) != nil
+            ? .pending
+            : sparkStatus(network: network)
 
-        // If any component is in error state, return error
+        return combinedStatus(of: [internetState, bitcoinNodeState, nodeState, sparkState])
+    }
+
+    /// Red when any component errs, yellow when any is pending, green otherwise; a nil component (Spark where it is
+    /// unsupported) does not count.
+    nonisolated static func combinedStatus(of states: [HealthStatus?]) -> HealthStatus {
+        let states = states.compactMap { $0 }
         if states.contains(.error) {
             return .error
         }
-
-        // If any component is pending, return pending
         if states.contains(.pending) {
             return .pending
         }
-
-        // All components are ready
         return .ready
     }
 }

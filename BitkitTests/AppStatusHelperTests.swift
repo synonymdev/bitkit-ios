@@ -16,6 +16,15 @@ final class AppStatusHelperTests: XCTestCase {
         XCTAssertEqual(AppStatusHelper.sparkStatus(isOnline: true, isSupported: true, isReady: false, hasStartFailed: true), .error)
     }
 
+    func testSparkDetailOpensOfflineOnceSparkHasReadItsState() {
+        let offline = AppStatusHelper.sparkStatus(isOnline: false, isSupported: true, isReady: true, hasStartFailed: false)
+        XCTAssertEqual(offline, .error)
+        XCTAssertTrue(AppStatusHelper.opensSparkDetail(status: .error, isReady: true))
+        XCTAssertTrue(AppStatusHelper.opensSparkDetail(status: .ready, isReady: true))
+        XCTAssertFalse(AppStatusHelper.opensSparkDetail(status: .pending, isReady: false))
+        XCTAssertFalse(AppStatusHelper.opensSparkDetail(status: .error, isReady: false))
+    }
+
     func testChannelsStatusIsReadyThroughSparkWhenNoChannelIsUsable() {
         let status = AppStatusHelper.channelsStatus(isOnline: true, hasUsableChannels: false, hasChannels: true, isSparkUsable: true)
         XCTAssertEqual(status, .ready)
@@ -38,5 +47,12 @@ final class AppStatusHelperTests: XCTestCase {
         let status = AppStatusHelper.channelsStatus(isOnline: false, hasUsableChannels: false, hasChannels: false, isSparkUsable: true)
         XCTAssertEqual(status, .error)
         XCTAssertFalse(AppStatusHelper.isLightningViaSpark(isOnline: false, hasUsableChannels: false, isSparkUsable: true))
+    }
+
+    func testCombinedStatusCountsSpark() {
+        XCTAssertEqual(AppStatusHelper.combinedStatus(of: [.ready, .ready, .ready, .ready]), .ready)
+        XCTAssertEqual(AppStatusHelper.combinedStatus(of: [.ready, .ready, .ready, nil]), .ready)
+        XCTAssertEqual(AppStatusHelper.combinedStatus(of: [.ready, .ready, .ready, .pending]), .pending)
+        XCTAssertEqual(AppStatusHelper.combinedStatus(of: [.ready, .pending, .ready, .error]), .error)
     }
 }

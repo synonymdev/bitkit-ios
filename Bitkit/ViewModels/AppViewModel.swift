@@ -1,6 +1,7 @@
 import BitkitCore
 import Combine
 import LDKNode
+import os
 import enum Paykit.PaykitError
 import SwiftUI
 
@@ -142,7 +143,7 @@ struct ScanPaymentOperations {
                     channelOutboundSats: (channels ?? []).map(\.outboundCapacityMsat).reduce(0, +) / 1000
                 )
             },
-            canSendLightning: lightningService.canSend
+            canSendLightning: { MoveToSparkMath.canSendLightning(amountSats: $0, lightningService: lightningService) }
         )
     }
 }
@@ -179,6 +180,7 @@ class AppViewModel: ObservableObject {
     @Published var contactPaymentContext: ContactPaymentContext?
     private(set) var didRejectScannedPayment = false
     @Published var paykitUsesUsdt = false
+    @Published var paykitSwapRoute: PaykitSwapRoute?
     @Published var paykitRoute: PaykitRouteUi?
     /// Bumped by each routing request, so only the latest one's answer lands.
     var paykitRoutingGeneration = 0
@@ -210,6 +212,70 @@ class AppViewModel: ObservableObject {
         lockedDeepLinkRoutesInFlight > 0
     }
 
+    private var quickPaySuppressions: Set<UUID> = []
+    /// Raised each time the app locks behind the PIN.
+    private var appLockGeneration = 0
+    /// The lock generation when QuickPay was last chosen for a request.
+    private var quickPayChosenAtLockGeneration: Int?
+
+    /// Counts app locks for checks that run off the main actor, such as the one right before a payment is submitted.
+    private let appLocks = OSAllocatedUnfairLock(initialState: 0)
+
+    /// True until the app locks behind the PIN after this call, so work that outlasts a lock can drop its result.
+    func lockCheck() -> () -> Bool {
+        let lockGeneration = appLockGeneration
+        return { [weak self] in
+            self?.appLockGeneration == lockGeneration
+        }
+    }
+
+    /// Called when the app locks behind the PIN.
+    func noteAppLocked() {
+        appLockGeneration += 1
+        appLocks.withLock { $0 += 1 }
+    }
+
+    /// A check for the moment a QuickPay payment is submitted, which can come after waits that outlast a lock and runs
+    /// off the main actor: it throws once the app has locked since this call.
+    func quickPaySubmissionCheck() -> @Sendable () throws -> Void {
+        let appLocks = appLocks
+        let seen = Self.count(appLocks)
+        return {
+            if Self.count(appLocks) != seen {
+                throw SendStoppedBeforeSubmission()
+            }
+        }
+    }
+
+    private nonisolated static func count(_ locks: OSAllocatedUnfairLock<Int>) -> Int {
+        locks.withLock { $0 }
+    }
+
+    /// Called when a request is routed to QuickPay.
+    func noteQuickPayChosen() {
+        quickPayChosenAtLockGeneration = appLockGeneration
+    }
+
+    /// Whether the app locked after QuickPay was chosen. The QuickPay screen can appear only later (for example once
+    /// the node is ready), and a payment chosen before a lock must not start on its own after the unlock.
+    var didLockSinceQuickPayWasChosen: Bool {
+        quickPayChosenAtLockGeneration.map { $0 != appLockGeneration } ?? false
+    }
+
+    /// True while a payment request that must always be reviewed (for example one read over Bluetooth) routes.
+    var isQuickPaySuppressed: Bool {
+        !quickPaySuppressions.isEmpty
+    }
+
+    func suppressQuickPay(_ id: UUID) {
+        quickPaySuppressions.insert(id)
+    }
+
+    /// Releasing an id that is no longer held does nothing.
+    func releaseQuickPaySuppression(_ id: UUID) {
+        quickPaySuppressions.remove(id)
+    }
+
     /// The last routed deep link. On a cold start the same link reaches the app twice (`onOpenURL` and the scene
     /// delegate replay), and the startup gates can route the first delivery before the second arrives.
     private var lastRoutedDeepLink: (url: URL, date: Date)?
@@ -222,6 +288,7 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
+    @AppStorage("hasSeenNfcIntro") var hasSeenNfcIntro: Bool = false
     @AppStorage("hasSeenMoveToSparkIntro") var hasSeenMoveToSparkIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
     @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
@@ -578,6 +645,7 @@ class AppViewModel: ObservableObject {
         hasSeenProfileIntro = false
         hasSeenNotificationsIntro = false
         hasSeenQuickpayIntro = false
+        hasSeenNfcIntro = false
         hasSeenMoveToSparkIntro = false
         hasSeenShopIntro = false
         hasSeenTransferIntro = false
@@ -602,7 +670,8 @@ extension AppViewModel {
         description: String? = nil,
         autoHide: Bool = true,
         visibilityTime: Double = 4.0,
-        accessibilityIdentifier: String? = nil
+        accessibilityIdentifier: String? = nil,
+        interruptible: Bool = true
     ) {
         guard !ToastWindowManager.areToastsDisabled() else { return }
 
@@ -625,7 +694,8 @@ extension AppViewModel {
             description: description,
             autoHide: autoHide,
             visibilityTime: visibilityTime,
-            accessibilityIdentifier: accessibilityIdentifier
+            accessibilityIdentifier: accessibilityIdentifier,
+            interruptible: interruptible
         )
         ToastWindowManager.shared.showToast(toast)
     }
@@ -716,6 +786,18 @@ extension AppViewModel {
         if let contactPaymentContext {
             pendingContactPaymentContexts[hash] = contactPaymentContext
         }
+    }
+
+    /// Fails a pending send whose payment can no longer settle, as the payment's own failure event would.
+    func failPendingPayment(_ hash: String) {
+        guard pendingPaymentHashes.remove(hash) != nil else { return }
+        sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: nil)
+        toast(
+            type: .error,
+            title: t("wallet__toast_payment_failed_title"),
+            description: t("wallet__payment_failed_description"),
+            accessibilityIdentifier: "PaymentFailedToast"
+        )
     }
 
     func addPendingContactPaymentContext(_ hash: String, context: ContactPaymentContext?) {
@@ -1097,6 +1179,19 @@ extension AppViewModel {
                 return
             }
 
+            // Without a Spark leg, a Pubky Swaps provider can pay it from Spending: the router weighs swaps after service legs.
+            if let context = contactPaymentContext, let route = PubkySwapsRouteService.route(
+                for: context,
+                address: invoice.address,
+                onchainBalanceSats: max(paymentState.spendableOnchainBalanceSats, alternativeOnchainBalanceSats),
+                lightningBalanceSats: paymentState.totalLightningBalanceSats
+            ) {
+                handleScannedOnchainInvoice(invoice)
+                paykitSwapRoute = route
+                selectedWalletToPayFrom = .lightning
+                return
+            }
+
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
                 let onchainBalance = max(
@@ -1442,6 +1537,7 @@ extension AppViewModel {
         sendStateOwnerID = ownerID
         sendStateGeneration = UUID()
         paykitUsesUsdt = false
+        paykitSwapRoute = nil
         paykitRoute = nil
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil
@@ -1768,7 +1864,10 @@ extension AppViewModel {
             await CoreService.shared.activity.markOnchainActivityAsSeen(txid: txid)
 
             await MainActor.run {
-                sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: sats))
+                sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: sats, paymentId: txid))
+            }
+            if PaykitFeatureFlags.isUIEnabled {
+                await PaykitReceiptService.shared.reconcile()
             }
         }
     }
@@ -1848,7 +1947,14 @@ extension AppViewModel {
 
                 await MainActor.run {
                     let sats = LightningAmountConversion.satsCeil(fromMsats: amountMsat)
-                    sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: sats))
+                    sheetViewModel.showSheet(
+                        .receivedTx,
+                        data: ReceivedTxSheetDetails(type: .lightning, sats: sats, paymentId: paymentHash)
+                    )
+                }
+                if PaykitFeatureFlags.isUIEnabled {
+                    try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.listPayments() ?? [])
+                    await PaykitReceiptService.shared.reconcile()
                 }
             }
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):

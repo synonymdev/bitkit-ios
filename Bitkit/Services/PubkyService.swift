@@ -503,7 +503,7 @@ actor PaykitSdkService {
 
     private let sessionProvider = PaykitSdkSessionProvider()
     private let paymentAdapter = PaykitSdkPaymentAdapter()
-    private let operationLock = PaykitSdkOperationLock()
+    private let operationLock: PaykitSdkOperationLock
     private let publicReadSlots = PaykitPublicReadSlots()
     private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
     private let sdkFactory: (() throws -> PaykitSdk)?
@@ -523,9 +523,11 @@ actor PaykitSdkService {
     private var runtimeGeneration: UInt64 = 0
 
     init(
+        operationLock: PaykitSdkOperationLock = PaykitSdkOperationLock(),
         sdkFactory: (() throws -> PaykitSdk)? = nil,
         bootstrapFactory: @escaping BootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
     ) {
+        self.operationLock = operationLock
         self.sdkFactory = sdkFactory
         self.bootstrapFactory = bootstrapFactory
     }
@@ -1166,7 +1168,7 @@ actor PaykitSdkService {
                 }
             }
         ) { sdk in
-            try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
+            return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: clearUnlistedLinkedPeers
             )
@@ -1334,6 +1336,28 @@ actor PaykitSdkService {
     func processPendingPrivateMessages(priority: PaykitSdkOperationLock.Priority) async throws -> [OutboundPrivateCounterpartySendReport] {
         try await withStateRevisionTracking(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             try await sdk.processPendingPrivateMessages()
+        }
+    }
+
+    /// Prepares, stores and queues a receipt; repeating it with the same Receipt ID resumes the same issuance. Fails when
+    /// the SDK no longer holds `expectedIdentity`, the identity whose requests and payments produced the draft.
+    func issueReceipt(
+        counterparty: String,
+        draft: Paykit.ReceiptDraft,
+        expectedIdentity: String,
+        priority: PaykitSdkOperationLock.Priority
+    ) async throws -> Paykit.ReceiptIssuanceView {
+        try await withStateRevisionTracking(priority: priority) { sdk in
+            guard try await PubkyPublicKeyFormat.matches(sdk.identityStatus()?.publicKey, expectedIdentity) else {
+                throw PubkyServiceError.identityChanged
+            }
+            return try await sdk.issueReceipt(counterparty: counterparty, draft: draft)
+        }
+    }
+
+    func issuedReceipts(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.ReceiptIssuanceView] {
+        try await withSdk(priority: priority) { sdk in
+            try await sdk.issuedReceipts()
         }
     }
 
@@ -2141,7 +2165,7 @@ actor PaykitSdkService {
         Paykit.PaykitAppCapabilities(
             privatePayments: status?.capability == .privateLinkCapable,
             paymentRequests: status?.capability == .privateLinkCapable,
-            receipts: false,
+            receipts: status?.capability == .privateLinkCapable,
             outgoingPayments: true
         )
     }

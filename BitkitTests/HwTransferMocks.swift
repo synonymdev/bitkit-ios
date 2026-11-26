@@ -21,6 +21,8 @@ final class MockHwFunding: HwTransferFunding {
     /// Holds every sign until opened, so a test can act while the device is signing.
     var signGate: AsyncGate?
     var broadcastError: Error?
+    /// One outcome per broadcast, used before `broadcastError`; nil means that broadcast succeeds.
+    var broadcastErrors: [Error?] = []
     var broadcastDelay: Double = 0
     var broadcastNow: () -> Date = Date.init
     /// Holds every broadcast until opened, so a test can act while its outcome is unknown.
@@ -136,10 +138,78 @@ final class MockHwFunding: HwTransferFunding {
         if broadcastDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(broadcastDelay * 1_000_000_000))
         }
-        if let broadcastError {
-            throw broadcastError
+        if let error = broadcastErrors.isEmpty ? broadcastError : broadcastErrors.removeFirst() {
+            throw error
         }
         return broadcastTxId
+    }
+}
+
+final class MockHwRetainedSendStore: HwRetainedSendStoring, @unchecked Sendable {
+    struct StoreError: Error {}
+
+    private let lock = NSLock()
+    private var sends: [String: HwRetainedSend] = [:]
+    private var failsLoad = false
+    private var failsSave = false
+    private var failsDelete = false
+    private(set) var deletedWalletIds: [String] = []
+
+    func setFailures(load: Bool = false, save: Bool = false, delete: Bool = false) {
+        lock.withLock {
+            failsLoad = load
+            failsSave = save
+            failsDelete = delete
+        }
+    }
+
+    func load(walletId: String) throws -> HwRetainedSend? {
+        try lock.withLock {
+            if failsLoad {
+                throw StoreError()
+            }
+            return sends[walletId]
+        }
+    }
+
+    func save(_ send: HwRetainedSend) throws {
+        try lock.withLock {
+            if failsSave {
+                throw StoreError()
+            }
+            sends[send.walletId] = send
+        }
+    }
+
+    func delete(walletId: String) throws {
+        try lock.withLock {
+            if failsDelete {
+                throw StoreError()
+            }
+            deletedWalletIds.append(walletId)
+            sends[walletId] = nil
+        }
+    }
+}
+
+extension HwRetainedSendService {
+    /// Lets a test build a coordinator without touching the real keychain record.
+    static func inMemory() -> HwRetainedSendService {
+        HwRetainedSendService(store: MockHwRetainedSendStore())
+    }
+}
+
+extension Keychain {
+    /// Clears the retained sends of every wallet id the tests pay from. Not `wipeEntireKeychain`: this runs before each test, and
+    /// that wipe would also clear unrelated entries and throw when the host app writes one again while it checks its result.
+    static func deleteAllRetainedHwSends() throws {
+        let walletIds = [
+            "hardware", "jade:other-wallet", "jade:wallet", "other", "trezor:original-ios-wallet",
+            "trezor:other", "trezor:selected", "trezor:test-wallet", "trezor:wallet", "wallet",
+        ]
+        for walletId in walletIds {
+            try delete(key: .hwRetainedSend(walletId: walletId))
+        }
     }
 }
 

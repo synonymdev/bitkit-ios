@@ -5,6 +5,14 @@ class ElectrumConfigService {
     private let defaults: UserDefaults
     private let serverKey = "electrumServer"
 
+    /// Mainnet servers Bitkit used to ship as its default. Both fail TLS now (expired and self-signed certificates),
+    /// so the node never starts on them. A wallet carries one only because an older build or a SETTINGS backup
+    /// stored the default of its time, so they are dropped in favour of the current default.
+    static let retiredDefaultServerUrls: Set<String> = [
+        "ssl://fulcrum.bitkit.blocktank.to:8900",
+        "ssl://35.187.18.233:8900",
+    ]
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
@@ -15,16 +23,45 @@ class ElectrumConfigService {
         return storedServer ?? getDefaultServer()
     }
 
-    /// Gets the stored server configuration, if any
+    /// Gets the stored server configuration, if any. A stored retired default is cleared and reported as none.
     func getStoredServer() -> ElectrumServer? {
         guard let electrumServerData = defaults.data(forKey: serverKey), !electrumServerData.isEmpty else { return nil }
 
+        let server: ElectrumServer
         do {
-            return try JSONDecoder().decode(ElectrumServer.self, from: electrumServerData)
+            server = try JSONDecoder().decode(ElectrumServer.self, from: electrumServerData)
         } catch {
             Logger.error(error, context: "Failed to decode Electrum server config")
             return nil
         }
+
+        if isRetiredDefault(server) {
+            defaults.removeObject(forKey: serverKey)
+            Logger.info("Cleared retired default Electrum server: \(server.fullUrl)")
+            return nil
+        }
+        return server
+    }
+
+    /// The server a SETTINGS backup should carry: only one the user chose, never the default, so a restore follows
+    /// whatever the default is at that time.
+    func getCustomServerForBackup() -> ElectrumServer? {
+        guard let server = getStoredServer(), !isDefault(server) else { return nil }
+        return server
+    }
+
+    /// Hostnames are case-insensitive, so a case variant of the default host is the default.
+    func isDefault(_ server: ElectrumServer) -> Bool {
+        server.fullUrl.lowercased() == getDefaultServer().fullUrl.lowercased()
+    }
+
+    func isRetiredDefault(_ server: ElectrumServer) -> Bool {
+        Self.retiredDefaultServerUrls.contains(server.fullUrl.lowercased())
+    }
+
+    /// Removes the stored server so the default applies
+    func clearStoredServer() {
+        defaults.removeObject(forKey: serverKey)
     }
 
     /// Gets the default server parsed from Env.electrumServerUrl

@@ -17,6 +17,9 @@ struct SpendingAmountHw: View {
     @State private var isPricingFailed = false
     @State private var maxAttempt = 0
     @State private var isPricing = false
+    /// The amount of a retained transfer a Retry would send again. It was fundable when signed, so it stays accepted even
+    /// above today's maximum.
+    @State private var retainedRetrySats: UInt64?
 
     private var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -31,7 +34,19 @@ struct SpendingAmountHw: View {
     }
 
     private var isValidAmount: Bool {
-        !isLoading && !isPricingFailed && amountSats > 0 && amountSats <= maxAllowed
+        !isLoading && !isPricingFailed && amountSats > 0
+            && SendAmountView.isWithinSendableLimit(amountSats: amountSats, availableSats: maxAllowed, retainedRetrySats: retainedRetrySats)
+    }
+
+    /// The most the number pad accepts: today's maximum, or a retained amount above it.
+    private var inputCap: UInt64 {
+        SendAmountView.amountInputCap(availableSats: maxAllowed, retainedRetrySats: retainedRetrySats) ?? maxAllowed
+    }
+
+    /// A transfer below the claim minimum stays on this screen. A Retry of a retained transfer passed that check when it was
+    /// signed, and sending its bytes again changes nothing on chain, so today's claim fee doesn't hold it up.
+    static func isBelowClaimFee(_ quote: SparkTransferQuote, isRetainedRetry: Bool) -> Bool {
+        !isRetainedRetry && !quote.coversClaimFee
     }
 
     var body: some View {
@@ -48,8 +63,6 @@ struct SpendingAmountHw: View {
                 }
                 .padding(.top, 32)
 
-            Spacer()
-
             HStack(alignment: .bottom) {
                 availableAmount
 
@@ -57,9 +70,12 @@ struct SpendingAmountHw: View {
 
                 actionButtons
             }
-            .padding(.bottom, 12)
+            .padding(.top, 32)
+            .padding(.bottom, 16)
 
             Divider()
+
+            Spacer()
 
             NumberPad(
                 type: amountViewModel.getNumberPadType(currency: currency),
@@ -84,8 +100,11 @@ struct SpendingAmountHw: View {
         .task(id: maxAttempt) {
             await loadAvailable()
         }
+        // The confirm screen's fees switch the display unit, so the kept amount follows it on the way back.
+        .onAppear { amountViewModel.refreshDisplay(currency: currency) }
         .onChange(of: maxAllowed, initial: true) { updateInputCap() }
         .onChange(of: isLoading) { updateInputCap() }
+        .onChange(of: retainedRetrySats) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
     }
 
@@ -121,9 +140,10 @@ struct SpendingAmountHw: View {
         isPricing = true
         defer { isPricing = false }
         let shownPath = navigation.path
-        if let quote = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager),
-           !quote.coversClaimFee
-        {
+        let priced = await SpendingHwSign.refreshQuote(
+            flow: flow, wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager
+        )
+        if let quote = priced.quote, Self.isBelowClaimFee(quote, isRetainedRetry: priced.isRetainedRetry) {
             if navigation.path == shownPath {
                 app.toastBelowClaimFee(quote)
             }
@@ -136,8 +156,11 @@ struct SpendingAmountHw: View {
     private func loadAvailable() async {
         isPricingFailed = false
         flow.hwSend.selectWallet(walletId, initialAvailableSats: 0, showsLoading: true)
+        // A new transfer starts here. Learn More can leave the sign screen without cancelling it, so an earlier consent ends here.
+        flow.hwSend.endRetainedSendConsent()
         do {
             let address = try await SparkManager.shared.depositAddress()
+            retainedRetrySats = await flow.hwSend.retainedRetrySats(address: address, hasIncomingRequest: false)
             guard let feeRates = await feeEstimatesManager.getEstimates(refresh: false) else {
                 throw AppError(message: t("lightning__spending_amount__error_fee"), debugMessage: "No fee estimates")
             }
@@ -152,17 +175,17 @@ struct SpendingAmountHw: View {
 
     private func updateInputCap() {
         guard !isLoading else { return }
-        amountViewModel.maxAmountOverride = maxAllowed
+        amountViewModel.maxAmountOverride = inputCap
     }
 
     private func onMaxExceeded() {
-        amountViewModel.updateFromSats(maxAllowed, currency: currency)
+        amountViewModel.updateFromSats(inputCap, currency: currency)
         app.toast(
             type: .warning,
             title: t("lightning__spending_amount__error_max__title"),
             description: t(
                 "lightning__spending_amount__error_max__description",
-                variables: ["amount": CurrencyFormatter.formatSats(maxAllowed)]
+                variables: ["amount": CurrencyFormatter.formatSats(inputCap)]
             ),
             visibilityTime: Toast.visibilityTimeShort,
             accessibilityIdentifier: "HardwareTransferAmountExceededToast"

@@ -1,5 +1,6 @@
 import BitkitCore
 import Combine
+import CryptoKit
 import Foundation
 import Network
 import Paykit
@@ -143,7 +144,14 @@ class BackupService {
         connectionRecovery ?? .shared
     }
 
+    /// The prefix of the remote keys of exit data Spark rejected for good: each copy goes under this plus `_` and the first
+    /// 16 hex digits of its SHA-256.
+    static let sparkExitRejectedKey = "SPARK_EXIT_REJECTED"
     private let backupData: ((BackupCategory) async throws -> Data)?
+    private let importStagedSparkExit: () async -> SparkStagedExitImport
+    private let discardStagedSparkExit: (String) async -> Void
+    private let stagedSparkExitState: () async throws -> String?
+    private let restoreExitBackup: (SparkExitBackupV1) async throws -> Void
     private let isSparkExitActive: () async -> Bool
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
@@ -194,9 +202,25 @@ class BackupService {
         },
         fetchBackup: @escaping (String) async throws -> Data? = { key in
             try await VssBackupClient.shared.getObject(key: key)?.value
+        },
+        importStagedSparkExit: @escaping () async -> SparkStagedExitImport = { @MainActor in
+            await SparkManager.shared.importStagedExitState(walletIndex: LightningService.shared.currentWalletIndex)
+        },
+        discardStagedSparkExit: @escaping (String) async -> Void = { @MainActor exitState in
+            SparkManager.shared.discardStagedExitState(exitState, walletIndex: LightningService.shared.currentWalletIndex)
+        },
+        stagedSparkExitState: @escaping () async throws -> String? = { @MainActor in
+            try SparkManager.shared.stagedExitState(walletIndex: LightningService.shared.currentWalletIndex)
+        },
+        restoreExitBackup: @escaping (SparkExitBackupV1) async throws -> Void = { @MainActor backup in
+            try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
         }
     ) {
         self.defaults = defaults
+        self.importStagedSparkExit = importStagedSparkExit
+        self.discardStagedSparkExit = discardStagedSparkExit
+        self.stagedSparkExitState = stagedSparkExitState
+        self.restoreExitBackup = restoreExitBackup
         self.isSparkExitActive = isSparkExitActive
         self.fetchBackup = fetchBackup
         self.connectionRecovery = connectionRecovery
@@ -489,9 +513,33 @@ class BackupService {
                     await restoreSparkExit()
                 }
                 guard !defaults.bool(forKey: Self.sparkExitRestorePendingKey) else { throw SparkExitBackupError.restorePending }
-                // Restored exit data Spark couldn't import yet lives only in the remote backup, so nothing replaces it.
-                guard await !SparkManager.shared.hasStagedExitState(walletIndex: LightningService.shared.currentWalletIndex) else {
+                // Restored exit data Spark couldn't import yet lives only in the remote backup, so nothing replaces it, unless
+                // Spark can never import it: then a copy of it is set aside and fresh exports go up again.
+                switch await importStagedSparkExit() {
+                case .pending:
                     throw SparkExitBackupError.restorePending
+                case .rejected:
+                    var isReplacedRemotely = false
+                    let staged = try await stagedSparkExitState()
+                    if let staged {
+                        let copy = try await rejectedSparkExitCopy(staged: staged)
+                        try await setAsideRejectedSparkExit(copy.data)
+                        isReplacedRemotely = copy.isReplacedRemotely
+                    }
+                    // Another device replaced the backup with exit data this one never read, so it is restored before
+                    // anything replaces it; noted before the staged copy goes, so a stop in between still restores it.
+                    if isReplacedRemotely {
+                        defaults.set(true, forKey: Self.sparkExitRestorePendingKey)
+                    }
+                    if let staged {
+                        await discardStagedSparkExit(staged)
+                    }
+                    if isReplacedRemotely {
+                        await restoreSparkExit()
+                        throw SparkExitBackupError.restorePending
+                    }
+                case .nothingStaged, .imported:
+                    break
                 }
                 // Nothing to back up until Spark connects, which marks this category required again.
                 if let data = try await sparkExitBackupData() {
@@ -910,6 +958,7 @@ class BackupService {
                 SparkExitEarlierAddressBackup.restore(payload.sparkExitEarlierAddresses, network: "\(Env.network)") {
                     SparkExitEarlierAddressStore(walletIndex: $0)
                 }
+                await MoveToSparkPayments.restore(payload.moveToSparkPaymentHashes)
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
@@ -1065,6 +1114,15 @@ class BackupService {
             }
             .store(in: &listeners)
 
+        // METADATA (moves to Spark). Marked as the hash is saved, so a stop right after can't leave a later Activity backup
+        // holding the move without the metadata that names it one.
+        MoveToSparkPayments.savedPublisher
+            .sink { @Sendable [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: cancellables)
+
         // APP STATE (UserDefaults changes, etc.)
         SettingsViewModel.shared.appStatePublisher
             .sink { @Sendable [weak self] _ in
@@ -1176,8 +1234,17 @@ class BackupService {
 
     /// Called on the backup queue with admission open for this generation.
     private func enqueueBackup(category: BackupCategory, generation: UInt64, initialOutcome: BackupOutcome) {
-        guard backupJobs[category] == nil, getBackupStatus(category: category).isRequired,
-              !shouldSkipBackup(category: category) else { return }
+        // A request made before a wipe or restore began can arrive after it: drop it, and clear a running flag left with no
+        // job, which would otherwise keep the category from being scheduled again
+        guard !shouldSkipBackup(category: category) else {
+            if backupJobs[category] == nil, runningBackupTasks[category] == nil, getBackupStatus(category: category).running {
+                updateBackupStatus(category: category) { status in
+                    BackupItemStatus(synced: status.synced, required: status.required, running: false)
+                }
+            }
+            return
+        }
+        guard backupJobs[category] == nil, getBackupStatus(category: category).isRequired else { return }
         updateBackupStatus(category: category) { status in
             BackupItemStatus(synced: status.synced, required: status.required, running: true)
         }
@@ -1517,6 +1584,7 @@ class BackupService {
             // case to guard against. Nil rather than an empty map when nothing is named, so an
             // envelope this app writes stays byte-comparable with one bitkit-android writes.
             let hwWalletNames = HwKnownDeviceStorage.backupSnapshot()
+            let moveToSparkPaymentHashes = await MoveToSparkPayments.backupSnapshot()
 
             let payload = MetadataBackupV1(
                 version: 1,
@@ -1529,7 +1597,8 @@ class BackupService {
                 sparkExitEarlierAddresses: SparkExitEarlierAddressBackup.backup(
                     SparkExitEarlierAddressStore(walletIndex: LightningService.shared.currentWalletIndex),
                     walletKey: SparkExitFundingIndexes.walletKey(network: "\(Env.network)", walletIndex: LightningService.shared.currentWalletIndex)
-                )
+                ),
+                moveToSparkPaymentHashes: moveToSparkPaymentHashes.isEmpty ? nil : moveToSparkPaymentHashes
             )
             return try JSONEncoder().encode(payload)
 
@@ -1588,9 +1657,21 @@ class BackupService {
         defaults.set(true, forKey: Self.sparkExitRestorePendingKey)
         do {
             if let data = try await fetchBackup(BackupCategory.sparkExit.rawValue) {
-                let backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: data)
-                try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
-                Logger.info("Restore success for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
+                let backup: SparkExitBackupV1
+                do {
+                    backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: data)
+                } catch let error as Swift.DecodingError {
+                    // A layout this app can't read never becomes readable here, so it is kept apart for an app that can.
+                    Logger.warn("Unreadable '\(BackupCategory.sparkExit.rawValue)' backup: \(error)", context: "BackupService")
+                    try await setAsideRejectedSparkExit(data)
+                    // Another device may have written a backup meanwhile; it is read before anything replaces it.
+                    guard try await fetchBackup(BackupCategory.sparkExit.rawValue) == data else { return }
+                    defaults.removeObject(forKey: Self.sparkExitRestorePendingKey)
+                    return
+                }
+                try await restoreExitBackup(backup)
+                // Spark imports it only once connected, and may still reject it then.
+                Logger.info("Staged '\(BackupCategory.sparkExit.rawValue)' for Spark's import", context: "BackupService")
             } else {
                 Logger.warn("Restore null for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
             }
@@ -1598,6 +1679,38 @@ class BackupService {
         } catch {
             Logger.warn("Restore error for: '\(BackupCategory.sparkExit.rawValue)': \(error)", context: "BackupService")
         }
+    }
+
+    /// The remote exit backup when it still holds the staged data, byte for byte as it came; otherwise, as another device
+    /// may have replaced it since, the staged data in a backup of its own, and whether the remote holds other data.
+    private func rejectedSparkExitCopy(staged: String) async throws -> (data: Data, isReplacedRemotely: Bool) {
+        let remote = try await fetchBackup(BackupCategory.sparkExit.rawValue)
+        let remoteBackup = remote.flatMap { try? JSONDecoder().decode(SparkExitBackupV1.self, from: $0) }
+        if let remote, remoteBackup?.exitState == staged {
+            return (remote, false)
+        }
+        let copy = try JSONEncoder().encode(SparkExitBackupV1(
+            version: 1,
+            createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
+            network: remoteBackup?.network ?? SparkManager.exitBackupNetworkName(Env.network),
+            exitState: staged
+        ))
+        return (copy, remote != nil)
+    }
+
+    /// Keeps exit data Spark can never import under a key of its own, so a fresh export doesn't replace it and it stays
+    /// recoverable. The key is derived from the data, so devices setting different copies aside at once never overwrite
+    /// each other's. Nothing reads them back yet.
+    private func setAsideRejectedSparkExit(_ data: Data) async throws {
+        let key = Self.rejectedSparkExitKey(for: data)
+        guard try await fetchBackup(key) == nil else { return }
+        try await uploadBackup(key, data)
+        Logger.warn("Set Spark exit data Spark can't import aside as '\(key)'", context: "BackupService")
+    }
+
+    static func rejectedSparkExitKey(for data: Data) -> String {
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return sparkExitRejectedKey + "_" + digest.prefix(16)
     }
 
     /// Nothing while an exit runs: the operators may stop reporting a leaf once it is being exited, so a fresh export
@@ -1703,6 +1816,7 @@ final class WalletBackupChangeTracker {
             PaykitSubscriptionStateStore.walletBackupDataChangedPublisher,
             PaykitPaymentRequestIdStore.walletBackupDataChangedPublisher,
             PaykitAllowanceKeychainStore.walletBackupDataChangedPublisher,
+            PaykitOutboundDeliveryLog.walletBackupDataChangedPublisher,
             PaykitPaymentProofService.proofStateChangedPublisher,
             OnchainSendAttemptStore.walletBackupDataChangedPublisher,
             UsdtWalletManager.walletBackupDataChangedPublisher,

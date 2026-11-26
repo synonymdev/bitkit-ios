@@ -1361,6 +1361,107 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertFalse(manager.sessionRestorationFailed)
     }
 
+    func testDisconnectOnlyForgetsAnIdentityThatNeverRestored() async throws {
+        let calls = LockedCalls()
+
+        try await PubkyProfileManager.signOutCleanup(
+            isRestored: false,
+            forgetSessionAccess: { calls.append("forget") },
+            dropPendingEndpointCleanup: { calls.append("dropCleanup") },
+            signOutRestored: { calls.append("signOut") }
+        )
+        try await PubkyProfileManager.signOutCleanup(
+            isRestored: true,
+            forgetSessionAccess: { calls.append("forget") },
+            dropPendingEndpointCleanup: { calls.append("dropCleanup") },
+            signOutRestored: { calls.append("signOut") }
+        )
+
+        XCTAssertEqual(calls.values, ["forget", "dropCleanup", "signOut"])
+    }
+
+    @MainActor
+    func testDisconnectForgetsAProfileThatNeedsAnUpdate() async throws {
+        try await withEmptyIdentityStorage {
+            let manager = RecoveryProfileManager()
+            let calls = LockedCalls()
+            await manager.initialize { .restorationNeedsUpdate }
+            XCTAssertTrue(manager.restorationNeedsUpdate)
+
+            try await manager.signOutOrForget(
+                allowDuringProfileDeletion: false,
+                forgetSessionAccess: { calls.append("forget") },
+                signOutRestored: { calls.append("signOut") }
+            )
+
+            XCTAssertEqual(calls.values, ["forget"])
+            XCTAssertNil(manager.publicKeyForDisplay)
+            XCTAssertFalse(manager.restorationNeedsUpdate)
+        }
+    }
+
+    @MainActor
+    func testDisconnectSignsOutAProfileRestoredWhileItWaits() async throws {
+        try await withEmptyIdentityStorage {
+            let manager = RecoveryProfileManager()
+            let calls = LockedCalls()
+            let started = expectation(description: "Restore started")
+            let (resume, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let restore = Task {
+                await manager.initialize {
+                    started.fulfill()
+                    for await _ in resume {}
+                    return .restored(publicKey: "restored-identity")
+                }
+            }
+            await fulfillment(of: [started], timeout: 2)
+
+            let disconnect = Task {
+                try await manager.signOutOrForget(
+                    allowDuringProfileDeletion: false,
+                    forgetSessionAccess: { calls.append("forget") },
+                    signOutRestored: { calls.append("signOut") }
+                )
+            }
+            for _ in 0 ..< 5 {
+                await Task.yield()
+            }
+            XCTAssertTrue(calls.values.isEmpty)
+            continuation.finish()
+            await restore.value
+            try await disconnect.value
+
+            XCTAssertEqual(calls.values, ["signOut"])
+        }
+    }
+
+    @MainActor
+    func testRecoveryAsksForAnUpdateOnceAndStopsRetryingWhenPaykitStateIsNewer() async {
+        let manager = RecoveryProfileManager()
+        manager.isInitialized = true
+
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restorationNeedsUpdate }
+        XCTAssertTrue(manager.sessionRestorationNeedsUpdate)
+        XCTAssertFalse(manager.sessionRestorationFailed)
+
+        manager.sessionRestorationNeedsUpdate = false
+        let attempts = SessionRecoveryAttempts()
+        await manager.retrySessionRestoration(sleep: { _ in XCTFail("Retried after newer Paykit state") }, hasStoredIdentity: { true }) {
+            _ = await attempts.next()
+            return .restorationNeedsUpdate
+        }
+        let attemptCount = await attempts.next() - 1
+        XCTAssertEqual(attemptCount, 1)
+        XCTAssertFalse(manager.sessionRestorationNeedsUpdate)
+        XCTAssertTrue(manager.restorationNeedsUpdate)
+
+        manager.sessionRestorationNeedsUpdate = true
+        manager.clearAuthenticatedStateForTesting()
+        XCTAssertFalse(manager.restorationNeedsUpdate)
+        XCTAssertFalse(manager.sessionRestorationNeedsUpdate)
+    }
+
     @MainActor
     func testAutomaticRecoveryDoesNotRepeatFailureNotificationAndClearsStaleErrorOnSuccess() async {
         let manager = RecoveryProfileManager()
@@ -4658,5 +4759,18 @@ private final class ObservedProfileReadManager: PubkyProfileManager {
     override func loadProfile() async {
         await super.loadProfile()
         completedReads += 1
+    }
+}
+
+private final class LockedCalls: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [String] = []
+
+    var values: [String] {
+        lock.withLock { calls }
+    }
+
+    func append(_ call: String) {
+        lock.withLock { calls.append(call) }
     }
 }

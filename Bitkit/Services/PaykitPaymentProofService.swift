@@ -413,7 +413,8 @@ actor PaykitPaymentProofService {
                                                 pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active,
                                                 acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
                                                     .backupSnapshot(),
-                                                allowances: PaykitAllowanceKeychainStore().backupSnapshot())
+                                                allowances: PaykitAllowanceKeychainStore().backupSnapshot(),
+                                                sentReceipts: PaykitOutboundDeliveryLog.shared.backupSnapshot())
         }
     }
 
@@ -431,6 +432,9 @@ actor PaykitPaymentProofService {
         try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).restoreBackup(state.acceptedOneTimeRequests ?? [:])
         if let allowances = state.allowances {
             PaykitAllowanceKeychainStore().restoreBackup(allowances, keepsLedgerFloors: hasLedger)
+        }
+        if let sentReceipts = state.sentReceipts {
+            PaykitOutboundDeliveryLog.shared.restoreBackup(sentReceipts)
         }
     }
 
@@ -1383,6 +1387,8 @@ actor PaykitPaymentProofService {
             // The local deadline gate runs before submitting to the node.
         } else if underlyingError is ChannelFreeRailSendRefused {
             // Spark refused it before sending: not connected, not preparable, or over the fee limit.
+        } else if underlyingError is MoveToSparkError {
+            // Any failed spending balance update happens before the invoice is paid, so nothing was sent.
         } else if let serviceError = underlyingError as? CustomServiceError {
             guard serviceError == .nodeNotSetup || serviceError == .nodeNotStarted else { return false }
         } else if let nodeError = underlyingError as? NodeError {

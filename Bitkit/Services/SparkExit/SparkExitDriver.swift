@@ -77,6 +77,10 @@ struct SparkExitDriver {
     @discardableResult
     func tick(_ record: SparkExitRecord) async throws -> SparkExitRecord {
         var record = record
+        // A Redo's fee ask ended on an earlier tick, so its withdrawal was already seen.
+        if record.isRedoAsk == true, record.phase.requiredFundingSats == nil {
+            record.isRedoAsk = nil
+        }
         switch record.phase {
         case .done, .failed:
             guard record.needsDriving, !Task.isCancelled else { return record }
@@ -338,6 +342,7 @@ struct SparkExitDriver {
             record.isRebuilding = true
             record.isRedoRebuild = true
             record.isUnverifiedAsk = nil
+            record.isRedoAsk = true
         }
     }
 
@@ -446,7 +451,7 @@ struct SparkExitDriver {
             // Only cooperative leaves the operators could not co-sign: kept as the exit's recovery, so the next check
             // puts them through the bounded failed-leaf retry (about a week), with the operators-waiting line.
             if !built.failed.isEmpty {
-                if holdsRedo(&record, waiting: waitingLeafIds, tip: tip) {
+                if holdsRedo(&record, waiting: waitingLeafIds, tip: tip, isBuilt: true) {
                     return
                 }
                 record.adopt(built, at: now())
@@ -479,7 +484,7 @@ struct SparkExitDriver {
         }
         // A diverged generation is never sent again, so a Redo rebuild that leaves out a waiting leaf it recovers would
         // leave that leaf unsent until the rest of the exit is done: it tries again at its usual pace for a few blocks.
-        if holdsRedo(&record, waiting: waitingLeafIds, tip: tip) {
+        if holdsRedo(&record, waiting: waitingLeafIds, tip: tip, isBuilt: true) {
             return
         }
         record.adopt(built, at: now())
@@ -754,6 +759,10 @@ struct SparkExitDriver {
             utxos = try? await chain.utxos(address: address)
         }
         record.phase = .needsFunding(requiredSats: SparkExitMath.neededFunding(requiredSats: requiredSats, record: record, utxos: utxos))
+        // A Redo rebuild's ask ends once the funding it holds pays for a later build.
+        if record.isRedoRebuild == true {
+            record.isRedoAsk = true
+        }
     }
 
     /// Leaves a build skipped while they may still move (`waitingLeafIds`), prepared again on their own once the rest of
@@ -1009,8 +1018,9 @@ struct SparkExitDriver {
     }
 
     /// A Redo rebuild that leaves out a waiting leaf the diverged generation recovers is not adopted for
-    /// `redoHoldBlocks` from the first such build: it stays rebuilding, at the rebuild pace.
-    private func holdsRedo(_ record: inout SparkExitRecord, waiting: [String], tip: UInt32?) -> Bool {
+    /// `redoHoldBlocks` from the first such build: it stays rebuilding, at the rebuild pace. `isBuilt` when the funding
+    /// the exit holds paid for the build.
+    private func holdsRedo(_ record: inout SparkExitRecord, waiting: [String], tip: UInt32?, isBuilt: Bool = false) -> Bool {
         guard record.isRedoRebuild == true,
               record.recovery?.response.leaves.contains(where: { waiting.contains($0.leafId) }) == true
         else { return false }
@@ -1022,8 +1032,9 @@ struct SparkExitDriver {
         Logger.info("Holding the Spark exit's Redo rebuild for waiting leaves \(waiting)", context: "SparkExitDriver")
         record.redoHeldSince = since
         record.lastBuildAt = now()
-        // Funding a top-up already covered runs the hold at the rebuild pace, with no fee ask on screen.
-        if record.phase != .running, record.fundingShortfallSats == nil {
+        // A build the held funding paid for, or funding a top-up already covered, runs the hold at the rebuild pace, with
+        // no fee ask on screen; a later build that is short asks again.
+        if record.phase != .running, isBuilt || record.fundingShortfallSats == nil {
             record.phase = .running
         }
         return true

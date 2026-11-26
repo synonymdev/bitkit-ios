@@ -4,7 +4,6 @@ struct TabBar: View {
     @Environment(CalculatorInputManager.self) private var calculatorInput
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
-    @EnvironmentObject var wallet: WalletViewModel
 
     var shouldShow: Bool {
         if calculatorInput.isPresented {
@@ -72,30 +71,11 @@ struct TabBar: View {
             return
         }
 
-        let hasPendingTransfersToSpending = wallet.balanceInTransferToSpending > 0
-
-        if Self.shouldOpenSpendingTransferUnavailable(
-            isSpendingWallet: navigation.currentRoute == .spendingWallet,
-            wallet: wallet,
-            hasPendingTransfersToSpending: hasPendingTransfersToSpending
-        ) {
-            // Spending can't receive without inbound capacity, and Blocktank no longer sells it.
-            sheets.showSheet(.receive, data: ReceiveConfig(view: .transferUnavailable))
-        } else {
-            sheets.showSheet(.receive)
-        }
+        sheets.showSheet(.receive)
     }
 
     private func onScanPress() {
         sheets.showSheet(.scanner)
-    }
-
-    static func shouldOpenSpendingTransferUnavailable(
-        isSpendingWallet: Bool,
-        wallet: WalletViewModel,
-        hasPendingTransfersToSpending: Bool
-    ) -> Bool {
-        isSpendingWallet && !wallet.canCreateReceiveLightningInvoice(amountSats: nil) && !hasPendingTransfersToSpending
     }
 }
 

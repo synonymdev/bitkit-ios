@@ -26,6 +26,14 @@ final class SparkManager: ChannelFreeLightningRail {
         exitStateLock.withLock { exitStateGenerationValue }
     }
 
+    private nonisolated(unsafe) static var exitStartsValue = 0
+
+    /// Bumped only when an exit becomes active, read off the main actor, so a channel payment LDK is about to submit for a
+    /// move sees the exit at once; connects and exit data changes leave it alone.
+    nonisolated static var exitStarts: Int {
+        exitStateLock.withLock { exitStartsValue }
+    }
+
     nonisolated static func notifyExitStateChanged() {
         exitStateLock.withLock { exitStateGenerationValue += 1 }
         exitStateChanged.send()
@@ -61,6 +69,11 @@ final class SparkManager: ChannelFreeLightningRail {
     /// The balance Home and the Spark connection show.
     var shownBalanceSats: UInt64 {
         keptBalanceSats ?? balanceSats
+    }
+
+    /// Spark can take payments: connected, and no force transfer to savings running.
+    var isReceiving: Bool {
+        isReady && !isExiting
     }
 
     /// The balance Spending and its connections show: 0 during an emergency exit, whose amount shows in transfer to
@@ -138,7 +151,18 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Whether savings or a hardware wallet can fund Spark: its deposit goes out on Bitkit's chain, which Spark must read.
     var canFundFromChain: Bool {
-        isReady && Self.readsBitkitChain(network: Env.network, chainServiceUrl: Env.sparkChainServiceUrl(for: Env.network))
+        isReady && readsSavingsChain
+    }
+
+    var readsSavingsChain: Bool {
+        if let fixtureURL = Env.localSparkSettings.chainURL {
+            return Env.sharesLocalSparkChain(
+                sparkURL: fixtureURL,
+                nodeElectrumURL: LightningService.shared.activeElectrumServerUrl,
+                hardwareElectrumURL: OnChainHwService.getElectrumUrl()
+            )
+        }
+        return Self.readsBitkitChain(network: Env.network, chainServiceUrl: Env.sparkChainServiceUrl(for: Env.network))
     }
 
     /// On mainnet both read Bitcoin; Spark's default regtest is its own chain, so a regtest deposit reaches Spark only
@@ -162,6 +186,7 @@ final class SparkManager: ChannelFreeLightningRail {
         if LightningService.shared.channelFreeRail === self {
             LightningService.shared.channelFreeRail = nil
         }
+        Self.exitStateLock.withLock { Self.exitStartsValue += 1 }
     }
 
     /// Saves the kept balance as an exit starts, before a refresh reads Spark as exiting and drops it: a cancelled
@@ -367,6 +392,11 @@ final class SparkManager: ChannelFreeLightningRail {
         .bolt11Invoice(preferSpark: prefersSpark, completionTimeoutSecs: nil)
     }
 
+    /// The network name an exit backup carries: Spark's, which names Bitcoin's main network `mainnet`.
+    nonisolated static func exitBackupNetworkName(_ network: LDKNode.Network) -> String {
+        network == .bitcoin ? "\(BreezSdkSpark.Network.mainnet)" : "\(network)"
+    }
+
     private static var sparkNetwork: BreezSdkSpark.Network? {
         switch Env.network {
         case .bitcoin: Env.breezApiKey == nil ? nil : .mainnet
@@ -399,6 +429,7 @@ final class SparkManager: ChannelFreeLightningRail {
             // Registered before the first refresh marks Spark ready, so Lightning calls never see it ready while they
             // still go to LDK, even when that refresh or the activity sync fails. An emergency exit keeps it out.
             LightningService.shared.channelFreePaymentHistory = self
+            LightningService.shared.railSendExpired = { [weak self] hash in await self?.recordExpiredSend(paymentHash: hash) ?? false }
             if !isExiting {
                 LightningService.shared.channelFreeRail = self
             }
@@ -446,14 +477,15 @@ final class SparkManager: ChannelFreeLightningRail {
             throw CustomServiceError.mnemonicNotFound
         }
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
-        let config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey, isExiting: isExiting)
+        var config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey, isExiting: isExiting)
+        let chainAPI = try Self.configureLocalSpark(&config)
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
         // What `BreezSdkSpark.connect` builds, plus our own chain service where Env names one.
         let builder = SdkBuilder(config: config, seed: .mnemonic(mnemonic: mnemonic, passphrase: passphrase))
         await builder.withDefaultStorage(storageDir: storageDir.path)
         if let chainServiceUrl = Env.sparkChainServiceUrl(for: Env.network) {
-            await builder.withRestChainService(url: chainServiceUrl, apiType: .esplora, credentials: nil)
+            await builder.withRestChainService(url: chainServiceUrl, apiType: chainAPI, credentials: nil)
         }
         syncedThisRun = false
         let connected = try await builder.build()
@@ -468,6 +500,26 @@ final class SparkManager: ChannelFreeLightningRail {
         Logger.info("Connected Spark wallet on '\(network)'", context: "SparkManager")
         await importRestoredExitState(walletIndex: walletIndex)
         Self.notifyExitStateChanged()
+    }
+
+    private nonisolated static func configureLocalSpark(_ config: inout BreezSdkSpark.Config) throws -> ChainApiType {
+        let settings = Env.localSparkSettings
+        if settings.configBase64 == nil, settings.chainURL == nil {
+            return .esplora
+        }
+        guard let encoded = settings.configBase64,
+              let data = Data(base64Encoded: encoded),
+              let json = String(data: data, encoding: .utf8),
+              settings.chainURL != nil
+        else {
+            throw NSError(domain: "LocalSparkConfiguration", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Local Spark requires a valid SPARK_LOCAL_CONFIG_B64 and SPARK_LOCAL_CHAIN_URL",
+            ])
+        }
+        config.sparkConfig = try parseSparkConfig(json: json)
+        // The pinned regtest operators require anchored refunds.
+        config.watchtowerFeeLadderEnabled = false
+        return .mempoolSpace
     }
 
     /// The SDK config Bitkit connects with.
@@ -729,17 +781,19 @@ final class SparkManager: ChannelFreeLightningRail {
 
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
         let payments = try await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
-        return payments.compactMap { payment in
-            guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { return nil }
-            return ChannelFreeRailPayment(
-                paymentHash: htlcDetails.paymentHash,
-                direction: payment.paymentType == .send ? .outbound : .inbound,
-                status: Self.ldkStatus(payment.status),
-                preimage: htlcDetails.preimage,
-                timestamp: payment.timestamp,
-                feeSats: Self.sats(payment.fees)
-            )
-        }
+        return payments.compactMap(Self.railPayment)
+    }
+
+    nonisolated static func railPayment(_ payment: Payment) -> ChannelFreeRailPayment? {
+        guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { return nil }
+        return ChannelFreeRailPayment(
+            paymentHash: htlcDetails.paymentHash,
+            direction: payment.paymentType == .send ? .outbound : .inbound,
+            status: ldkStatus(payment.status),
+            preimage: htlcDetails.preimage,
+            timestamp: payment.timestamp,
+            feeSats: sats(payment.fees)
+        )
     }
 
     nonisolated func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64 {
@@ -793,6 +847,12 @@ final class SparkManager: ChannelFreeLightningRail {
         return SparkClaimOffer(txid: deposit.txid, vout: deposit.vout, quote: quote)
     }
 
+    /// Whether Spark still lists the deposit in `txid` as unclaimed. Asks no provider for a quote.
+    func isDepositUnclaimed(txid: String) async throws -> Bool {
+        let unclaimed = try await requireSdk().listUnclaimedDeposits(request: ListUnclaimedDepositsRequest()).deposits
+        return unclaimed.contains { $0.txid.caseInsensitiveCompare(txid) == .orderedSame }
+    }
+
     /// Clears the fee cap an early claim of `offer` left on its deposit, back to the configured one, which never claims
     /// early (`sdkConfig`): a claim that names no cap clears the stored one before it is attempted. False when the cap
     /// may still be there: the call failed, or another claim of the deposit held it, which leaves the cap unchanged.
@@ -806,14 +866,14 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
-    /// Accepts the early claim of `offer` at its quoted fee. The fee ceiling stays on the deposit, so an early claim
-    /// not offered at this depth is still made once the provider offers it.
-    func claimEarly(_ offer: SparkClaimOffer) async throws -> SparkEarlyClaim {
+    /// Accepts the early claim of `offer`, capped at `ceilingSats`, the fee the user approved. The cap stays on the
+    /// deposit, so an early claim not offered at this depth is still made once the provider offers it within the cap.
+    func claimEarly(_ offer: SparkClaimOffer, ceilingSats: UInt64) async throws -> SparkEarlyClaim {
         guard case let .choice(earlyFeeSats, _, _, _) = offer.kind else { return .claimed }
         let request = ClaimDepositRequest(
             txid: offer.txid,
             vout: offer.vout,
-            maxFee: MaxFee(onchain: .fixed(amount: earlyFeeSats), proportionalPpm: nil)
+            maxFee: MaxFee(onchain: .fixed(amount: max(earlyFeeSats, ceilingSats)), proportionalPpm: nil)
         )
         let claim: SparkEarlyClaim
         do {
@@ -1440,15 +1500,31 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
-    /// Whether restored exit data is still waiting for its import, after trying that again while connected.
-    func hasStagedExitState(walletIndex: Int) async -> Bool {
+    /// Tries the import of restored exit data again while connected, and says what became of it.
+    func importStagedExitState(walletIndex: Int) async -> SparkStagedExitImport {
         await importRestoredExitState(walletIndex: walletIndex)
-        return FileManager.default.fileExists(atPath: Env.sparkExitRestore(walletIndex: walletIndex).path)
     }
 
-    private func importRestoredExitState(walletIndex: Int) async {
+    /// The restored exit data waiting for Spark to import it, if any. Throws when a staged file can't be read.
+    func stagedExitState(walletIndex: Int) throws -> String? {
         let file = Env.sparkExitRestore(walletIndex: walletIndex)
-        guard let sdk, let data = FileManager.default.contents(atPath: file.path) else { return }
+        guard FileManager.default.fileExists(atPath: file.path) else { return nil }
+        return try String(decoding: Data(contentsOf: file), as: UTF8.self)
+    }
+
+    /// Drops restored exit data Spark rejected, once the backup set a copy of it aside, unless newer data was staged
+    /// meanwhile. Read and delete run on the main actor with no suspension between them, as staging does.
+    func discardStagedExitState(_ exitState: String, walletIndex: Int) {
+        guard (try? stagedExitState(walletIndex: walletIndex)) == exitState else { return }
+        try? FileManager.default.removeItem(at: Env.sparkExitRestore(walletIndex: walletIndex))
+    }
+
+    @discardableResult
+    private func importRestoredExitState(walletIndex: Int) async -> SparkStagedExitImport {
+        let file = Env.sparkExitRestore(walletIndex: walletIndex)
+        guard FileManager.default.fileExists(atPath: file.path) else { return .nothingStaged }
+        // A staged file that can't be read now isn't absent: nothing may replace the remote copy until it is imported.
+        guard let data = FileManager.default.contents(atPath: file.path), let sdk else { return .pending }
         do {
             let imported = try await sdk.importUnilateralExitState(
                 request: ImportUnilateralExitStateRequest(exitState: String(decoding: data, as: UTF8.self))
@@ -1459,8 +1535,10 @@ final class SparkManager: ChannelFreeLightningRail {
                     + "'\(imported.skippedConflictingLeaves)' conflicting, '\(imported.skippedChains)' already held",
                 context: "SparkManager"
             )
+            return .imported
         } catch {
             Logger.error("Failed to import Spark exit data: \(error)", context: "SparkManager")
+            return SparkStagedExitImport(importError: error)
         }
     }
 
@@ -1509,7 +1587,7 @@ final class SparkManager: ChannelFreeLightningRail {
         let known = Set(deposits.map(\.txid))
         let local = broadcastDeposits
             .filter { !known.contains($0.key) }
-            .map { SparkDeposit(txid: $0.key, amountSats: $0.value, isClaimed: false, confirmations: 0) }
+            .map { SparkDeposit(txid: $0.key, amountSats: $0.value, isClaimed: false, confirmations: 0, isListed: false) }
         guard !local.isEmpty else { return }
         deposits = local + deposits
         pendingDepositSats = deposits.filter { !$0.isClaimed }.reduce(0) { $0 + $1.amountSats }
@@ -1785,13 +1863,42 @@ final class SparkManager: ChannelFreeLightningRail {
         return result
     }
 
-    /// Payment hashes whose every Lightning send failed, so a hold on a channel retry can be released.
-    nonisolated static func failedSendHashes(_ payments: [Payment]) -> [String] {
+    /// Writes the Activity row of a send Spark never settled once its invoice expired: Spark's own attempt of it, not one
+    /// listed before it went out, or a failure of the stored pending send when Spark lists none. Returns whether it was saved.
+    private func recordExpiredSend(paymentHash: String) async -> Bool {
+        guard let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return false }
+        let isEarlierAttempt = { LightningService.shared.isEarlierRailAttempt(paymentHash: $0, createdAt: $1) }
+        if let own = Self.expiredSendAttempt(payments, paymentHash: paymentHash, isEarlierAttempt: isEarlierAttempt) {
+            return await recordActivity(own)
+        }
+        return await (try? CoreService.shared.activity.failPendingLightningSend(id: paymentHash)) != nil
+    }
+
+    /// The latest of Spark's attempts of a send whose invoice expired, none when Spark lists only attempts before it.
+    nonisolated static func expiredSendAttempt(
+        _ payments: [Payment],
+        paymentHash: String,
+        isEarlierAttempt: (_ hash: String, _ createdAt: UInt64) -> Bool
+    ) -> Payment? {
+        payments.filter { payment in
+            guard payment.paymentType == .send, case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details,
+                  htlcDetails.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame else { return false }
+            return !isEarlierAttempt(paymentHash, payment.timestamp)
+        }.max { $0.timestamp < $1.timestamp }
+    }
+
+    /// Payment hashes whose every Lightning send failed, so a hold on a channel retry can be released. A failure of an
+    /// attempt before a send Spark hasn't settled yet doesn't count: that send may still pay the invoice.
+    nonisolated static func failedSendHashes(
+        _ payments: [Payment],
+        isEarlierAttempt: (_ hash: String, _ createdAt: UInt64) -> Bool = { _, _ in false }
+    ) -> [String] {
         var failed: [String] = []
         var live: Set<String> = []
         for payment in payments where payment.paymentType == .send {
             guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { continue }
             if payment.status == .failed {
+                guard !isEarlierAttempt(htlcDetails.paymentHash, payment.timestamp) else { continue }
                 failed.append(htlcDetails.paymentHash)
             } else {
                 live.insert(htlcDetails.paymentHash)
@@ -1810,17 +1917,22 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         // A send that failed while the app was closed released no hold on a channel retry.
         await Self.releaseFailedSendHolds { try await self.requireSdk().listPayments(request: ListPaymentsRequest()).payments }
+        await LightningService.shared.endExpiredRailSendUncertainties()
         if let recordError {
             throw recordError
         }
     }
 
-    /// Releases the holds of the sends Spark's list shows failed. The list is read after the activities were recorded,
-    /// so a retry the user started meanwhile keeps its hold, as does one recorded or ending while the list is read.
+    /// Releases the holds of the sends Spark's list shows failed, first ending those it shows settled, so a later read
+    /// of Spark's history that fails doesn't hold them again. The list is read after the activities were recorded, so a
+    /// retry the user started meanwhile keeps its hold, as does one recorded or ending while the list is read.
     static func releaseFailedSendHolds(listPayments: () async throws -> [Payment]) async {
         let mark = LightningService.shared.attemptMark
+        let heldBefore = LightningService.shared.railSendHolds
         guard let latest = try? await listPayments() else { return }
-        for paymentHash in failedSendHashes(latest) {
+        LightningService.shared.settleListedRailSends(latest.compactMap(railPayment), heldBefore: heldBefore)
+        let isEarlierAttempt = { LightningService.shared.isEarlierRailAttempt(paymentHash: $0, createdAt: $1) }
+        for paymentHash in failedSendHashes(latest, isEarlierAttempt: isEarlierAttempt) {
             LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, since: mark)
         }
     }
@@ -1852,6 +1964,7 @@ final class SparkManager: ChannelFreeLightningRail {
             syncedThisRun = true
             await LightningService.shared.listRailSendsIfUnseeded()
             await refreshState()
+            await LightningService.shared.endExpiredRailSendUncertainties()
             await Self.settleAfterSync(
                 since: Self.pendingContactWithdrawal?.startedAt ?? 0,
                 hasSynced: { await self.hasSynced(after: $0) },
@@ -1865,7 +1978,7 @@ final class SparkManager: ChannelFreeLightningRail {
             await Self.handleSettledPayment(
                 payment,
                 record: { await self.recordActivity($0) },
-                emit: { LightningService.shared.emitChannelFreeRailEvent($0) },
+                emit: { LightningService.shared.emitChannelFreeRailEvent($0, paymentCreatedAt: payment.timestamp) },
                 refresh: { try await self.refresh() }
             )
         case let .paymentPending(payment):
@@ -1902,6 +2015,12 @@ final class SparkManager: ChannelFreeLightningRail {
     @discardableResult
     private func recordActivity(_ payment: Payment) async -> Bool {
         guard case let .lightning(description, invoice, _, htlcDetails, _, _, _, _) = payment.details else { return true }
+        // A failure of an attempt before a send Spark hasn't settled yet leaves that send's row pending.
+        if payment.paymentType == .send, payment.status == .failed,
+           LightningService.shared.isEarlierRailAttempt(paymentHash: htlcDetails.paymentHash, createdAt: payment.timestamp)
+        {
+            return true
+        }
         let details = PaymentDetails(
             id: htlcDetails.paymentHash,
             kind: .bolt11(
@@ -1979,9 +2098,18 @@ struct SparkDeposit: Identifiable, Equatable {
     var claimedAt: UInt64?
     /// On-chain confirmations, known for deposits this wallet sent.
     var confirmations: UInt32?
+    /// Whether Spark lists it, rather than only the app that just broadcast it.
+    var isListed = true
 
     var id: String {
         "\(txid)-\(isClaimed)"
+    }
+}
+
+extension [SparkDeposit] {
+    /// The deposit whose progress the transfer banner opens: the first one Spark has not claimed yet.
+    var inProgressTxid: String? {
+        first { !$0.isClaimed }?.txid
     }
 }
 
@@ -2032,6 +2160,25 @@ struct SparkClaimOffer: Equatable {
 struct SparkClaimFees: Equatable {
     let instantMaxSats: UInt64
     let laterSats: UInt64
+}
+
+/// What became of restored exit data staged for import.
+enum SparkStagedExitImport: Equatable {
+    case nothingStaged
+    case imported
+    /// Spark can never import it: an exit state version this SDK doesn't support, or a payload it can't parse.
+    case rejected
+    /// Not imported yet, as while Spark is not connected or the import failed for a reason that may pass.
+    case pending
+
+    /// Spark runs the import without its operators, so only invalid input fails it every time.
+    init(importError: Error) {
+        if case SdkError.InvalidInput = importError {
+            self = .rejected
+        } else {
+            self = .pending
+        }
+    }
 }
 
 /// What accepting an early claim did.

@@ -56,6 +56,8 @@ class PubkyProfileManager: ObservableObject {
         case restored(publicKey: String)
         case restorationDeferred
         case restorationFailed
+        /// The identity's shared Paykit state was saved by a newer Paykit, so only an app update can restore it.
+        case restorationNeedsUpdate
     }
 
     typealias RemoteProfileResolver = @Sendable (String) async throws -> PubkyProfile
@@ -92,6 +94,11 @@ class PubkyProfileManager: ObservableObject {
     @Published var isInitialized = false
     @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
+    @Published var sessionRestorationNeedsUpdate = false
+    /// Retrying cannot read state saved by a newer Paykit, so the retry loop stops once a restore finds it and Profile shows why.
+    @Published private(set) var restorationNeedsUpdate = false
+    /// Foreground polling restores the saved session every minute, so each saved identity asks for the update once.
+    private var updatePromptRevision: UUID?
     @Published var adoptedSourceLost = false
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
@@ -344,7 +351,7 @@ class PubkyProfileManager: ObservableObject {
         while !Task.isCancelled, revision == Self.sessionRevision {
             await restoreSessionIfNeeded(hasStoredIdentity: hasStoredIdentity, initializeSession: initializeSession)
             guard !Task.isCancelled, revision == Self.sessionRevision,
-                  !isAuthenticated, (try? hasStoredIdentity()) != false
+                  !isAuthenticated, !restorationNeedsUpdate, (try? hasStoredIdentity()) != false
             else { return }
             let nextDelay: Duration
             if sessionRestorationDeferred, deferredRetries < 8 {
@@ -371,6 +378,7 @@ class PubkyProfileManager: ObservableObject {
             isInitialized = false
             initializationErrorMessage = nil
             sessionRestorationFailed = false
+            sessionRestorationNeedsUpdate = false
         }
 
         let result: SessionInitializationResult
@@ -391,7 +399,7 @@ class PubkyProfileManager: ObservableObject {
                 sessionRestorationDeferred = false
                 readOnlyProfile = nil
                 if case .userVisible = mode {
-                    initializationErrorMessage = error.localizedDescription
+                    initializationErrorMessage = error.profileErrorDescription
                 }
                 return
             }
@@ -420,12 +428,20 @@ class PubkyProfileManager: ObservableObject {
             publicKey = pk
             authState = .authenticated
             sessionRestorationFailed = false
+            restorationNeedsUpdate = false
+            updatePromptRevision = nil
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
             Task { await loadProfile() }
-        case .restorationFailed:
+        case .restorationFailed, .restorationNeedsUpdate:
             sessionRestorationDeferred = false
             clearAuthenticatedState(clearCachedProfile: false)
-            if case .userVisible = mode {
+            restorationNeedsUpdate = result == .restorationNeedsUpdate
+            if restorationNeedsUpdate {
+                if updatePromptRevision != Self.sessionRevision {
+                    updatePromptRevision = Self.sessionRevision
+                    sessionRestorationNeedsUpdate = true
+                }
+            } else if case .userVisible = mode {
                 sessionRestorationFailed = true
             }
         case .restorationDeferred:
@@ -1667,13 +1683,49 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func signOut(cleanPrivatePaykitEndpoints: Bool, allowDuringProfileDeletion: Bool = false) async throws {
-        try await signOut(allowDuringProfileDeletion: allowDuringProfileDeletion) {
+        try await signOutOrForget(allowDuringProfileDeletion: allowDuringProfileDeletion) {
             if cleanPrivatePaykitEndpoints {
                 try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
             }
             await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             try await PubkyService.signOut()
         }
+    }
+
+    /// Waits for a restore already running, so an identity it restores is signed out rather than only forgotten.
+    func signOutOrForget(
+        allowDuringProfileDeletion: Bool,
+        forgetSessionAccess: @escaping @Sendable () async throws -> Void = { try await PubkyService.forgetSessionAccess() },
+        signOutRestored: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        while let initializationTask {
+            await initializationTask.value
+        }
+        let isRestored = publicKey != nil
+        try await signOut(allowDuringProfileDeletion: allowDuringProfileDeletion, performSessionCleanup: {
+            try await Self.signOutCleanup(
+                isRestored: isRestored,
+                forgetSessionAccess: forgetSessionAccess,
+                signOutRestored: signOutRestored
+            )
+        })
+    }
+
+    /// An identity that never restored, such as one whose shared Paykit state a newer Bitkit saved, cannot read that state
+    /// to remove its endpoints or end its session, so Disconnect only forgets it on this device. A pending endpoint cleanup
+    /// is dropped with it, so it cannot run against the next identity.
+    nonisolated static func signOutCleanup(
+        isRestored: Bool,
+        forgetSessionAccess: @Sendable () async throws -> Void = { try await PubkyService.forgetSessionAccess() },
+        dropPendingEndpointCleanup: @Sendable () -> Void = { PublicPaykitService.setCleanupPending(false) },
+        signOutRestored: @Sendable () async throws -> Void
+    ) async throws {
+        guard isRestored else {
+            try await forgetSessionAccess()
+            dropPendingEndpointCleanup()
+            return
+        }
+        try await signOutRestored()
     }
 
     func signOut(performSessionCleanup: @escaping @Sendable () async throws -> Void) async throws {
@@ -1846,6 +1898,8 @@ class PubkyProfileManager: ObservableObject {
         }
         if clearCachedProfile {
             clearCachedProfileMetadata()
+            restorationNeedsUpdate = false
+            sessionRestorationNeedsUpdate = false
         }
         if wasAuthenticated {
             clearRingIdentityProfiles()
@@ -2116,6 +2170,10 @@ class PubkyProfileManager: ObservableObject {
                     Logger.warn("Deferred session restoration, keeping saved session", context: "PubkyProfileManager")
                     return .restorationDeferred
                 }
+                if error.isPaykitStateFromNewerVersion() {
+                    Logger.warn("Kept saved session, Paykit state needs an app update: \(error)", context: "PubkyProfileManager")
+                    return .restorationNeedsUpdate
+                }
                 Logger.warn("Failed to import saved session, attempting re-sign-in: \(error)", context: "PubkyProfileManager")
             }
         }
@@ -2141,6 +2199,9 @@ class PubkyProfileManager: ObservableObject {
             return .restored(publicKey: publicKey)
         } catch {
             Logger.warn("Re-sign-in failed, keeping saved session for retry: \(error)", context: "PubkyProfileManager")
+            if error.isPaykitStateFromNewerVersion() {
+                return .restorationNeedsUpdate
+            }
             return isTemporarySessionRestorationError(error) ? .restorationDeferred : .restorationFailed
         }
     }

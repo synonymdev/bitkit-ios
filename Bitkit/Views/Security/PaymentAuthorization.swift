@@ -15,7 +15,7 @@ final class PaymentAuthorization {
     }
 
     func authorize(settings: SettingsViewModel) async -> Bool {
-        guard settings.requirePinForPayments && settings.pinEnabled else { return true }
+        guard settings.requiresPaymentAuthorization else { return true }
         if settings.useBiometrics && BiometricAuth.isAvailable {
             switch await BiometricAuth.authenticate() {
             case .success:

@@ -33,9 +33,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         suiteName = "QuickPayPaymentCoordinatorTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
         store = QuickPaySpendStore(defaults: defaults, dayKey: { "2026-08-15" })
-        settings.enableQuickpay = true
-        settings.quickpayAmount = 5
-        settings.quickpayDailyLimitMultiplier = 5
+        settings.storeQuickpaySettings(enabled: true, amount: 5, dailyLimitMultiplier: 5)
         guard let encodedRates = try? JSONEncoder().encode([usdRate]) else {
             XCTFail("Failed to encode the QuickPay test exchange rate")
             return
@@ -151,6 +149,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             try store.reserveBound(
                 paymentHash: invoiceHash,
                 amountSats: 1000,
+                enabled: true,
                 thresholdUsd: 5,
                 multiplier: 5,
                 rates: rates
@@ -171,6 +170,225 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertEqual(paymentHash, invoiceHash)
         XCTAssertEqual(retryRoute, .quickpay)
         XCTAssertNotNil(store.record(matching: invoiceHash))
+    }
+
+    func testLockWhileTheInvoiceIsPreparedOpensReviewWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        let app = appWithInvoice
+        app.noteQuickPayChosen()
+        // The screen allowed the start; the app then locked while the invoice was prepared (for example an LNURL
+        // fetch), so whoever unlocks did not choose this payment.
+        app.noteAppLocked()
+        let coordinator = QuickPayPaymentCoordinator(store: store, sendBolt11: { _ in
+            sendCount += 1
+            return invoiceHash
+        }, listRows: { [] })
+        let outcome = await firstOutcome(from: coordinator, app: app)
+        guard case .confirm = outcome else {
+            return XCTFail("Expected the review, got \(String(describing: outcome))")
+        }
+        XCTAssertEqual(sendCount, 0)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
+    func testLockWhileTheRailWaitsToSubmitOpensReviewWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        let app = appWithInvoice
+        app.noteQuickPayChosen()
+        let coordinator = QuickPayPaymentCoordinator(store: store, submit: { _, beforeSubmission in
+            // The app locks while the rail prepares the payment or waits for its queue.
+            app.noteAppLocked()
+            try beforeSubmission()
+            sendCount += 1
+            return invoiceHash
+        }, listRows: { [] })
+        let outcome = await firstOutcome(from: coordinator, app: app)
+        guard case .confirm = outcome else {
+            return XCTFail("Expected the review, got \(String(describing: outcome))")
+        }
+        XCTAssertEqual(sendCount, 0)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
+    func testStopWrappedByTheLdkQueueOpensReviewWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        let app = appWithInvoice
+        app.noteQuickPayChosen()
+        let coordinator = QuickPayPaymentCoordinator(store: store, submit: { _, beforeSubmission in
+            app.noteAppLocked()
+            // The LDK send runs its check on `ServiceQueue`, which wraps what it throws.
+            return try await Bitkit.LightningService.submitPayment(beforeSubmission: beforeSubmission) {
+                sendCount += 1
+                return invoiceHash
+            }
+        }, listRows: { [] })
+        let outcome = await firstOutcome(from: coordinator, app: app)
+        guard case .confirm = outcome else {
+            return XCTFail("Expected the review, got \(String(describing: outcome))")
+        }
+        XCTAssertEqual(sendCount, 0)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
+    func testLockStopOnAReattachedQuickPayOpensReviewOnTheCurrentScreen() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let app = appWithInvoice
+        app.noteQuickPayChosen()
+        let session = QuickPayPaymentCoordinator.SessionID(
+            presentationID: UUID(), sendStateGeneration: app.sendStateGeneration, attempt: 0
+        )
+        let started = expectation(description: "Submission waiting")
+        let reviewed = expectation(description: "Current screen opens the review")
+        var continuation: CheckedContinuation<Void, Never>?
+        func waitToSubmit() async {
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        let coordinator = QuickPayPaymentCoordinator(store: store, submit: { _, beforeSubmission in
+            await waitToSubmit()
+            try beforeSubmission()
+            return invoiceHash
+        }, listRows: { [] })
+        defer { coordinator.detach() }
+        let wallet = WalletViewModel()
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in }, onConfirm: { _ in XCTFail("Retired screen must not navigate") }),
+                        sessionID: session)
+        await fulfillment(of: [started], timeout: 2)
+        // The QuickPay screen reattaches while the payment waits to be submitted, then the app locks.
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in }, onConfirm: { _ in reviewed.fulfill() }),
+                        sessionID: session)
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume()
+
+        await fulfillment(of: [reviewed], timeout: 2)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
+    func testLockStopAfterARescanOpensReviewOnTheRescannedScreen() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let app = appWithInvoice
+        let invoice = app.scannedLightningInvoice
+        app.noteQuickPayChosen()
+        let started = expectation(description: "Submission waiting")
+        let reviewed = expectation(description: "Rescanned screen opens the review")
+        var continuation: CheckedContinuation<Void, Never>?
+        func waitToSubmit() async {
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        let coordinator = QuickPayPaymentCoordinator(store: store, submit: { _, beforeSubmission in
+            await waitToSubmit()
+            try beforeSubmission()
+            return invoiceHash
+        }, listRows: { [] })
+        defer { coordinator.detach() }
+        let wallet = WalletViewModel()
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        let firstSession = QuickPayPaymentCoordinator.SessionID(
+            presentationID: UUID(), sendStateGeneration: app.sendStateGeneration, attempt: 0
+        )
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in }, onConfirm: { _ in XCTFail("Retired screen must not navigate") }),
+                        sessionID: firstSession)
+        await fulfillment(of: [started], timeout: 2)
+
+        // The payer rescans the same invoice while its payment waits: a new send attaches to the open payment.
+        app.resetSendState()
+        app.scannedLightningInvoice = invoice
+        app.noteQuickPayChosen()
+        let rescanSession = QuickPayPaymentCoordinator.SessionID(
+            presentationID: UUID(), sendStateGeneration: app.sendStateGeneration, attempt: 0
+        )
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in }, onConfirm: { _ in reviewed.fulfill() }),
+                        sessionID: rescanSession)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume()
+
+        await fulfillment(of: [reviewed], timeout: 2)
+        XCTAssertFalse(app.isQuickPayActive)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
+    func testLockStopAfterAnotherSendTookOverLeavesItAlone() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let app = appWithInvoice
+        app.noteQuickPayChosen()
+        let started = expectation(description: "Submission waiting")
+        let stopped = expectation(description: "Submission stopped")
+        var continuation: CheckedContinuation<Void, Never>?
+        func waitToSubmit() async {
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        let coordinator = QuickPayPaymentCoordinator(store: store, submit: { _, beforeSubmission in
+            await waitToSubmit()
+            defer { stopped.fulfill() }
+            try beforeSubmission()
+            return invoiceHash
+        }, listRows: { [] })
+        defer { coordinator.detach() }
+        coordinator.pay(
+            app: app, wallet: WalletViewModel(), settings: settings,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            presentation: presentation(onRoute: { _ in }, onConfirm: { _ in XCTFail("A replaced send must not navigate") })
+        )
+        await fulfillment(of: [started], timeout: 2)
+        // Another send takes over and starts its own QuickPay, then the app locks.
+        app.resetSendState()
+        app.beginQuickPay(paymentHash: "other")
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume()
+        await fulfillment(of: [stopped], timeout: 2)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertTrue(app.isQuickPayActive, "The other send's QuickPay must stay marked")
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
+    func testRecoveryOnlyStartWhoseRecordIsGoneOpensReviewWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        // The screen allowed the start only because the invoice was tracked after a lock; reconciliation removed
+        // the record before the coordinator ran.
+        XCTAssertNil(store.record(matching: invoiceHash))
+        let coordinator = QuickPayPaymentCoordinator(store: store, sendBolt11: { _ in
+            sendCount += 1
+            return invoiceHash
+        }, listRows: { [] })
+        let reviewed = expectation(description: "Falls back to review")
+        coordinator.pay(
+            app: appWithInvoice,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            presentation: presentation(onRoute: { XCTFail("Unexpected route \($0)") }, onConfirm: { _ in reviewed.fulfill() }),
+            recoveryOnly: true
+        )
+        await fulfillment(of: [reviewed], timeout: 2)
+        XCTAssertEqual(sendCount, 0)
+        XCTAssertNil(store.record(matching: invoiceHash))
+
+        // A normal start still sends.
+        let route = await firstRoute(sendBolt11: { [store] _ in
+            sendCount += 1
+            store?.signalCompletion(paymentId: nil, paymentHash: invoiceHash, success: true)
+            return invoiceHash
+        })
+        XCTAssertEqual(sendCount, 1, "A normal start sends; got \(String(describing: route))")
     }
 
     func testSendAfterSignalCompletionGoesToSuccess() async throws {
@@ -492,7 +710,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: presentation(onRoute: { _ in }, onConfirm: {})
+            presentation: presentation(onRoute: { _ in }, onConfirm: { _ in })
         )
         await fulfillment(of: [sendStarted], timeout: 2)
         coordinator.detach()
@@ -509,7 +727,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
                         XCTFail("Live send should not emit yet")
                     }
                 },
-                onConfirm: { didConfirm = true }
+                onConfirm: { _ in didConfirm = true }
             )
         )
         try await Task.sleep(nanoseconds: 150_000_000)
@@ -543,7 +761,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: presentation(onRoute: { _ in }, onConfirm: {})
+            presentation: presentation(onRoute: { _ in }, onConfirm: { _ in })
         )
         await fulfillment(of: [sendStarted], timeout: 2)
         coordinator.pay(
@@ -551,7 +769,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: presentation(onRoute: { _ in XCTFail("Re-entry should not emit") }, onConfirm: {})
+            presentation: presentation(onRoute: { _ in XCTFail("Re-entry should not emit") }, onConfirm: { _ in })
         )
         try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(sendCount, 1)
@@ -580,14 +798,14 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let wallet = WalletViewModel()
         let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
         coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
-                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: {}),
+                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: { _ in }),
                         sessionID: session)
         await fulfillment(of: [started], timeout: 2)
         coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
                         presentation: presentation(onRoute: { route in
                             guard case .failure = route else { return XCTFail("Expected rejection result") }
                             delivered.fulfill()
-                        }, onConfirm: {}), sessionID: session)
+                        }, onConfirm: { _ in }), sessionID: session)
         try XCTUnwrap(continuation).resume()
         await fulfillment(of: [delivered], timeout: 2)
         XCTAssertEqual(sendCount, 1)
@@ -613,7 +831,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let wallet = WalletViewModel()
         let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
         coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
-                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: {}),
+                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: { _ in }),
                         sessionID: session)
         await fulfillment(of: [started], timeout: 2)
         XCTAssertTrue(coordinator.complete(paymentId: nil, paymentHash: invoiceHash, success: true).wasQuickPay)
@@ -621,7 +839,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
                         presentation: presentation(onRoute: { route in
                             guard case .success = route else { return XCTFail("Expected settled result") }
                             delivered.fulfill()
-                        }, onConfirm: {}), sessionID: session)
+                        }, onConfirm: { _ in }), sessionID: session)
         try XCTUnwrap(continuation).resume()
         await fulfillment(of: [delivered], timeout: 2)
     }
@@ -642,6 +860,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             try store.reserveBound(
                 paymentHash: "recovered-hash",
                 amountSats: 500,
+                enabled: true,
                 thresholdUsd: 5,
                 multiplier: 5,
                 rates: rates
@@ -658,6 +877,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             try store.reserveBound(
                 paymentHash: invoiceHash,
                 amountSats: 1000,
+                enabled: true,
                 thresholdUsd: 5,
                 multiplier: 5,
                 rates: rates
@@ -701,7 +921,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: presentation(onRoute: { _ in }, onConfirm: {})
+            presentation: presentation(onRoute: { _ in }, onConfirm: { _ in })
         )
         await fulfillment(of: [sendStarted], timeout: 2)
         XCTAssertNotNil(store.record(matching: invoiceHash))
@@ -736,6 +956,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             try store.reserveBound(
                 paymentHash: invoiceHash,
                 amountSats: 1000,
+                enabled: true,
                 thresholdUsd: 5,
                 multiplier: 5,
                 rates: rates
@@ -797,7 +1018,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
             presentation: presentation(
                 onRoute: { _ in firstSettled.fulfill() },
-                onConfirm: { didConfirm = true }
+                onConfirm: { _ in didConfirm = true }
             )
         )
         await fulfillment(of: [sendStarted], timeout: 2)
@@ -809,7 +1030,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
             presentation: presentation(
                 onRoute: { _ in XCTFail("Second pay should not emit a route") },
-                onConfirm: { didConfirm = true }
+                onConfirm: { _ in didConfirm = true }
             )
         )
         try await Task.sleep(nanoseconds: 150_000_000)
@@ -822,6 +1043,179 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertFalse(didConfirm)
     }
 
+    func testDisabledFreshPaymentFallsBackToConfirmWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        settings.storeQuickpaySettings(enabled: false)
+        var sent = false
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                sent = true
+                return invoiceHash
+            },
+            listRows: { [] }
+        )
+
+        let outcome = await firstOutcome(from: coordinator)
+
+        XCTAssertFalse(sent)
+        guard case .confirm(.confirm) = outcome else {
+            return XCTFail("Expected confirm fallback, got \(String(describing: outcome))")
+        }
+        XCTAssertFalse(coordinator.hasOpen(invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
+    func testFreshPaymentThatNeedsTheUpdateFallsBackToConfirmWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sent = false
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                sent = true
+                return invoiceHash
+            },
+            listRows: { [] },
+            needsUpdateToSend: { $0 == 1000 }
+        )
+
+        let outcome = await firstOutcome(from: coordinator)
+
+        XCTAssertFalse(sent, "QuickPay paid from one rail a payment that needs the spending balance update")
+        guard case .confirm(.confirm) = outcome else {
+            return XCTFail("Expected confirm fallback, got \(String(describing: outcome))")
+        }
+        XCTAssertFalse(coordinator.hasOpen(invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
+    func testDisabledRepayAfterFailedRecordIsReconciledAwayFallsBackToConfirm() async throws {
+        let invoiceHash = try Self.invoiceHash
+        try reserveSubmittedRecord(invoiceHash)
+        settings.storeQuickpaySettings(enabled: false)
+        var sent = false
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                sent = true
+                return invoiceHash
+            },
+            listRows: {
+                [QuickPayReconcileRow(paymentId: "pid", invoicePaymentHash: invoiceHash, isOutboundBolt11: true, status: .failed)]
+            }
+        )
+        // Routing still opens QuickPay for the saved hash while it is disabled.
+        XCTAssertTrue(coordinator.hasOpen(invoiceHash))
+
+        coordinator.reconcileAgainstLdk()
+        for _ in 0 ..< 200 where store.record(matching: invoiceHash) != nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertNil(store.record(matching: invoiceHash))
+
+        let outcome = await firstOutcome(from: coordinator)
+
+        XCTAssertFalse(sent)
+        guard case .confirm(.confirm) = outcome else {
+            return XCTFail("Expected confirm fallback, got \(String(describing: outcome))")
+        }
+        XCTAssertNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
+    func testDisabledSubmittedPendingRecordStaysPendingWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        try reserveSubmittedRecord(invoiceHash)
+        settings.storeQuickpaySettings(enabled: false)
+        var sent = false
+
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                sent = true
+                return invoiceHash
+            },
+            listRows: {
+                [QuickPayReconcileRow(paymentId: "pid", invoicePaymentHash: invoiceHash, isOutboundBolt11: true, status: .pending)]
+            }
+        )
+
+        XCTAssertFalse(sent)
+        guard case let .pending(paymentHash, _, _, _) = route else {
+            return XCTFail("Expected pending, got \(String(describing: route))")
+        }
+        XCTAssertEqual(paymentHash, invoiceHash)
+        XCTAssertNotNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 500)
+    }
+
+    func testDisabledSubmittedRecordThatLdkSucceededSettlesWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        try reserveSubmittedRecord(invoiceHash)
+        settings.storeQuickpaySettings(enabled: false)
+        var sent = false
+
+        let route = await firstRoute(
+            sendBolt11: { _ in
+                sent = true
+                return invoiceHash
+            },
+            listRows: {
+                [QuickPayReconcileRow(paymentId: "pid", invoicePaymentHash: invoiceHash, isOutboundBolt11: true, status: .succeeded)]
+            }
+        )
+
+        XCTAssertFalse(sent)
+        guard case .success = route else {
+            return XCTFail("Expected success, got \(String(describing: route))")
+        }
+        XCTAssertNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 500)
+    }
+
+    func testDisabledLnurlFallsBackToConfirmBeforeFetchingInvoice() async {
+        settings.storeQuickpaySettings(enabled: false)
+        var sent = false
+        let app = AppViewModel()
+        let wallet = WalletViewModel()
+        // The `.invalid` callback never resolves, so a fetch would surface as a failure route instead of the fallback.
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://lnurl.invalid/pay", callback: "https://lnurl.invalid/callback",
+            minSendable: 1_000_000, maxSendable: 1_000_000,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { bolt11 in
+                sent = true
+                return bolt11
+            },
+            listRows: { [] }
+        )
+
+        let outcome = await firstOutcome(from: coordinator, app: app, wallet: wallet)
+
+        XCTAssertFalse(sent)
+        guard case .confirm(.lnurlPayConfirm) = outcome else {
+            return XCTFail("Expected LNURL confirm fallback, got \(String(describing: outcome))")
+        }
+        XCTAssertNil(wallet.sendAmountSats)
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
+    private func reserveSubmittedRecord(_ invoiceHash: String) throws {
+        XCTAssertNotNil(
+            try store.reserveBound(
+                paymentHash: invoiceHash,
+                amountSats: 1000,
+                enabled: true,
+                thresholdUsd: 5,
+                multiplier: 5,
+                rates: rates
+            )
+        )
+        store.markSubmitted(invoicePaymentHash: invoiceHash, paymentId: "pid")
+    }
+
     private func firstRoute(
         sendBolt11: @escaping (String) async throws -> String,
         listRows: @escaping () async throws -> [QuickPayReconcileRow]? = { [] }
@@ -831,32 +1225,49 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
     }
 
     private func firstRoute(from coordinator: QuickPayPaymentCoordinator, wallet: WalletViewModel? = nil) async -> SendRoute? {
-        var route: SendRoute?
-        let exp = expectation(description: "route")
+        guard case let .route(route) = await firstOutcome(from: coordinator, wallet: wallet) else { return nil }
+        return route
+    }
+
+    private enum PayOutcome {
+        case route(SendRoute)
+        case confirm(SendRoute)
+    }
+
+    private func firstOutcome(
+        from coordinator: QuickPayPaymentCoordinator,
+        app: AppViewModel? = nil,
+        wallet: WalletViewModel? = nil
+    ) async -> PayOutcome? {
+        var outcome: PayOutcome?
+        let exp = expectation(description: "outcome")
         coordinator.pay(
-            app: appWithInvoice,
+            app: app ?? appWithInvoice,
             wallet: wallet ?? WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
             presentation: presentation(
                 onRoute: {
-                    route = $0
+                    outcome = .route($0)
                     exp.fulfill()
                 },
-                onConfirm: {}
+                onConfirm: {
+                    outcome = .confirm($0)
+                    exp.fulfill()
+                }
             )
         )
         await fulfillment(of: [exp], timeout: 2)
-        return route
+        return outcome
     }
 
     private func presentation(
         onRoute: @escaping (SendRoute) -> Void,
-        onConfirm: @escaping () -> Void
+        onConfirm: @escaping (SendRoute) -> Void
     ) -> QuickPayPaymentCoordinator.Presentation {
         QuickPayPaymentCoordinator.Presentation(
             appendRoute: onRoute,
-            replaceQuickPay: { _ in onConfirm() },
+            replaceQuickPay: onConfirm,
             addPendingPaymentHash: { _ in },
             routingCacheResetAttempted: false
         )

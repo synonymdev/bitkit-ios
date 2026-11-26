@@ -20,13 +20,17 @@ struct AppStatusView: View {
                     nodeStatusRow
                     channelsStatusRow
                     sparkStatusRow
-                    exitStatusRow
                     backupStatusRow
                 }
             }
             .refreshable {
                 await refreshAppStatus()
             }
+
+            BodyMText(t("settings__status__app_version", variables: ["version": appVersion]), textColor: .white64)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 16)
+                .accessibilityIdentifier("AppVersion")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
@@ -139,29 +143,23 @@ struct AppStatusView: View {
         .accessibilityIdentifier("Status-lightning_connection")
     }
 
-    @ViewBuilder
-    private var sparkStatusRow: some View {
-        if let status = AppStatusHelper.sparkStatus(network: network) {
-            StatusRow(
-                imageName: "asterisk",
-                title: t("settings__status__spark__title"),
-                description: t("settings__status__spark__\(status.rawValue)"),
-                status: status,
-                // Spark's detail shows a zero balance until Spark has read its state.
-                onTap: status == .ready ? { navigation.navigate(.sparkConnectionDetail) } : nil
-            )
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("Status-spark")
-        }
+    /// The app's version and build, as "3.2.0 (182)".
+    private var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? ""
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        return "\(version) (\(build))"
     }
 
+    /// Spark's connection, or a running force transfer to savings, which taps through to its progress.
     @ViewBuilder
-    private var exitStatusRow: some View {
-        if let step = AppStatusHelper.exitStep(record: SparkExitManager.shared.record, fundingState: SparkExitManager.shared.fundingState) {
+    private var sparkStatusRow: some View {
+        let exit = SparkExitManager.shared
+        if let step = AppStatusHelper.exitStep(record: exit.record, fundingState: exit.fundingState) {
             StatusRow(
                 imageName: "warning",
-                title: t("settings__status__exit__title"),
-                description: t("settings__status__exit__\(step.rawValue)"),
+                title: t("settings__status__spark__title"),
+                description: t(step.descriptionKey),
                 status: .pending,
                 onTap: {
                     navigation.navigate(.sparkExitProgress)
@@ -169,6 +167,17 @@ struct AppStatusView: View {
             )
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("Status-spark_exit")
+        } else if let status = AppStatusHelper.sparkStatus(network: network) {
+            StatusRow(
+                imageName: "asterisk",
+                title: t("settings__status__spark__title"),
+                description: t("settings__status__spark__\(status.rawValue)"),
+                status: status,
+                onTap: AppStatusHelper.opensSparkDetail(status: status, isReady: SparkManager.shared.isReady)
+                    ? { navigation.navigate(.sparkConnectionDetail) } : nil
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("Status-spark")
         }
     }
 
@@ -179,9 +188,9 @@ struct AppStatusView: View {
         if let timestamp = backupTimestamp {
             let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
             let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
             formatter.locale = Locale.current
+            // The frame's "Jan 2, 2023 at 11:45 PM" in US English: each locale's own order, words and hour cycle (j).
+            formatter.setLocalizedDateFormatFromTemplate("MMMdyyyyjjmm")
             description = formatter.string(from: date)
             status = .ready
         } else {
@@ -190,7 +199,7 @@ struct AppStatusView: View {
         }
 
         return StatusRow(
-            imageName: "rewind",
+            imageName: "cloud-check",
             title: t("settings__status__backup__title"),
             description: description,
             status: status,

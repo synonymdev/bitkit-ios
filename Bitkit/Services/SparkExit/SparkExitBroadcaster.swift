@@ -149,7 +149,7 @@ struct EsploraSparkExitChain: SparkExitChain {
 
     /// On mainnet the chain service Spark connects with (`Env.sparkChainServiceUrl`) answers every read and takes
     /// broadcasts first, on its `/txs/package` (no `/v1`); the SDK's default hosts stay as broadcast fallbacks. On
-    /// regtest the chain service Spark connects with, `regtestChainServiceUrl` (`SPARK_CHAIN_SERVICE_URL`), does both,
+    /// regtest the configured chain service (including the local E2E fixture) does both,
     /// else the SDK's default host (breez spark-sdk `default_rest_chain_services`).
     static func network(
         _ network: BreezSdkSpark.Network,

@@ -5,10 +5,12 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     private var canMoveToSpark: Bool {
-        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared))
+        MoveToSparkManager.shared.keepsMoveForItsResult
+            || MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared))
     }
 
     private var shouldShowOnboarding: Bool {
@@ -38,7 +40,7 @@ struct SpendingWalletScreen: View {
                             .padding(.top, 16)
                     }
 
-                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 {
+                    if shouldShowOnboarding && (wallet.totalOnchainSats > 0 || wallet.spendableOnchainBalanceSats > 0) {
                         transferFromSavingsButton
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             .padding(.top, 28)
@@ -47,7 +49,7 @@ struct SpendingWalletScreen: View {
                     if !shouldShowOnboarding {
                         if canMoveToSpark {
                             CustomButton(title: t("lightning__move_to_spark__nav_title")) {
-                                navigation.navigate(.moveToSpark)
+                                sheets.showSheet(.moveToSpark)
                             }
                             .accessibilityIdentifier("MoveToSpark")
                             .padding(.top, 28)
@@ -114,7 +116,7 @@ struct SpendingWalletScreen: View {
 
     var transferFromSavingsButton: some View {
         CustomButton(
-            title: t("lightning__funding__button1"),
+            title: t("lightning__transfer_from_savings_button"),
             variant: .secondary,
             icon: Image("arrow-up-down")
                 .resizable()
@@ -144,7 +146,7 @@ struct SpendingWalletScreen: View {
                 .foregroundColor(.white80)
         ) {
             if app.hasSeenTransferToSavingsIntro {
-                navigation.navigate(.savingsAvailability)
+                navigation.navigateToTransferSavings(wallet: wallet, transfer: transfer)
             } else {
                 navigation.navigate(.savingsIntro)
             }
@@ -161,5 +163,6 @@ struct SpendingWalletScreen: View {
     .environmentObject(AppViewModel())
     .environmentObject(CurrencyViewModel())
     .environmentObject(ActivityListViewModel())
+    .environmentObject(TransferViewModel())
     .preferredColorScheme(.dark)
 }

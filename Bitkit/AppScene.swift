@@ -475,6 +475,8 @@ struct AppScene: View {
     @State private var isContactRefreshForeground = false
     @State private var shopContactImport: (id: UUID, task: Task<Void, Never>)?
     @State private var foregroundWalletSync: Task<Void, Never>?
+    /// What waits for the app to be active, after a background push launched it or a start came while in the background.
+    @State private var deferredWalletStart: DeferredWalletStart?
 
     private var nodeRestarter: NodeRestarter {
         NodeRestarter(
@@ -640,6 +642,7 @@ struct AppScene: View {
                     navigation.navigate(.sparkExitProgress)
                 }
             }
+            .task(id: wakeRegistrationInputs) { await WakeManager.shared.registerIfAllowed(wakeRegistrationInputs) }
             .task(id: foregroundContactSession) {
                 shopContactImport?.task.cancel()
                 shopContactImport = nil
@@ -647,6 +650,7 @@ struct AppScene: View {
             }
             .task(id: publicPaykitForegroundSession) {
                 await refreshForegroundPublicPaykitEndpoints()
+                await ensureContactPaymentsEnabled()
             }
             .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
                 guard !isDeleting, isPaykitSceneActive else { return }
@@ -672,6 +676,7 @@ struct AppScene: View {
             .onChange(of: isPinVerified) { _, verified in
                 if verified {
                     showPendingExpiryToast()
+                    showPendingPaykitUpdateToast()
                     Task { await hwWalletManager.reconnectOnForeground() }
                     Task { await presentNextIncomingPaykitItem() }
                 }
@@ -857,7 +862,10 @@ struct AppScene: View {
             .onChange(of: paykitPaymentRequestManager.silentExpirationTrigger) {
                 queueSilentExpiryToast()
             }
-            .onChange(of: scenePhase) { showPendingExpiryToast() }
+            .onChange(of: scenePhase) {
+                showPendingExpiryToast()
+                showPendingPaykitUpdateToast()
+            }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
                 guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
                     return
@@ -871,6 +879,7 @@ struct AppScene: View {
                     app.toast(type: .error, title: t("profile__session_expired_title"), description: t("profile__session_expired_description"))
                 }
             }
+            .onChange(of: pubkyProfile.sessionRestorationNeedsUpdate) { showPendingPaykitUpdateToast() }
             .onChange(of: pubkyProfile.adoptedSourceLost) { _, lost in
                 if lost {
                     pubkyProfile.adoptedSourceLost = false
@@ -1143,6 +1152,12 @@ struct AppScene: View {
         // Don't start wallet if we're in recovery mode
         guard !showRecoveryScreen else { return }
 
+        guard !WalletLaunchPolicy.defersStart(applicationState: UIApplication.shared.applicationState) else {
+            Logger.info("Launched in the background, starting the wallet once the app is active", context: "AppScene")
+            deferredWalletStart = .launch
+            return
+        }
+
         wallet.addOnEvent(id: "toasts-and-sheets") { [weak app] lightningEvent in
             app?.handleLdkNodeEvent(lightningEvent)
         }
@@ -1168,6 +1183,14 @@ struct AppScene: View {
     }
 
     private func startWallet(completingBackupRestore: Bool = false, playsErrorHaptic: Bool = true) async {
+        // Every automatic start, such as a network recovery, waits too. A restore that finishes is left to complete.
+        guard completingBackupRestore || !WalletLaunchPolicy.defersStart(applicationState: UIApplication.shared.applicationState) else {
+            Logger.info("In the background, starting the wallet once the app is active", context: "AppScene")
+            if deferredWalletStart == nil {
+                deferredWalletStart = .start
+            }
+            return
+        }
         let lifecycle = connectionRecovery.lifecycleID
         do {
             try await connectionRecovery.perform(cancelsWithCaller: false) {
@@ -1387,6 +1410,37 @@ struct AppScene: View {
         widgets.objectWillChange.send()
         pubkyProfile.scheduleInitializationAfterRestore()
         await startWallet(completingBackupRestore: true)
+        restorePubkySwaps()
+    }
+
+    /// Finishes swap routes a restored wallet left in flight. A swap rebuilt from its provider's listing is claimed to
+    /// Savings, since the contact's address did not survive the restore, so the user learns the payment came back; a
+    /// swap still on record keeps its destination and is finished silently.
+    private func restorePubkySwaps() {
+        guard PubkySwapsRouteService.isEnabled else { return }
+        Task {
+            // Contacts load in the Paykit session's own task, and a saved provider among them recovers its swaps.
+            await contactsManager.waitUntilLoaded(timeout: .seconds(15))
+            let contacts = contactsManager.contacts.map(\.publicKey)
+            let swaps: (restored: [String], known: [String])
+            do {
+                swaps = try await PubkySwapsRouteService.restoreSwaps(contacts: contacts)
+            } catch {
+                Logger.warn("Failed to restore Pubky Swaps routes: \(error)", context: "AppScene")
+                return
+            }
+            Logger.info("Restored \(swaps.restored.count) Pubky Swaps routes, \(swaps.known.count) known", context: "AppScene")
+            // A known swap keeps the destination it was committed with, such as the contact, so it is driven silently.
+            for swapId in swaps.known {
+                Task { _ = try? await PubkySwapsRouteService.awaitClaim(swapId: swapId) }
+            }
+            for swapId in swaps.restored {
+                Task {
+                    guard await (try? PubkySwapsRouteService.awaitClaim(swapId: swapId)) != nil else { return }
+                    app.toast(type: .info, title: t("wallet__swap_route_restored_title"), description: t("wallet__swap_route_restored_text"))
+                }
+            }
+        }
     }
 
     private func retryWalletStart() async {
@@ -1434,13 +1488,23 @@ struct AppScene: View {
     }
 
     private func retryPendingWalletRestoreIfNeeded() -> Bool {
-        if isWalletBackupRestoreRunning {
+        let retry = WalletLaunchPolicy.pendingRestoreRetry(
+            isRestoreRunning: isWalletBackupRestoreRunning,
+            hasPendingRestore: { BackupService.shared.hasPendingWalletRestore() },
+            applicationState: UIApplication.shared.applicationState
+        )
+        switch retry {
+        case .none:
+            return false
+        case .running:
+            return true
+        case .deferred:
+            Logger.info("In the background, restoring the wallet once the app is active", context: "AppScene")
+            return true
+        case .start:
+            Task { await restoreWalletBackupAndStart() }
             return true
         }
-        guard BackupService.shared.hasPendingWalletRestore() else { return false }
-
-        Task { await restoreWalletBackupAndStart() }
-        return true
     }
 
     private func restoreFromMostRecentBackup() async -> Bool {
@@ -1549,10 +1613,18 @@ struct AppScene: View {
             }
         }
 
+        if newPhase == .active {
+            WakeManager.shared.sceneBecameActive()
+        } else if newPhase == .background {
+            WakeManager.shared.sceneEnteredBackground()
+        }
+
         if newPhase == .background {
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
                 incomingPaymentRequestPreparation?.suspendForAppLock(sheets: sheets)
+                scannerManager.invalidateScansForAppLock()
+                app.noteAppLocked()
                 isPinVerified = false
             }
             hwWalletManager.onAppBackgrounded()
@@ -1565,6 +1637,11 @@ struct AppScene: View {
                 guard !wipeCoordinator.isGateUp else { return }
             }
 
+            if deferredWalletStart == .launch {
+                deferredWalletStart = nil
+                handleWalletExistsChange(wallet.walletExists)
+            }
+
             // Called even behind the PIN screen, so a background release still pending is called off.
             hwWalletManager.onAppBecameActive()
             // Reconnect a known hardware device so its connection indicator turns green again;
@@ -1575,7 +1652,17 @@ struct AppScene: View {
                 if retryPendingWalletRestoreIfNeeded() {
                     return
                 }
-                nodeRestarter.retryOnForeground(returnedFromBackground: returnedFromBackground)
+                let foregroundRestart = nodeRestarter.retryOnForeground(returnedFromBackground: returnedFromBackground)
+                if deferredWalletStart == .start {
+                    deferredWalletStart = nil
+                    let isNodeDown = switch wallet.nodeLifecycleState {
+                    case .stopped, .initializing, .errorStarting: true
+                    default: false
+                    }
+                    if isNodeDown, foregroundRestart == nil {
+                        nodeRestarter.restart(reason: "App opened")
+                    }
+                }
                 let foregroundSync = Task {
                     if pubkyProfile.isInitialized {
                         await pubkyProfile.checkAdoptedSource()
@@ -1600,6 +1687,16 @@ struct AppScene: View {
                 }
             }
         }
+    }
+
+    private var wakeRegistrationInputs: WakeRegistrationInputs {
+        WakeRegistrationInputs(
+            isNodeReady: wallet.nodeLifecycleState == .running && !wipeCoordinator.isGateUp,
+            pushToken: pushManager.deviceToken,
+            authorizationStatus: pushManager.authorizationStatus,
+            notificationsEnabled: settings.enableNotifications,
+            pubkyPublicKey: pubkyProfile.publicKey
+        )
     }
 
     private var foregroundContactSession: PubkyProfileManager.SignedInSession? {
@@ -1639,6 +1736,18 @@ struct AppScene: View {
         await wallet.refreshPublicPaykitEndpointsOnForeground {
             !Task.isCancelled && isPaykitSceneActive && pubkyProfile.automaticPaykitSession == session
         }
+    }
+
+    /// Contact payments have no setting, so each foreground turns on whichever sharing mode is off.
+    private func ensureContactPaymentsEnabled() async {
+        guard PaykitFeatureFlags.isUIEnabled, !wipeCoordinator.isGateUp,
+              let session = publicPaykitForegroundSession, pubkyProfile.automaticPaykitSession == session
+        else { return }
+        await ContactPaymentsService.ensureEnabled(
+            pubkyProfile: pubkyProfile,
+            contactsManager: contactsManager,
+            operations: .live(wallet: wallet)
+        )
     }
 
     private func refreshPrivateOnlyPaykitApp() async {
@@ -1710,6 +1819,9 @@ struct AppScene: View {
             refreshPriority: refreshPriority, canRefresh: canRefresh
         )
         guard refreshed else { return false }
+        if mode == .full {
+            await PaykitReceiptService.shared.reconcile()
+        }
         // Deleting the profile withdraws the payment lists an automatic payment would consume.
         if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
             await paykitAllowanceManager.refresh()
@@ -1889,6 +2001,17 @@ struct AppScene: View {
             else { return }
             for request in requests {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                // A request this wallet already paid never opens, and holds back no other request.
+                if paykitAllowanceManager.hasSentPayment(request) {
+                    if paykitPaymentRequestManager.requestedPresentationId == request.id {
+                        // An automatic payment the node may still fail reads as in progress; any other payment is "already paid".
+                        let title = paykitAllowanceManager.isPayingAutomatically(request)
+                            ? "subscriptions__allowance_payment_in_progress" : "subscriptions__allowance_request_already_paid"
+                        app.toast(type: .info, title: t(title))
+                        paykitPaymentRequestManager.releaseRequestedPresentation(request)
+                    }
+                    continue
+                }
                 if await paykitAllowanceManager.isAutomaticallyHandling(request) {
                     // The next refresh presents it if the allowance flow hands it back; presenting again now would spin on it.
                     if paykitPaymentRequestManager.requestedPresentationId == request.id {
@@ -2112,10 +2235,11 @@ struct AppScene: View {
             }
         }
 
+        // A request this wallet already paid never opens, so it alone schedules no further pass.
         guard attemptedPresentation,
               shouldPresentNextRequest,
               paykitPaymentRequestManager.requestedPresentationId != nil ||
-              !paykitPaymentRequestManager.requestsForPresentation().isEmpty,
+              !paykitAllowanceManager.payable(paykitPaymentRequestManager.requestsForPresentation()).isEmpty,
               sheets.activeSheetConfiguration == nil,
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
@@ -2193,6 +2317,15 @@ struct AppScene: View {
         guard paykitPaymentRequestManager.silentlyExpiredRequests.contains(where: { $0.id != payingRequestId }) else { return }
         hasPendingExpiryToast = true
         showPendingExpiryToast()
+    }
+
+    /// Waits until the app is in front and unlocked, as the expiry toast does, since the profile asks for the update once.
+    private func showPendingPaykitUpdateToast() {
+        guard pubkyProfile.sessionRestorationNeedsUpdate,
+              scenePhase == .active, isPinVerified || !settings.pinEnabled
+        else { return }
+        pubkyProfile.sessionRestorationNeedsUpdate = false
+        app.toast(type: .error, title: t("common__error"), description: t("profile__update_required"), interruptible: false)
     }
 
     /// Waits until the app is in front and unlocked, so the toast isn't shown, and lost, behind the PIN screen.
@@ -2318,6 +2451,16 @@ struct AppScene: View {
             })
         case .ledgerChanged:
             Task { await paykitAllowanceManager.refresh() }
+        case .paymentLeaving:
+            Task {
+                // The journal now shows the payment, so the pending views drop the request before the backup runs.
+                await paykitAllowanceManager.reloadLocalState()
+                do {
+                    try await BackupService.shared.persistWalletBackup()
+                } catch {
+                    Logger.warn("Failed to back up an automatic allowance payment: \(error)", context: "AppScene")
+                }
+            }
         }
     }
 
@@ -2464,6 +2607,8 @@ struct AppScene: View {
 
         if isConnected {
             guard wallet.walletExists == true, !wipeCoordinator.isGateUp else { return }
+            // A background launch restores and starts nothing until the app is opened.
+            guard deferredWalletStart != .launch else { return }
 
             if retryPendingWalletRestoreIfNeeded() {
                 return
@@ -2528,4 +2673,44 @@ struct AppScene: View {
             description: tPlural("settings__backup__failed_message", arguments: ["interval": intervalMinutes])
         )
     }
+}
+
+/// A background push (`remote-notification`) can launch the app on a locked phone, where the node would start for nothing
+/// and be suspended mid-start. The wallet starts once the app is opened instead.
+enum WalletLaunchPolicy {
+    static func defersStart(applicationState: UIApplication.State) -> Bool {
+        applicationState == .background
+    }
+
+    /// A pending restore ends by starting the node, so in the background a new one waits for the app to be opened, where
+    /// the `.active` path retries it. A restore already running is left to finish.
+    static func pendingRestoreRetry(
+        isRestoreRunning: Bool,
+        hasPendingRestore: () -> Bool,
+        applicationState: UIApplication.State
+    ) -> PendingRestoreRetry {
+        if isRestoreRunning {
+            return .running
+        }
+        guard hasPendingRestore() else { return .none }
+        return defersStart(applicationState: applicationState) ? .deferred : .start
+    }
+}
+
+enum PendingRestoreRetry: Equatable {
+    /// No restore is pending.
+    case none
+    /// A restore is already running and finishes on its own.
+    case running
+    /// In the background: the restore starts once the app is active.
+    case deferred
+    /// Start the pending restore now.
+    case start
+}
+
+enum DeferredWalletStart: Equatable {
+    /// A background push launched the app: the whole launch, restore included, runs once it is active.
+    case launch
+    /// An automatic start came while in the background: the node starts once the app is active.
+    case start
 }

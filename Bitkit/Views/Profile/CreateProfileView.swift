@@ -5,6 +5,8 @@ struct CreateProfileView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var wallet: WalletViewModel
 
     @State private var derivedPublicKey: String = ""
     @State private var username: String = ""
@@ -182,7 +184,7 @@ struct CreateProfileView: View {
             return
         } catch {
             Logger.error("Failed to derive pubky keys: \(error)", context: "CreateProfileView")
-            app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__create_error_title"), description: error.profileErrorDescription)
             navigation.navigateBack()
         }
     }
@@ -207,7 +209,7 @@ struct CreateProfileView: View {
         } catch {
             Logger.warn("Failed to look up the existing profile: \(error)", context: "CreateProfileView")
             remoteLookupFailed = true
-            app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__create_error_title"), description: error.profileErrorDescription)
             return nil
         }
     }
@@ -237,6 +239,11 @@ struct CreateProfileView: View {
                 baseTagsUnread: existingProfile?.tagsUnread ?? false,
                 avatarImage: avatarImage
             )
+            ContactPaymentsService.startEnablingForNewProfile(
+                pubkyProfile: pubkyProfile,
+                contactsManager: contactsManager,
+                wallet: wallet
+            )
             navigation.navigate(.payContacts)
         } catch is CancellationError {
             return
@@ -245,7 +252,7 @@ struct CreateProfileView: View {
             await loadInitialData()
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "CreateProfileView")
-            app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__create_error_title"), description: error.profileErrorDescription)
         }
     }
 }
@@ -264,6 +271,8 @@ struct ProfileLinkInput: Identifiable {
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(PubkyProfileManager())
+            .environmentObject(ContactsManager())
+            .environmentObject(WalletViewModel())
     }
     .preferredColorScheme(.dark)
 }

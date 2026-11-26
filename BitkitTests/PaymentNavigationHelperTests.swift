@@ -34,9 +34,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
         spendDefaults = UserDefaults(suiteName: spendSuiteName)
         spendStore = QuickPaySpendStore(defaults: spendDefaults)
 
-        settings.enableQuickpay = true
-        settings.quickpayAmount = 5
-        settings.quickpayDailyLimitMultiplier = 5
+        settings.storeQuickpaySettings(enabled: true, amount: 5, dailyLimitMultiplier: 5)
         guard let encodedRates = try? JSONEncoder().encode([usdRate]) else {
             XCTFail("Failed to encode the QuickPay test exchange rate")
             return
@@ -75,8 +73,43 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(PaymentNavigationHelper.contactPaymentErrorDescription(error), error.localizedDescription)
     }
 
+    func testLockCheckTurnsFalseOnceTheAppLocks() {
+        let app = AppViewModel()
+        let isBeforeLock = app.lockCheck()
+        XCTAssertTrue(isBeforeLock())
+        app.noteAppLocked()
+        XCTAssertFalse(isBeforeLock(), "Work started before the lock must drop its result")
+        XCTAssertTrue(app.lockCheck()())
+    }
+
+    func testQuickpayChosenBeforeALockWaitsForReview() {
+        let app = appWithEligibleInvoice
+        let session = QuickPayPaymentCoordinator.SessionID(presentationID: UUID(), sendStateGeneration: UUID(), attempt: 0)
+        let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in "" }, listRows: { [] })
+        XCTAssertEqual(sendRoute(for: app), .quickpay)
+        XCTAssertTrue(SendQuickpay.startsAutomatically(app: app, sessionID: session, coordinator: coordinator))
+
+        // The Send sheet waits for the node, and the app locks and unlocks before the QuickPay screen appears.
+        app.noteAppLocked()
+        XCTAssertFalse(SendQuickpay.startsAutomatically(app: app, sessionID: session, coordinator: coordinator))
+
+        // A request routed after the unlock starts as usual.
+        XCTAssertEqual(sendRoute(for: app), .quickpay)
+        XCTAssertTrue(SendQuickpay.startsAutomatically(app: app, sessionID: session, coordinator: coordinator))
+    }
+
     func testEligibleInvoiceUsesQuickpayUnderDailyCap() {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
+    }
+
+    func testSuppressedRequestNeverChoosesQuickpay() {
+        let app = appWithEligibleInvoice
+        let scanID = UUID()
+        // A Bluetooth request routes with QuickPay suppressed: the payer reviews it.
+        app.suppressQuickPay(scanID)
+        XCTAssertNotEqual(sendRoute(for: app), .quickpay)
+        app.releaseQuickPaySuppression(scanID)
+        XCTAssertEqual(sendRoute(for: app), .quickpay)
     }
 
     func testSkipsQuickpayWhenDailySpendCapIsExceeded() throws {
@@ -86,6 +119,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
                 try spendStore.reserveBound(
                     paymentHash: "cap\(i)",
                     amountSats: 5000,
+                    enabled: true,
                     thresholdUsd: 5,
                     multiplier: 5,
                     rates: rates
@@ -99,20 +133,25 @@ final class PaymentNavigationHelperTests: XCTestCase {
     func testAllowsQuickpayWhenSpendPlusAmountEqualsDailyCap() throws {
         let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
         for i in 0 ..< 4 {
-            XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "under\(i)", amountSats: 5000, thresholdUsd: 5, multiplier: 5, rates: rates))
+            XCTAssertNotNil(
+                try spendStore.reserveBound(paymentHash: "under\(i)", amountSats: 5000, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates)
+            )
         }
-        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "under4", amountSats: 4000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        XCTAssertNotNil(
+            try spendStore.reserveBound(paymentHash: "under4", amountSats: 4000, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates)
+        )
 
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
 
     func testUsesQuickpayWhenHashIsAlreadyOpenEvenIfDisabled() throws {
-        settings.enableQuickpay = false
+        settings.storeQuickpaySettings(enabled: false)
         let hash = "aabbccdd"
         XCTAssertNotNil(
             try spendStore.reserveBound(
                 paymentHash: hash,
                 amountSats: 1000,
+                enabled: true,
                 thresholdUsd: 5,
                 multiplier: 5,
                 rates: QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
@@ -123,12 +162,39 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(sendRoute(for: appWithInvoice(paymentHash: hash), coordinator: coordinator), .quickpay)
     }
 
+    func testRescanOfAnOpenQuickpayAfterALockStaysOnRecovery() throws {
+        settings.storeQuickpaySettings(enabled: false)
+        let hash = "aabbccdd"
+        let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
+        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates))
+        let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in hash }, listRows: { [] })
+        let app = appWithInvoice(paymentHash: hash)
+        // A new Send presentation for the rescanned invoice, so a session the coordinator has not seen.
+        let session = QuickPayPaymentCoordinator.SessionID(presentationID: UUID(), sendStateGeneration: UUID(), attempt: 0)
+        XCTAssertEqual(sendRoute(for: app, coordinator: coordinator), .quickpay)
+
+        // The app locks while the new Send sheet waits for the node.
+        app.noteAppLocked()
+
+        XCTAssertTrue(
+            SendQuickpay.startsAutomatically(app: app, sessionID: session, coordinator: coordinator),
+            "The payment in progress must replay its status, not ask to pay again"
+        )
+        settings.storeQuickpaySettings(enabled: true)
+        let newInvoice = appWithInvoice(paymentHash: "eeff0011")
+        XCTAssertEqual(sendRoute(for: newInvoice, coordinator: coordinator), .quickpay)
+        newInvoice.noteAppLocked()
+        XCTAssertFalse(SendQuickpay.startsAutomatically(app: newInvoice, sessionID: session, coordinator: coordinator))
+    }
+
     func testUsesQuickpayWhenHashIsOpenEvenIfDailyCapIsExceeded() throws {
-        settings.quickpayDailyLimitMultiplier = 1
+        settings.storeQuickpaySettings(dailyLimitMultiplier: 1)
         let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
         let hash = "aabbccdd"
-        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, thresholdUsd: 5, multiplier: 1, rates: rates))
-        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "cap0", amountSats: 4000, thresholdUsd: 5, multiplier: 1, rates: rates))
+        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, enabled: true, thresholdUsd: 5, multiplier: 1, rates: rates))
+        XCTAssertNotNil(
+            try spendStore.reserveBound(paymentHash: "cap0", amountSats: 4000, enabled: true, thresholdUsd: 5, multiplier: 1, rates: rates)
+        )
         let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in hash }, listRows: { [] })
 
         XCTAssertEqual(sendRoute(for: appWithInvoice(paymentHash: hash), coordinator: coordinator), .quickpay)
@@ -140,6 +206,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
             try spendStore.reserveBound(
                 paymentHash: hash,
                 amountSats: 1000,
+                enabled: true,
                 thresholdUsd: 5,
                 multiplier: 5,
                 rates: QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))

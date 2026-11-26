@@ -181,6 +181,10 @@ Use `Not used` when a phase had no AI involvement and `Unknown` when the model w
 never infer a model from a tool name. If no review occurred, write `Review: Not performed`.
 `Not used` and `Not performed` need no reasoning value. See `.agents/commands/pr.md` for formatting.
 
+### Release topics
+
+A planned release's topic (for example `Spark`) is its GitHub milestone's description; read it before triaging, planning or cutting a release.
+
 ### Review Findings
 
 When addressing review feedback on any PR, release PRs included, PR babysitters and the author's agent keep the PR in scope:
@@ -195,7 +199,7 @@ This app integrates with:
 - **LDK Node** (Lightning Development Kit) for Lightning Network functionality
 - **BitkitCore** (Rust-based core library) for Bitcoin operations
 - **Electrum/Esplora** for blockchain data
-- **Blocktank** for Lightning channel services
+- **Spark** (Breez SDK) for the Spending balance. Blocktank no longer opens channels; the app only reads existing Blocktank orders and CJIT entries
 
 ## Prerequisites
 
@@ -429,7 +433,10 @@ This project follows **modern SwiftUI patterns** and explicitly **AVOIDS traditi
 
 **Managers:**
 - `SessionManager`: User session state
-- `PushNotificationManager`: Push notification handling for incoming payments
+- `PushNotificationManager`: Notification permission and the APNs device token
+- `WakeManager`: Registers with the wake gateway, keeps presence while the app is open, and handles background wakes.
+  The notification extension decrypts and acknowledges alert wakes through the shared `Services/Wake/` files.
+  Wakes stay off unless `Env.wakeGatewayUrl` names a gateway (debug builds: `WAKE_GATEWAY_URL`)
 - `ScannerManager`: QR code scanning for payments
 - `ToastWindowManager`: App-wide toast notifications
 - `TransferTrackingManager`: Tracks pending transfers (new feature)

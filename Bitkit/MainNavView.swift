@@ -238,7 +238,9 @@ struct MainNavView: View {
                 config in SecuritySheet(config: config)
             }
             .sheet(item: $sheets.moveToSparkSheetItem, onDismiss: {
-                sheets.hideSheetIfActive(.moveToSpark, reason: "Move to Spark intro dismissed")
+                sheets.hideSheetIfActive(.moveToSpark, reason: "Update spending balance dismissed")
+                // Forgets a settled move once the modal hides, so the next opening quotes anew.
+                MoveToSparkManager.shared.reset()
             }) { config in
                 MoveToSparkSheet(config: config)
             }
@@ -255,6 +257,15 @@ struct MainNavView: View {
                 }
             ) {
                 config in QuickpaySheet(config: config)
+            }
+            .sheet(
+                item: $sheets.nfcIntroSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.nfcIntro, reason: "NFC intro sheet dismissed")
+                    app.hasSeenNfcIntro = true
+                }
+            ) {
+                config in NfcIntroSheet(config: config)
             }
             .sheet(
                 item: $sheets.sendSheetItem,
@@ -393,6 +404,7 @@ struct MainNavView: View {
                 } else {
                     settings.enableNotifications = false
                     notificationManager.unregister()
+                    Task { await WakeManager.shared.unregister() }
                 }
             }
             .onChange(of: settings.enableNotifications) { _, newValue in
@@ -406,6 +418,7 @@ struct MainNavView: View {
                 } else {
                     // Disable notifications (unregister)
                     notificationManager.unregister()
+                    Task { await WakeManager.shared.unregister() }
                 }
             }
             .task(id: canHandleDeepLinks) {
@@ -715,10 +728,10 @@ struct MainNavView: View {
                 case .connections: LightningConnectionsView()
                 case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
                 case .sparkConnectionDetail: SparkConnectionDetailView()
-                case .moveToSpark: MoveToSparkView()
                 case .sparkExitIntro: SparkExitIntroView()
                 case .sparkExitQuote: SparkExitQuoteView()
                 case .sparkExitFunding: SparkExitFundingView()
+                case .sparkExitPay: SparkExitPayView()
                 case .sparkExitConfirm: SparkExitConfirmView()
                 case .sparkExitProgress: SparkExitProgressView()
                 case .sparkExitFeeBump: SparkExitFeeBumpView()

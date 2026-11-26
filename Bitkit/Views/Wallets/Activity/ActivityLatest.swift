@@ -11,6 +11,7 @@ struct ActivityLatest: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(SparkTransferFlow.self) private var sparkTransfer
 
     private var shouldShowBanner: Bool {
         wallet.balanceInTransferToSavings > 0 || wallet.balanceInTransferToSpending > 0
@@ -57,10 +58,27 @@ struct ActivityLatest: View {
         return Array(items.prefix(maxActivityItemsOnHome))
     }
 
+    /// Opens the progress of the transfer the banner shows, at its current step: a deposit into Spark, or Spark's
+    /// emergency exit to savings.
+    private func openTransferProgress() {
+        switch bannerType {
+        case .spending:
+            guard let txid = SparkManager.shared.deposits.inProgressTxid else { return }
+            sparkTransfer.showDeposit(txid: txid)
+            navigation.navigate(.settingUp)
+        case .savings:
+            guard SparkExitManager.shared.isExiting else { return }
+            navigation.navigate(.sparkExitProgress)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if shouldShowBanner {
                 ActivityBanner(type: bannerType, remainingDuration: remainingDuration)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: openTransferProgress)
+                    .accessibilityIdentifier("ActivityBanner")
                     .padding(.bottom, 16)
                     .transition(.opacity)
             }

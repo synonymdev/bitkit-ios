@@ -367,6 +367,17 @@ struct ProfileView: View {
     }
 
     private var retryButton: some View {
+        VStack(spacing: 16) {
+            if pubkyProfile.restorationNeedsUpdate {
+                BodyMText(t("profile__update_required"))
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("ProfileUpdateRequired")
+            }
+            retryLoadButton
+        }
+    }
+
+    private var retryLoadButton: some View {
         CustomButton(
             title: t("profile__retry_load"),
             variant: .secondary,
@@ -395,7 +406,7 @@ struct ProfileView: View {
         do {
             try await pubkyProfile.signOut()
         } catch {
-            app.toast(type: .error, title: t("profile__sign_out_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__sign_out_title"), description: error.profileErrorDescription)
         }
         isSigningOut = false
     }

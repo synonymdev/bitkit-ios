@@ -763,6 +763,20 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertFalse(record.isRebuilding)
     }
 
+    /// A Redo on a fee ask whose rebuild the held funding pays that same tick withdraws the ask's notification.
+    func testARedoRebuiltFromTheHeldFundingOnItsOwnTickWithdrawsTheFeeAsk() async throws {
+        let asked = bumpedRecord()
+        sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(asked.recovery?.response), verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("m1")])]
+
+        var record = try await driver().tick(asked)
+
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertTrue(SparkExitManager.isFundingAskWithdrawn(record, previous: asked), "the fee ask's notification stayed")
+        record = try await driver().tick(record)
+        XCTAssertNil(record.isRedoAsk, "the ended ask stayed marked")
+    }
+
     /// A Redo rebuild the held funding pays too little for still follows the awaited top-up: one that confirmed short
     /// asks for the rest, as while waiting for it.
     func testARedoRebuildShortOfFundingAsksForTheRestOfAShortTopUp() async throws {
@@ -1132,7 +1146,24 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(steps, ["close", "drain", "disconnect", "delete"])
     }
 
-    /// Fee rates that cannot be read fail the savings price, so Pay from savings shows its error instead of loading.
+    /// The emergency fees go to another wallet only once savings is priced and can't pay, or a payment already reached
+    /// the funding address.
+    func testEmergencyFeesGoToAnotherWalletOnlyOnceSavingsIsPricedAndCantPay() {
+        let pricing = SparkExitFundingView.isPricingSavings(savingsFeeSats: nil, hasSavingsFeeFailed: false)
+        XCTAssertTrue(pricing)
+        XCTAssertFalse(SparkExitFundingView.paysExternally(showsFundingAddress: false, isPricingSavings: pricing, canFundFromSavings: false))
+
+        let priced = SparkExitFundingView.isPricingSavings(savingsFeeSats: 300, hasSavingsFeeFailed: false)
+        XCTAssertFalse(SparkExitFundingView.paysExternally(showsFundingAddress: false, isPricingSavings: priced, canFundFromSavings: true))
+        XCTAssertTrue(SparkExitFundingView.paysExternally(showsFundingAddress: false, isPricingSavings: priced, canFundFromSavings: false))
+
+        let failed = SparkExitFundingView.isPricingSavings(savingsFeeSats: nil, hasSavingsFeeFailed: true)
+        XCTAssertTrue(SparkExitFundingView.paysExternally(showsFundingAddress: false, isPricingSavings: failed, canFundFromSavings: false))
+
+        XCTAssertTrue(SparkExitFundingView.paysExternally(showsFundingAddress: true, isPricingSavings: priced, canFundFromSavings: true))
+    }
+
+    /// Fee rates that cannot be read fail the savings price, so the emergency fees go to another wallet instead of loading.
     func testSavingsFeeFailsWithoutFeeRates() async {
         let rates = FeeRates(fast: 9, mid: 6, slow: 1)
         func price(address: String? = "bcrt1qfunding", fundingSats: UInt64 = 20000, rates: FeeRates?) async

@@ -810,6 +810,8 @@ class WalletViewModel: ObservableObject {
         requestId: PaykitPaymentRequest.ID? = nil,
         paymentIdentity: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
+        reviewedMiningFeeSats: UInt64? = nil,
+        reapprovedCandidateTxid: String? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {},
         onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
@@ -834,6 +836,8 @@ class WalletViewModel: ObservableObject {
             requestId: requestId,
             paymentIdentity: paymentIdentity,
             followupContext: followupContext,
+            reviewedMiningFeeSats: reviewedMiningFeeSats,
+            reapprovedCandidateTxid: reapprovedCandidateTxid,
             paymentDeadline: paymentDeadline,
             beforeBroadcastAttempt: beforeBroadcastAttempt,
             onPreDispatchFailure: onPreDispatchFailure
@@ -1079,7 +1083,11 @@ class WalletViewModel: ObservableObject {
 
     struct SettledLightningPayment {
         let paymentHash: PaymentHash
-        let feePaidSats: UInt64
+        let feePaidMsat: UInt64
+
+        var feePaidSats: UInt64 {
+            feePaidMsat / 1000
+        }
     }
 
     /// Waits for probe results that match one of the returned probe `paymentId`s.
@@ -1225,6 +1233,7 @@ class WalletViewModel: ObservableObject {
         sats: UInt64,
         maxFeeMsat: UInt64,
         timeout: Duration = .seconds(120),
+        beforeSubmission: @escaping () throws -> Void = {},
         onTimeout: @escaping @MainActor () -> Void = {},
         onLateFailure: @escaping @MainActor () -> Void = {},
         onLateSuccess: @escaping @MainActor (SettledLightningPayment) -> Void = { _ in }
@@ -1242,7 +1251,13 @@ class WalletViewModel: ObservableObject {
         moveEventSinks[listenerId] = sink
         let id: String
         do {
-            id = try await String(lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true))
+            id = try await String(lightningService.send(
+                bolt11: bolt11,
+                sats: sats,
+                params: params,
+                channelsOnly: true,
+                beforeSubmission: beforeSubmission
+            ))
         } catch {
             removeOnEvent(id: listenerId)
             moveEventSinks.removeValue(forKey: listenerId)
@@ -1284,7 +1299,7 @@ class WalletViewModel: ObservableObject {
                     let outcome: Result<SettledLightningPayment?, Error>
                     switch event {
                     case let .paymentSuccessful(_, paymentHash, _, feePaidMsat) where paymentHash == id:
-                        outcome = .success(SettledLightningPayment(paymentHash: paymentHash, feePaidSats: (feePaidMsat ?? 0) / 1000))
+                        outcome = .success(SettledLightningPayment(paymentHash: paymentHash, feePaidMsat: feePaidMsat ?? 0))
                     case let .paymentFailed(paymentId, paymentHash, reason) where paymentHash == id || paymentId == id:
                         outcome = .failure(AppError(paymentFailureReason: reason))
                     default:
@@ -1331,7 +1346,7 @@ class WalletViewModel: ObservableObject {
                         if paymentHash == hash {
                             self?.finishWatchSend(id: eventId, result: .success(SettledLightningPayment(
                                 paymentHash: paymentHash,
-                                feePaidSats: (feePaidMsat ?? 0) / 1000
+                                feePaidMsat: feePaidMsat ?? 0
                             )))
                         }
                     case .paymentFailed(paymentId: _, let paymentHash, let reason):
@@ -1362,7 +1377,7 @@ class WalletViewModel: ObservableObject {
         if let paid = await lightningService.nodePayments()?.first(where: {
             $0.direction == .outbound && $0.status == .succeeded && $0.id.caseInsensitiveCompare(hash) == .orderedSame
         }) {
-            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: (paid.feePaidMsat ?? 0) / 1000)))
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidMsat: paid.feePaidMsat ?? 0)))
             return
         }
         // A retry over a channel settles from LDK; an earlier Spark attempt's outcome doesn't decide it.
@@ -1371,7 +1386,7 @@ class WalletViewModel: ObservableObject {
         let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: hash)
         switch payment?.status {
         case .succeeded:
-            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: payment?.feeSats ?? 0)))
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidMsat: (payment?.feeSats ?? 0) * 1000)))
         case .failed:
             finishWatchSend(id: eventId, result: .failure(AppError(paymentFailureReason: nil)))
         case .pending, nil:
@@ -1596,8 +1611,11 @@ class WalletViewModel: ObservableObject {
             totalOnchainSats = Int(state.totalOnchainSats)
             totalLightningSats = Int(state.totalLightningSats + sparkBalanceSats)
             totalBalanceSats = Int(state.totalBalanceSats + sparkBalanceSats + spark.pendingDepositSats)
-            // A payment goes over one rail, so the larger of the two balances caps it.
-            maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.isExiting ? 0 : spark.sendableSats))
+            // A payment goes over one rail, or over Spark once the channels' balance is updated to it.
+            maxSendLightningSats = Int(max(
+                state.maxSendLightningSats,
+                MoveToSparkMath.maxSendSats(channels: lightningService.channels, spark: .live)
+            ))
 
             // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
             let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
@@ -2178,6 +2196,7 @@ class WalletViewModel: ObservableObject {
         selectedSpeed = speed
         isMaxAmountSend = false
         routingFeeEstimateSats = 0
+        Task { await OnchainSendAttemptService.shared.discardHeldCandidate() }
     }
 
     func refreshAfterChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {
@@ -2207,11 +2226,19 @@ class WalletViewModel: ObservableObject {
             let channelLightningBalance = allBalances.first { $0.channelIdString == channelIdString }
             var channelBalance = channelLightningBalance?.amountSats ?? 0
 
-            // If no balance found in lightningBalances, get from closed channel record
+            // The sweep holds what the close actually paid us
+            if channelBalance == 0 {
+                channelBalance = lightningService.balances?.pendingBalancesFromChannelClosures
+                    .filter { $0.sweepChannelId == channelIdString }
+                    .reduce(0) { $0 + $1.sweepAmountSats } ?? 0
+            }
+
+            // Last resort, from the record kept at close: outbound capacity plus our reserve, which overstates a
+            // balance below the reserve, but never the channel capacity
             if channelBalance == 0, let closedChannels = try? await coreService.activity.closedChannels(sortDirection: .desc),
                let closedChannel = closedChannels.first(where: { $0.channelId == channelIdString })
             {
-                channelBalance = closedChannel.channelValueSats
+                channelBalance = closedChannel.balanceOnCloseSats
             }
 
             // For force closes, get the timelock height

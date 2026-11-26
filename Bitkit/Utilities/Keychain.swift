@@ -4,13 +4,15 @@ import Security
 enum KeychainEntryType {
     case bip39Mnemonic(index: Int)
     case bip39Passphrase(index: Int)
-    case pushNotificationPrivateKey // For secp256k1 shared secret when decrypting push payload
+    case wakeCredentials
+    case wakeRegistration
     case securityPin
     case pinFailedAttempts
     case wipePending
     case paykitSession
     case paykitPendingPaymentProofs
     case onchainSendAttempts
+    case hwRetainedSend(walletId: String)
     case paykitUsdtPayments
     case paykitPresentedPaymentRequests
     case paykitAcceptedPaymentRequests
@@ -28,13 +30,15 @@ enum KeychainEntryType {
         switch self {
         case let .bip39Mnemonic(index): "bip39_mnemonic_\(index)"
         case let .bip39Passphrase(index): "bip39_passphrase_\(index)"
-        case .pushNotificationPrivateKey: "push_notification_private_key"
+        case .wakeCredentials: "wake_credentials"
+        case .wakeRegistration: "wake_registration"
         case .securityPin: "security_pin"
         case .pinFailedAttempts: "pin_failed_attempts"
         case .wipePending: "wipe_pending"
         case .paykitSession: "paykit_session"
         case .paykitPendingPaymentProofs: "paykit_pending_payment_proofs"
         case .onchainSendAttempts: "onchain_send_attempts"
+        case let .hwRetainedSend(walletId): "hw_retained_send_\(walletId)"
         case .paykitUsdtPayments: "paykit_usdt_payments"
         case .paykitPresentedPaymentRequests: "paykit_presented_payment_requests"
         case .paykitAcceptedPaymentRequests: "paykit_accepted_payment_requests"
@@ -53,6 +57,9 @@ enum KeychainEntryType {
 
 class Keychain {
     private static let unitTestAccountPrefix = "unit-tests."
+    /// Accounts older builds wrote and nothing reads any more. The push key decrypted Blocktank's notifications, which
+    /// ended with its sunset; wakes have their own key.
+    private static let legacyStorageKeys = ["push_notification_private_key"]
 
     /// Under test, entries live under a prefixed account name so a suite cannot read, overwrite or
     /// delete the wallet belonging to whoever is running it. `BitkitTests` is hosted in the app and
@@ -231,6 +238,16 @@ class Keychain {
         }
 
         Logger.info("Updated \(key.storageKey)", context: "Keychain")
+    }
+
+    class func deleteLegacyEntries() throws {
+        for storageKey in legacyStorageKeys {
+            let status = deleteItem(account: Env.isUnitTest ? unitTestAccountPrefix + storageKey : storageKey)
+            guard status == noErr || status == errSecItemNotFound else {
+                Logger.error("Failed to delete legacy \(storageKey) from keychain. \(status.description)", context: "Keychain")
+                throw KeychainError.failedToDelete
+            }
+        }
     }
 
     class func exists(key: KeychainEntryType) throws -> Bool {

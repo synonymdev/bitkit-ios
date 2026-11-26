@@ -42,6 +42,7 @@ struct SubscriptionsView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(PaykitAllowanceManager.self) private var allowances
     @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
     @AppStorage(PaykitFeatureFlags.allowancesEnabledKey) private var allowancesOverride: Bool?
 
@@ -139,7 +140,7 @@ struct SubscriptionsView: View {
                 tabItems: [
                     TabItem(Tab.overview),
                     TabItem(Tab.allowances),
-                    TabItem(Tab.payments, badge: paymentRequests.pendingRequests.count),
+                    TabItem(Tab.payments, badge: allowances.payable(paymentRequests.pendingRequests).count),
                 ].filter { areAllowancesEnabled || $0.tab != .allowances },
                 inactiveColor: .white.opacity(0.5)
             )
@@ -598,6 +599,7 @@ struct SubscriptionSheet: View {
     @State private var previousRoute: SubscriptionSheetItem.Route?
     @State private var now = SubscriptionClock.subscriptionNow()
     @State private var isAccepting = false
+    @State private var isSendConfirmLocked = false
     @State private var creationDraft = PaykitSubscriptionDraft.empty
     @State private var selectedCreationTarget: PaykitPaymentRequestTarget?
 
@@ -648,7 +650,8 @@ struct SubscriptionSheet: View {
             case let .payment(sendRoute):
                 SendSheet(
                     config: SendSheetItem(presentationID: sheets.activeSheetConfiguration?.presentationID, initialRoute: sendRoute),
-                    isEmbedded: true
+                    isEmbedded: true,
+                    onConfirmLockChange: { isSendConfirmLocked = $0 }
                 )
             case .allowanceContact:
                 AllowanceContactView { route = .allowanceSet($0) }
@@ -694,7 +697,7 @@ struct SubscriptionSheet: View {
             }
             now = SubscriptionClock.subscriptionNow()
         }
-        .interactiveDismissDisabled(isAccepting || paymentRequests.isCreatingRequest)
+        .interactiveDismissDisabled(isAccepting || paymentRequests.isCreatingRequest || isSendConfirmLocked)
     }
 
     private func review(_ subscription: PaykitSubscription) -> some View {

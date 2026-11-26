@@ -17,22 +17,33 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> Bool {
-        guard !app.isRoutingDeepLinkFromLock, let amountSats = QuickPayLimits.paymentAmountSats(app: app), amountSats > 0 else {
+        guard !app.isRoutingDeepLinkFromLock, !app.isQuickPaySuppressed, let amountSats = QuickPayLimits.paymentAmountSats(app: app),
+              amountSats > 0
+        else {
             return false
         }
 
         let coordinator = coordinator ?? .shared
         if let hash = app.scannedLightningInvoice?.paymentHash.hex, coordinator.hasOpen(hash) {
+            app.noteQuickPayChosen()
             return true
         }
+        // QuickPay has no confirm screen to show the update fee, so a payment that needs the update is reviewed.
+        if MoveToSparkMath.needsUpdateToSend(amountSats: amountSats) {
+            return false
+        }
 
-        return spendStore.canApply(
+        let canApply = spendStore.canApply(
             amountSats: amountSats,
             enabled: settings.enableQuickpay,
             thresholdUsd: settings.quickpayAmount,
             multiplier: settings.quickpayDailyLimitMultiplier,
             rates: .live(currency)
         )
+        if canApply {
+            app.noteQuickPayChosen()
+        }
+        return canApply
     }
 
     /// Centralized method to open the appropriate sheet based on the current state

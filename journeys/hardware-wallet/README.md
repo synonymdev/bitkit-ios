@@ -134,7 +134,7 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
 - Transfer: `HardwareTransferToSpending`, `HardwareTransferAmount`,
   `HardwareTransferAmountAvailable`/`Quarter`/`Max`/`Continue`/`Retry`,
   over-max toast `HardwareTransferAmountExceededToast`, `HardwareTransferSign`,
-  `HardwareTransferSignLearnMore`, speed rows `SpendingConfirmInstant`/`SpendingConfirmLater`,
+  Spark deposit address `SpendingConfirmAddress`, speed rows `SpendingConfirmInstant`/`SpendingConfirmLater`,
   `HardwareTransferOpenTrezorConnect`, `HardwareTransferSigned`,
   `HwTransferPassphraseSheet`/`Input`/`Continue`/`Cancel`.
 - Activity: `ActivityShowAll` (home only). Rows use **two different schemes** — `ActivityShort-<index>`
@@ -149,6 +149,8 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
 The iOS `shop-onchain-proof.xml` recovery contract permits local Success after exact transaction,
 proof, and activity persistence without waiting for remote proof delivery. Unit fixtures cover
 held delivery, acknowledgement failure, and restart; the live journey does not inject these faults.
+
+Broadcast faults on an ordinary send are not a journey capability; the manual recipe is [broadcast-unknown-retry.md](broadcast-unknown-retry.md).
 
 ## Blockstream Jade
 

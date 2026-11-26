@@ -104,10 +104,10 @@ enum Route: Hashable {
     case connections
     case connectionDetail(channelId: String)
     case sparkConnectionDetail
-    case moveToSpark
     case sparkExitIntro
     case sparkExitQuote
     case sparkExitFunding
+    case sparkExitPay
     case sparkExitConfirm
     case sparkExitProgress
     case sparkExitFeeBump
@@ -210,7 +210,16 @@ func resolveUsdtPaymentRoute(input: String, isEnabled: Bool = Env.isUsdtEnabled)
 
 @MainActor
 class NavigationViewModel: ObservableObject {
-    @Published var path: [Route] = []
+    @Published var path: [Route] = [] {
+        didSet {
+            if path != oldValue {
+                pathGeneration += 1
+            }
+        }
+    }
+
+    /// Changes with every change to `path`, so leaving a screen and coming back is not the same visit.
+    private(set) var pathGeneration = 0
 
     var currentRoute: Route? {
         path.last
@@ -264,5 +273,41 @@ class NavigationViewModel: ObservableObject {
 
     func reset() {
         path.removeAll()
+    }
+
+    /// Opens a started force transfer's progress right above the Spark connection screen it started from, so leaving
+    /// progress returns there.
+    func openSparkExitProgress() {
+        if let index = path.lastIndex(of: .sparkConnectionDetail) {
+            path = Array(path[...index])
+        }
+        path.append(.sparkExitProgress)
+    }
+
+    /// Opens Transfer to Savings for the wallet's balances now; see `navigateToTransferSavings(isSparkOnly:transfer:)`.
+    func navigateToTransferSavings(wallet: WalletViewModel, transfer: TransferViewModel) {
+        let spark = SparkManager.shared
+        let isSparkOnly = Self.isSparkOnly(
+            nodeLifecycleState: wallet.nodeLifecycleState,
+            channels: wallet.channels,
+            sparkSpendingSats: spark.isExiting ? 0 : spark.balanceSats
+        )
+        navigateToTransferSavings(isSparkOnly: isSparkOnly, transfer: transfer)
+    }
+
+    /// Opens Transfer to Savings, past Network Fee & Availability when only Spark's balance moves: it lands at once.
+    func navigateToTransferSavings(isSparkOnly: Bool, transfer: TransferViewModel) {
+        guard isSparkOnly else {
+            navigate(.savingsAvailability)
+            return
+        }
+        transfer.beginSavingsTransfer()
+        navigate(.savingsConfirm)
+    }
+
+    /// Spark holds the whole spending balance: the node runs, its channels are loaded, and none is open.
+    nonisolated static func isSparkOnly(nodeLifecycleState: NodeLifecycleState, channels: [ChannelDetails]?, sparkSpendingSats: UInt64) -> Bool {
+        guard nodeLifecycleState == .running, let channels else { return false }
+        return !channels.contains(where: \.isChannelReady) && sparkSpendingSats > 0
     }
 }

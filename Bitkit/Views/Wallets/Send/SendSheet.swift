@@ -1,12 +1,15 @@
 import SwiftUI
 
 enum SendRetryRoute: Hashable {
+    /// Back to the amount, where Continue asks for a fresh swap quote.
+    case amount
     case confirm
     case quickpay
     case lnurlPayConfirm
 
     var sendRoute: SendRoute {
         switch self {
+        case .amount: .amount
         case .confirm: .confirm
         case .quickpay: .quickpay
         case .lnurlPayConfirm: .lnurlPayConfirm
@@ -93,6 +96,12 @@ final class SendPresentationState {
     var hasValidatedAfterSync = false
     var incomingPaymentRequest: PaykitPaymentRequest?
     var isSubmittingPayment = false
+    /// Confirm screens a running swipe holds; the sheet's drag waits for them too.
+    var confirmSwipeHolds = 0
+    var isConfirmLocked: Bool {
+        confirmSwipeHolds > 0
+    }
+
     var isAmountReviewRequired = false
     var paymentReview: UUID?
     var isReviewingUsdtPayment = false
@@ -211,6 +220,8 @@ struct SendSheet: View {
 
     let config: SendSheetItem
     let isEmbedded: Bool
+    /// Tells a sheet embedding this flow when Confirm holds the drag, as its own dismiss rule wins.
+    var onConfirmLockChange: (Bool) -> Void = { _ in }
 
     @State private var flow: SendPresentationState
     @State private var hwSend: HwSendCoordinator
@@ -222,9 +233,10 @@ struct SendSheet: View {
         return sheets.activeSheetConfiguration?.presentationID == presentationID
     }
 
-    init(config: SendSheetItem, isEmbedded: Bool = false) {
+    init(config: SendSheetItem, isEmbedded: Bool = false, onConfirmLockChange: @escaping (Bool) -> Void = { _ in }) {
         self.config = config
         self.isEmbedded = isEmbedded
+        self.onConfirmLockChange = onConfirmLockChange
         _flow = State(initialValue: config.state)
         let hwSend = config.state.hwSend ?? HwSendCoordinator(walletId: config.hardwareWalletId)
         config.state.hwSend = hwSend
@@ -370,7 +382,8 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
-        .interactiveDismissDisabled(!hwSend.canLeave)
+        .interactiveDismissDisabled(!hwSend.canLeave || flow.isConfirmLocked)
+        .onChange(of: flow.isConfirmLocked) { _, isLocked in onConfirmLockChange(isLocked) }
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
@@ -800,7 +813,7 @@ struct SendSheet: View {
                 flow.hasValidatedAfterSync = true
                 return .failed
             }
-            guard LightningService.shared.canSend(amountSats: requestedAmount) else {
+            guard MoveToSparkMath.canSendLightning(amountSats: requestedAmount) else {
                 let spendingBalance = (LightningService.shared.balances?.totalLightningBalanceSats ?? 0)
                     + (LightningService.shared.channelFreeRail?.balanceSats ?? 0)
                 showInsufficientSpendingToast(invoiceAmount: requestedAmount, spendingBalance: spendingBalance)
@@ -826,7 +839,7 @@ struct SendSheet: View {
 
             // Check if we can afford the lightning payment
             let paymentAmount = requestedAmount ?? lightningInvoice.amountSatoshis
-            let canSend = LightningService.shared.canSend(amountSats: paymentAmount)
+            let canSend = MoveToSparkMath.canSendLightning(amountSats: paymentAmount)
 
             if !canSend {
                 // For unified invoices, fall back to onchain
@@ -882,8 +895,8 @@ struct SendSheet: View {
             }
         }
 
-        // Validate onchain payment balance (for pure onchain invoices); a Spark route can pay it from spending
-        if app.paykitRoute?.offersSparkLeg != true, let onchainInvoice = app.scannedOnchainInvoice {
+        // Validate onchain payment balance (for pure onchain invoices); a swap route or a Spark route can pay it from spending
+        if app.paykitSwapRoute == nil, app.paykitRoute?.offersSparkLeg != true, let onchainInvoice = app.scannedOnchainInvoice {
             let onchainBalance = max(
                 LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0,
                 hwWalletManager.maximumFundingBalanceSats
@@ -1121,7 +1134,8 @@ struct SendSheet: View {
                 preparingRequest: isPreparingRequest ? config.preparation?.request : nil,
                 isAmountReviewRequired: $flow.isAmountReviewRequired,
                 amountIsRoot: currentRoot == .amount,
-                isSetupPending: flow.isSetupPending || flow.isFallbackFundingPending
+                isSetupPending: flow.isSetupPending || flow.isFallbackFundingPending,
+                onLockChange: { flow.confirmSwipeHolds += $0 ? 1 : -1 }
             )
         case .hardwareSign:
             let contactContext = app.contactPaymentContext
@@ -1255,7 +1269,8 @@ struct SendSheet: View {
                 isSubmittingPayment: $flow.isSubmittingPayment,
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
-                routingCacheResetAttempted: flow.routingCacheResetAttempted
+                routingCacheResetAttempted: flow.routingCacheResetAttempted,
+                onLockChange: { flow.confirmSwipeHolds += $0 ? 1 : -1 }
             )
         case .lnurlWithdrawAmount:
             LnurlWithdrawAmount {
@@ -1461,6 +1476,8 @@ struct SendSheet: View {
         let route = retryRoute.sendRoute
         if retryRoute == .quickpay {
             app.resetQuickPay()
+            // Retrying is the payer's own choice, made after any lock.
+            app.noteQuickPayChosen()
             flow.quickPaySession += 1
         }
         if route == config.initialRoute || currentRoot == route {

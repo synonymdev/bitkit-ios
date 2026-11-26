@@ -167,6 +167,12 @@ enum PaykitRouteService {
         return sparkBalanceSats >= amountSats ? true : nil
     }
 
+    /// What the router may spend over Lightning from `source`: Spending's whole max, so a payment that needs the spending
+    /// balance update reaches it on Confirm.
+    static func lightningSpendableSats(source: Source, maxSendLightningSats: Int) -> UInt64 {
+        source == .spending ? UInt64(max(0, maxSendLightningSats)) : 0
+    }
+
     /// Whether a None route is a short balance rather than a contact Bitkit can't pay.
     static func isBalanceShort(amountSats: UInt64, lightningSpendableSats: UInt64, onchainSpendableSats: UInt64) -> Bool {
         amountSats > lightningSpendableSats.saturatingAdd(onchainSpendableSats)
@@ -279,6 +285,8 @@ enum PaykitRouteOutcome: Equatable {
     case refused
     /// The payment changed while the router answered, so its answer was dropped.
     case stale
+    /// No balance or Spark leg pays it, and the caller has a Pubky Swaps route to try instead, so nothing was shown.
+    case swapFallback
 }
 
 @MainActor
@@ -293,6 +301,7 @@ extension AppViewModel {
         lightningSpendableSats: UInt64,
         onchainSpendableSats: UInt64,
         request: PaykitPaymentRequest?,
+        hasSwapFallback: Bool = false,
         router: (PaykitRouteUi, UInt64, PaykitRouteService.Source, UInt64, UInt64) async throws -> PaykitRoute = {
             try await PaykitRouteService.route($0, amountSats: $1, source: $2, lightningSpendableSats: $3, onchainSpendableSats: $4)
         },
@@ -350,6 +359,10 @@ extension AppViewModel {
                 return .leg
             case let .none(reason):
                 Logger.warn("Found no Paykit route: '\(reason)'", context: "PaykitRoute")
+                if hasSwapFallback {
+                    paykitRoute = unrouted
+                    return .swapFallback
+                }
                 return refuse(sparkLegShort: false)
             case .swap:
                 // The app never offers Pubky Swaps providers, so a swap route can't come back; it pays nothing either.
@@ -379,6 +392,11 @@ extension AppViewModel {
         } catch let error as SparkLegUnaffordable {
             Logger.warn("Found no Paykit route: \(error)", context: "PaykitRoute")
             guard isCurrent() else { return .stale }
+            // A Spark balance too small for the amount and fee leaves the payment to a swap provider when one can carry it.
+            if hasSwapFallback {
+                paykitRoute = unrouted
+                return .swapFallback
+            }
             return refuse(sparkLegShort: true)
         } catch {
             Logger.error("Failed to route Paykit payment: \(error)", context: "PaykitRoute")

@@ -282,12 +282,12 @@ final class ProfileDestinationViewTests: XCTestCase {
         defer { disconnectGate.finish() }
         let disconnect = Task {
             try await manager.signOut {
-                disconnectGate.started.fulfill()
+                disconnectGate.markStarted()
                 for await _ in disconnectGate.stream {}
                 throw PubkyServiceError.sessionNotActive
             }
         }
-        await fulfillment(of: [disconnectGate.started], timeout: 3)
+        await disconnectGate.assertReached(by: disconnect)
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(manager.profileForDisplay?.name, profile.name)
         disconnectGate.finish()
@@ -311,7 +311,7 @@ final class ProfileDestinationViewTests: XCTestCase {
             let retryGate = await response.holdNextRequest()
             defer { retryGate.finish() }
             let retry = Task { await manager.loadProfile() }
-            await fulfillment(of: [retryGate.started], timeout: 3)
+            await retryGate.assertReached(by: retry)
             XCTAssertTrue(manager.isLoadingProfile)
             XCTAssertEqual(manager.profileForDisplay?.name, profile.name)
             retryGate.finish()
@@ -437,7 +437,7 @@ private final class ContactsRecoveryProfileManager: PubkyProfileManager {
     }
 
     override func hasExistingIdentityForNavigation(hasStoredIdentity: @escaping @Sendable () throws -> Bool) async -> Bool {
-        lookup.started.fulfill()
+        lookup.markStarted()
         for await _ in lookup.stream {}
         return identityExists
     }
@@ -449,7 +449,7 @@ private final class ContactsRecoveryProfileManager: PubkyProfileManager {
         didAttemptRecovery = true
         let gate = restoration
         await super.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
-            gate.started.fulfill()
+            gate.markStarted()
             for await _ in gate.stream {}
             return .restorationFailed
         }
@@ -486,10 +486,34 @@ private struct ProfileOperationGate {
     let started: XCTestExpectation
     let stream: AsyncStream<Void>
     private let continuation: AsyncStream<Void>.Continuation
+    private let reachedEvents: AsyncStream<Bool>
+    private let reachedContinuation: AsyncStream<Bool>.Continuation
 
     init(name: String) {
         started = XCTestExpectation(description: name)
         (stream, continuation) = AsyncStream<Void>.makeStream()
+        (reachedEvents, reachedContinuation) = AsyncStream<Bool>.makeStream()
+    }
+
+    func markStarted() {
+        started.fulfill()
+        reachedContinuation.yield(true)
+    }
+
+    /// Waits with no time limit, as on a slow runner the operation can take seconds to reach the gate, and fails at once when
+    /// `operation` ends without reaching it.
+    func assertReached(by operation: Task<some Sendable, some Error>, file: StaticString = #filePath, line: UInt = #line) async {
+        let events = reachedContinuation
+        Task {
+            _ = await operation.result
+            events.yield(false)
+        }
+        var reached = false
+        for await event in reachedEvents {
+            reached = event
+            break
+        }
+        XCTAssertTrue(reached, "\(started.expectationDescription) ended before reaching its gate", file: file, line: line)
     }
 
     func finish() {
@@ -518,7 +542,7 @@ private actor ProfileResponse {
     func resolve() async throws -> PubkyProfile {
         if let gate {
             self.gate = nil
-            gate.started.fulfill()
+            gate.markStarted()
             for await _ in gate.stream {}
         }
         guard let profile else { throw URLError(.notConnectedToInternet) }
@@ -537,7 +561,7 @@ private final class SuspendedProfileManager: PubkyProfileManager {
     ) async {
         let gate = restoration
         await super.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
-            gate.started.fulfill()
+            gate.markStarted()
             for await _ in gate.stream {}
             throw PubkyServiceError.authFailed("offline")
         }
@@ -547,7 +571,7 @@ private final class SuspendedProfileManager: PubkyProfileManager {
         isLoadingProfile = true
         defer { isLoadingProfile = false }
         let gate = profileFetch
-        gate.started.fulfill()
+        gate.markStarted()
         for await _ in gate.stream {}
     }
 }
