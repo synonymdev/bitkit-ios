@@ -1053,6 +1053,8 @@ struct SparkExitProgressView: View {
             }
 
             if offersSavingsRetry {
+                // The price on screen when tapped, never one published after: a fee refused since is refused again.
+                let shown = savingsRetry
                 CustomButton(title: t("lightning__spark_exit__fund_savings"), variant: .secondary, isLoading: isPayingSavings) {
                     guard !isPayingSavings else { return }
                     isPayingSavings = true
@@ -1063,9 +1065,9 @@ struct SparkExitProgressView: View {
                         } catch {
                             app.toast(error)
                         }
-                    } else if let savingsRetry {
+                    } else if let shown {
                         do {
-                            try await exit.paySavingsRefusal(satsPerVbyte: savingsRetry.rate, feeSats: savingsRetry.feeSats)
+                            try await exit.paySavingsRefusal(satsPerVbyte: shown.rate, feeSats: shown.feeSats)
                         } catch let OnchainSendAttemptError.preDispatch(error) where error is SparkFundingChanged {
                             // Savings never pays more than the fee shown: progress shows the higher one to confirm.
                             app.toast(type: .info, title: t("lightning__spending_confirm__fees_changed_title"))

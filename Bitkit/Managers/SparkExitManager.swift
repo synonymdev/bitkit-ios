@@ -346,6 +346,9 @@ final class SparkExitManager {
 
     /// The address of an unresolved savings send, read on every tick and before a cancel.
     private(set) var unresolvedSendAddress: String?
+    /// The address of a savings send the node accepted, read with `unresolvedSendAddress`: the record may not hold its
+    /// txid yet, after a stop or a failed save.
+    private(set) var acceptedSendAddress: String?
     /// The savings payment of the start that a node refused, read on every tick: progress says so and offers to pay
     /// again.
     private(set) var refusedSavingsPayment: OnchainSendAttempt?
@@ -416,7 +419,16 @@ final class SparkExitManager {
     /// retry pays again.
     var hasSavingsSend: Bool {
         guard let record else { return false }
-        return isSavingsPaymentRefused || record.funding.contains { $0.address == unresolvedSendAddress }
+        return Self.hasSavingsSend(
+            record,
+            isRefused: isSavingsPaymentRefused,
+            sendAddresses: [unresolvedSendAddress, acceptedSendAddress]
+        )
+    }
+
+    /// A savings send to the funding address went out: refused by a node, unresolved, or accepted.
+    nonisolated static func hasSavingsSend(_ record: SparkExitRecord, isRefused: Bool, sendAddresses: [String?]) -> Bool {
+        isRefused || record.funding.contains { sendAddresses.contains($0.address) }
     }
 
     /// The start's savings payment of `record`'s fee funding that was refused before it went out, for a fee above the
@@ -495,6 +507,7 @@ final class SparkExitManager {
         }
         // The send attempt itself, as a tick reads it: not read yet after a relaunch.
         unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
+        acceptedSendAddress = await OnchainSendAttemptService.shared.acceptedSendAddress()
         await refreshRefusedSavingsPayment()
         // Checked under the lock, over the address read now: funding may have reached it since the last tick.
         let address = record?.funding.first?.address
@@ -519,6 +532,7 @@ final class SparkExitManager {
             noteSavingsRefusal(current, sats: refusal.sats, after: error)
             // A payment that went out and failed shows as such, with its own retry.
             unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
+            acceptedSendAddress = await OnchainSendAttemptService.shared.acceptedSendAddress()
             await refreshRefusedSavingsPayment()
             throw error
         }
@@ -629,6 +643,7 @@ final class SparkExitManager {
             record = stored
         }
         unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
+        acceptedSendAddress = await OnchainSendAttemptService.shared.acceptedSendAddress()
         guard canCancel, var record, let address = record.funding.first?.address else { return .notCancellable }
         let utxos = try? await chain?.utxos(address: address)
         let outcome = Self.cancelOutcome(utxos: utxos)
@@ -720,6 +735,7 @@ final class SparkExitManager {
         do {
             tipHeight = await (try? chain.tipHeight()) ?? tipHeight
             unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
+            acceptedSendAddress = await OnchainSendAttemptService.shared.acceptedSendAddress()
             await refreshRefusedSavingsPayment()
             await refreshNetworkFees(chain: chain)
             await refreshFundingSeen(chain: chain, record: current)
