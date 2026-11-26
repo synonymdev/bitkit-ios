@@ -9418,7 +9418,6 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
         XCTAssertEqual(manager.eligibleTargets, [PaykitPaymentRequestTarget(publicKey: savedKey)])
 
-        manager.updateSavedPublicKeys([savedKey, addedKey])
         await manager.refreshEligibleTargets(savedPublicKeys: [savedKey, addedKey])
 
         XCTAssertEqual(manager.eligibleTargetsStatus, .loaded)
@@ -9501,6 +9500,20 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.eligibleTargets.isEmpty)
         let peerReads = await sdk.linkedPeersCalls()
         XCTAssertEqual(peerReads, 1)
+    }
+
+    func testEligibleTargetsStatusFailsWhenPaykitIsUnavailableBeforeFirstLoad() async {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        let manager = paymentRequestManager(sdk: sdk)
+        manager.clear()
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loading)
+
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+
+        XCTAssertEqual(manager.eligibleTargetsStatus, .failed)
+        let peerReads = await sdk.linkedPeersCalls()
+        XCTAssertEqual(peerReads, 0)
     }
 
     func testRecipientEmptyStateWaitsForFinishedDiscovery() {

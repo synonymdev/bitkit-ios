@@ -56,6 +56,7 @@ struct ReceiveSheet: View {
 
     @State private var navigationPath: [ReceiveRoute] = []
     @State private var isUsdtSelected: Bool?
+    @State private var paymentRequestPickerOpenCount = 0
 
     private var usesUsdtHeader: Bool {
         switch navigationPath.last ?? config.initialRoute {
@@ -81,7 +82,11 @@ struct ReceiveSheet: View {
         }
         .onChange(of: navigationPath) { oldPath, newPath in
             guard newPath.count > oldPath.count, case .paymentRequestRecipient? = newPath.last else { return }
-            refreshPaymentRequestRecipients()
+            paymentRequestPickerOpenCount += 1
+        }
+        .task(id: paymentRequestPickerOpenCount) {
+            guard paymentRequestPickerOpenCount > 0 else { return }
+            await paymentRequests.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
         .onAppear {
             navigationPath = []
@@ -89,7 +94,7 @@ struct ReceiveSheet: View {
             wallet.invoiceNote = ""
             tagManager.clearSelectedTags()
             if case .paymentRequestRecipient = config.initialRoute {
-                refreshPaymentRequestRecipients()
+                paymentRequestPickerOpenCount += 1
             }
             guard config.initialRoute.requiresInvoiceRefresh else { return }
             Task {
@@ -98,12 +103,6 @@ struct ReceiveSheet: View {
                 try? await wallet.refreshBip21(forceRefreshBolt11: true)
             }
         }
-    }
-
-    /// Checks eligibility once each time the picker is opened; going back to it from a later step does not.
-    private func refreshPaymentRequestRecipients() {
-        let savedPublicKeys = contactsManager.contacts.map(\.publicKey)
-        Task { await paymentRequests.refreshEligibleTargets(savedPublicKeys: savedPublicKeys) }
     }
 
     private var reconnectPairingBinding: Binding<Bool> {

@@ -1624,6 +1624,9 @@ final class PaykitPaymentRequestManager {
         let currentStateGeneration = stateGeneration
         guard isAvailable(), let activeIdentity else {
             eligibleTargets = []
+            if eligibleTargetsStatus == .loading {
+                eligibleTargetsStatus = .failed
+            }
             return
         }
         // A saved-contacts change drops this result without starting a refresh of its own.
