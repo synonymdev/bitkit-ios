@@ -649,6 +649,22 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, landingSendAddress: "bcrt1qfunding"))
     }
 
+    /// Only a send that is pending or of unknown outcome may still land: an accepted one has, and a refused one keeps its
+    /// own retry, also once the exit needs more funding.
+    func testOnlyAPendingOrUnknownSendMayStillLand() {
+        XCTAssertEqual(SparkExitManager.landingSendAddress(refusedPayment(status: .pending)), "bcrt1qfunding")
+        XCTAssertEqual(SparkExitManager.landingSendAddress(refusedPayment(status: .unknown)), "bcrt1qfunding")
+        XCTAssertNil(SparkExitManager.landingSendAddress(refusedPayment(status: .rejected)))
+        XCTAssertNil(SparkExitManager.landingSendAddress(refusedPayment(status: .accepted)))
+        XCTAssertNil(SparkExitManager.landingSendAddress(nil))
+        let needsFunding = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 20000))
+        XCTAssertNotNil(needsFunding.fundingShortfallSats)
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(
+            needsFunding,
+            landingSendAddress: SparkExitManager.landingSendAddress(refusedPayment())
+        ))
+    }
+
     /// The unknown payment confirming late is adopted like any funding, and the exit builds.
     func testALateConfirmationOfAnUnknownFundingSendIsAdopted() async throws {
         var record = SparkExitFixtures.record()

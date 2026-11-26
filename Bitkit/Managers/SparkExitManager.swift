@@ -336,6 +336,7 @@ final class SparkExitManager {
         savingsFundingRefusedFeeSats = nil
         fundingSeenSats = 0
         fundingSeenCount = 0
+        landingSendAddress = nil
         Self.clearReminders()
     }
 
@@ -425,7 +426,11 @@ final class SparkExitManager {
         guard let txid else {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark exit savings payment refused again")
         }
-        _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
+        // Only an accepted payment ends its send, as the start's payment: one of unknown outcome may still land, and
+        // its send keeps holding the funding ask.
+        if landingSendAddress == nil {
+            _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
+        }
         guard var paid = record, paid.createdAt == current.createdAt, paid.isActive else { return }
         paid.fundingPaymentTxid = txid
         try saveRecord(paid)
@@ -439,7 +444,13 @@ final class SparkExitManager {
     private func refreshRefusedSavingsPayment() async {
         let attempt = try? await OnchainSendAttemptService.shared.blockingAttempt()
         refusedSavingsPayment = attempt?.status == .rejected ? attempt : nil
-        landingSendAddress = attempt.flatMap { $0.status == .pending || $0.status == .unknown ? $0.address : nil }
+        landingSendAddress = Self.landingSendAddress(attempt)
+    }
+
+    /// The address of a send that is pending or of unknown outcome. An accepted send has landed, a refused one will not.
+    nonisolated static func landingSendAddress(_ attempt: OnchainSendAttempt?) -> String? {
+        guard let attempt, attempt.status == .pending || attempt.status == .unknown else { return nil }
+        return attempt.address
     }
 
     /// What the exit still brings to savings, for its own transfer's in-transfer amount; nil without one.
