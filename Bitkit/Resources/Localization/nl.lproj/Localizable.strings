@@ -399,6 +399,7 @@
 "lightning__spark_exit__fees" = "Netwerkkosten";
 "lightning__spark_exit__receive" = "U ontvangt (schatting)";
 "lightning__spark_exit__savings_refused" = "Je betaling uit spaargeld is niet gelukt. Betaal opnieuw of financier vanuit een andere wallet.";
+"lightning__spark_exit__savings_unresolved" = "Je betaling uit spaargeld is nog niet bevestigd. Wacht erop voordat je vanuit een andere wallet betaalt.";
 "lightning__spark_exit__quote_loading" = "Kosten ophalen…";
 "lightning__spark_exit__quote_settling" = "Wachten tot Spark klaar is met het verplaatsen van je saldo. Dit kan tot 5 minuten duren.";
 "lightning__spark_exit__quote_error" = "Kon de kosten van de overboeking niet ophalen. Probeer opnieuw.";

@@ -386,6 +386,7 @@
 "lightning__spark_exit__fees" = "Comissions de xarxa";
 "lightning__spark_exit__receive" = "Rebràs (estimació)";
 "lightning__spark_exit__savings_refused" = "El teu pagament dels estalvis no s'ha completat. Torna a pagar o finança des d'un altre moneder.";
+"lightning__spark_exit__savings_unresolved" = "El teu pagament dels estalvis encara no s'ha confirmat. Espera'l abans de pagar des d'un altre moneder.";
 "lightning__spark_exit__quote_loading" = "Obtenint els costos…";
 "lightning__spark_exit__quote_settling" = "Esperant que Spark acabi de moure el teu saldo. Pot trigar fins a 5 minuts.";
 "lightning__spark_exit__quote_error" = "No s'han pogut obtenir els costos de la transferència. Torna-ho a intentar.";

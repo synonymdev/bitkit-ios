@@ -402,6 +402,7 @@
 "lightning__spark_exit__fees" = "Frais de réseau";
 "lightning__spark_exit__receive" = "Vous recevez (estimation)";
 "lightning__spark_exit__savings_refused" = "Votre paiement depuis l'épargne n'a pas abouti. Payez à nouveau ou financez depuis un autre portefeuille.";
+"lightning__spark_exit__savings_unresolved" = "Votre paiement depuis l'épargne n'est pas encore confirmé. Attendez-le avant de payer depuis un autre portefeuille.";
 "lightning__spark_exit__quote_loading" = "Obtention des coûts…";
 "lightning__spark_exit__quote_settling" = "En attente que Spark termine le transfert de votre solde. Cela peut prendre jusqu'à 5 minutes.";
 "lightning__spark_exit__quote_error" = "Impossible d'obtenir les coûts du transfert. Réessayez.";

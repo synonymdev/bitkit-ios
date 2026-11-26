@@ -402,6 +402,7 @@
 "lightning__spark_exit__fees" = "Comisiones de red";
 "lightning__spark_exit__receive" = "Recibes (estimado)";
 "lightning__spark_exit__savings_refused" = "Tu pago desde ahorros no se completó. Paga de nuevo o financia desde otra billetera.";
+"lightning__spark_exit__savings_unresolved" = "Tu pago desde ahorros aún no se confirmó. Espéralo antes de pagar desde otra billetera.";
 "lightning__spark_exit__quote_loading" = "Obteniendo los costos…";
 "lightning__spark_exit__quote_settling" = "Esperando a que Spark termine de mover tu saldo. Esto puede tardar hasta 5 minutos.";
 "lightning__spark_exit__quote_error" = "No se pudieron obtener los costos de la transferencia. Intenta de nuevo.";

@@ -354,6 +354,20 @@ final class SparkExitManager {
         record.map { Self.isSavingsPaymentRefused($0, attempt: refusedSavingsPayment) } ?? false
     }
 
+    /// A savings send to the funding address went out and is not known accepted or refused yet: it may still land.
+    var isSavingsSendLanding: Bool {
+        record.map {
+            Self.isSavingsSendLanding($0, unresolvedSendAddress: unresolvedSendAddress, isRefused: isSavingsPaymentRefused)
+        } ?? false
+    }
+
+    /// While a savings send to `record`'s funding address may still land, Progress holds the funding ask, as retries
+    /// and cancel do: paying the same fees from another wallet as well would pay them twice.
+    nonisolated static func isSavingsSendLanding(_ record: SparkExitRecord, unresolvedSendAddress: String?, isRefused: Bool) -> Bool {
+        guard !isRefused, record.fundingShortfallSats != nil, let unresolvedSendAddress else { return false }
+        return record.funding.contains { $0.address == unresolvedSendAddress }
+    }
+
     /// A node refused the savings payment of `record`'s fee funding, and none was adopted since: only before the exit
     /// is funded, for the payment the start made.
     nonisolated static func isSavingsPaymentRefused(_ record: SparkExitRecord, attempt: OnchainSendAttempt?) -> Bool {

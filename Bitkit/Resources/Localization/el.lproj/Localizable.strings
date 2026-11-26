@@ -373,6 +373,7 @@
 "lightning__spark_exit__fees" = "Τέλη δικτύου";
 "lightning__spark_exit__receive" = "Λαμβάνετε (εκτίμηση)";
 "lightning__spark_exit__savings_refused" = "Η πληρωμή σας από αποταμιεύσεις δεν ολοκληρώθηκε. Πληρώστε ξανά ή χρηματοδοτήστε από άλλο πορτοφόλι.";
+"lightning__spark_exit__savings_unresolved" = "Η πληρωμή σας από αποταμιεύσεις δεν έχει επιβεβαιωθεί ακόμη. Περιμένετέ την πριν πληρώσετε από άλλο πορτοφόλι.";
 "lightning__spark_exit__quote_loading" = "Λήψη κόστους…";
 "lightning__spark_exit__quote_settling" = "Αναμονή για να ολοκληρώσει το Spark τη μεταφορά του υπολοίπου σας. Αυτό μπορεί να διαρκέσει έως 5 λεπτά.";
 "lightning__spark_exit__quote_error" = "Δεν ήταν δυνατή η λήψη του κόστους μεταφοράς. Δοκιμάστε ξανά.";

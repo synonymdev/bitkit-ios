@@ -399,6 +399,7 @@
 "lightning__spark_exit__fees" = "Netzwerkgebühren";
 "lightning__spark_exit__receive" = "Du erhältst (Schätzung)";
 "lightning__spark_exit__savings_refused" = "Deine Zahlung vom Sparkonto ist nicht durchgegangen. Zahle erneut oder finanziere aus einer anderen Wallet.";
+"lightning__spark_exit__savings_unresolved" = "Deine Zahlung vom Sparkonto ist noch nicht bestätigt. Warte darauf, bevor du aus einer anderen Wallet zahlst.";
 "lightning__spark_exit__quote_loading" = "Kosten werden abgerufen…";
 "lightning__spark_exit__quote_settling" = "Warte, bis Spark dein Guthaben fertig verschoben hat. Das kann bis zu 5 Minuten dauern.";
 "lightning__spark_exit__quote_error" = "Die Übertragungskosten konnten nicht abgerufen werden. Versuche es erneut.";

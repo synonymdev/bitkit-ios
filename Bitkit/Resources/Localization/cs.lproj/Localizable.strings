@@ -401,6 +401,7 @@
 "lightning__spark_exit__fees" = "Síťové poplatky";
 "lightning__spark_exit__receive" = "Obdržíte (odhad)";
 "lightning__spark_exit__savings_refused" = "Vaše platba z úspor neprošla. Zaplaťte znovu, nebo financujte z jiné peněženky.";
+"lightning__spark_exit__savings_unresolved" = "Vaše platba z úspor ještě není potvrzena. Počkejte na ni, než zaplatíte z jiné peněženky.";
 "lightning__spark_exit__quote_loading" = "Zjišťuji náklady…";
 "lightning__spark_exit__quote_settling" = "Čekáme, až Spark dokončí přesun vašeho zůstatku. Může to trvat až 5 minut.";
 "lightning__spark_exit__quote_error" = "Náklady na převod se nepodařilo zjistit. Zkuste to znovu.";
