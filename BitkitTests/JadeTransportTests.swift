@@ -10,6 +10,8 @@ final class JadeTransportTests: XCTestCase {
 
     private var driver: FakeBLEDriver!
     private var cancellables: Set<AnyCancellable> = []
+    /// Keeps these tests off an emulator the Debug environment may have turned on.
+    private let disabledEmulator = JadeEmulatorLink(address: "127.0.0.1:1", isEnabled: { false })
 
     override func setUp() {
         super.setUp()
@@ -23,7 +25,7 @@ final class JadeTransportTests: XCTestCase {
     }
 
     private func makeTransport(isTrezorBridgeEnabled: Bool = false) -> JadeTransport {
-        JadeTransport(driver: driver, isTrezorBridgeEnabled: { isTrezorBridgeEnabled })
+        JadeTransport(driver: driver, emulator: disabledEmulator, isTrezorBridgeEnabled: { isTrezorBridgeEnabled })
     }
 
     // MARK: - Chunk size
@@ -38,7 +40,7 @@ final class JadeTransportTests: XCTestCase {
     }
 
     func testChunkSizeDefaultsTo20WhenNotOpen() {
-        let transport = JadeTransport(driver: JadeBLEManager(), isTrezorBridgeEnabled: { false })
+        let transport = JadeTransport(driver: JadeBLEManager(), emulator: disabledEmulator, isTrezorBridgeEnabled: { false })
 
         XCTAssertEqual(transport.getChunkSize(path: path), 20)
     }
@@ -52,7 +54,7 @@ final class JadeTransportTests: XCTestCase {
     // MARK: - Unopened paths
 
     func testOperationsOnUnopenedDeviceReportNotConnected() {
-        let transport = JadeTransport(driver: JadeBLEManager(), isTrezorBridgeEnabled: { false })
+        let transport = JadeTransport(driver: JadeBLEManager(), emulator: disabledEmulator, isTrezorBridgeEnabled: { false })
 
         let read = transport.readChunk(path: path, timeoutMs: 50)
         XCTAssertFalse(read.success)
@@ -69,7 +71,7 @@ final class JadeTransportTests: XCTestCase {
 
     func testOpeningAnInvalidPathFailsWithoutStartingBluetooth() {
         let manager = JadeBLEManager()
-        let transport = JadeTransport(driver: manager, isTrezorBridgeEnabled: { false })
+        let transport = JadeTransport(driver: manager, emulator: disabledEmulator, isTrezorBridgeEnabled: { false })
 
         let result = transport.openDevice(path: "usb:jade")
 
@@ -81,7 +83,7 @@ final class JadeTransportTests: XCTestCase {
 
     func testCentralIsOnlyCreatedByScanOrOpen() {
         let manager = JadeBLEManager()
-        let transport = JadeTransport(driver: manager, isTrezorBridgeEnabled: { false })
+        let transport = JadeTransport(driver: manager, emulator: disabledEmulator, isTrezorBridgeEnabled: { false })
 
         manager.setPairedPaths([path])
         manager.releaseAllImmediately()
@@ -144,6 +146,13 @@ final class JadeTransportTests: XCTestCase {
         XCTAssertEqual(result.errorCode, .disconnected)
         XCTAssertEqual(reported, [emulatorPath])
         XCTAssertEqual(transport.readChunk(path: emulatorPath, timeoutMs: 10).errorCode, .notConnected)
+    }
+
+    func testEmulatorAddressAcceptsAHostname() throws {
+        let port = try acceptOnceAndClose()
+        let emulator = JadeEmulatorLink(address: "localhost:\(port)", isEnabled: { true })
+
+        XCTAssertEqual(emulator.scanDevices().map(\.path), ["tcp:localhost:\(port)"])
     }
 
     /// A one-shot TCP server on 127.0.0.1 that closes its first connection at once.

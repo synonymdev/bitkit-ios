@@ -41,8 +41,14 @@ final class JadeEmulatorLink: @unchecked Sendable {
     func scanDevices() -> [JadeNativeDevice] {
         guard isEnabled() else { return [] }
         if socket(for: path) == nil {
-            guard let probe = try? connect() else { return [] }
-            close(probe)
+            do {
+                try close(connect())
+            } catch {
+                if case JadeEmulatorError.invalidAddress = error {
+                    Logger.warn("Failed to scan for the Jade emulator: \(error)", context: Self.logContext)
+                }
+                return []
+            }
         }
         return [JadeNativeDevice(path: path, transport: .serial, name: Self.deviceName, serialNumber: nil)]
     }
@@ -123,7 +129,16 @@ final class JadeEmulatorLink: @unchecked Sendable {
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = port.bigEndian
-        guard inet_pton(AF_INET, host, &addr.sin_addr) == 1 else { throw JadeEmulatorError.invalidAddress(address) }
+        // Resolves a hostname such as localhost as well as an IPv4 literal.
+        var hints = addrinfo()
+        hints.ai_family = AF_INET
+        hints.ai_socktype = SOCK_STREAM
+        var resolved: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, nil, &hints, &resolved) == 0, let found = resolved, let foundAddr = found.pointee.ai_addr else {
+            throw JadeEmulatorError.invalidAddress(address)
+        }
+        defer { freeaddrinfo(found) }
+        addr.sin_addr = foundAddr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr }
 
         let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw JadeEmulatorError.connectFailed(errno) }
