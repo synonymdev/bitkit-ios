@@ -626,8 +626,8 @@
 "other__lnurl_auth_success_msg_no_domain" = "Συνδεθήκατε επιτυχώς.";
 "other__lnurl_auth_auth_prompt" = "Επαλήθευση στο {domain};";
 "other__lnurl_auth_auth_title" = "Επαλήθευση";
-"other__lnurl_auth_link_prompt" = "Σύνδεση λογαριασμού με το {domain};";
-"other__lnurl_auth_link_title" = "Σύνδεση λογαριασμού";
+"other__lnurl_auth_link_prompt" = "Διασύνδεση λογαριασμού με το {domain};";
+"other__lnurl_auth_link_title" = "Διασύνδεση";
 "other__lnurl_auth_login_button" = "Σύνδεση";
 "other__lnurl_auth_login_prompt" = "Σύνδεση στο {domain};";
 "other__lnurl_auth_login_title" = "Σύνδεση";
