@@ -2191,6 +2191,8 @@
 "usdt__error_bridge_liquidity" = "This route cannot complete the transfer right now. Try another network or try again later.";
 "usdt__receive_copied" = "Address copied to clipboard.\nMake sure USDT is only sent on the selected network.";
 
+"onboarding__connection_settings" = "Connection settings";
+"onboarding__connection_saved" = "Saved. Retry to continue restoring.";
 "wallet__balance_updating" = "Updating balance…";
 "lightning__move_to_spark__in_flight_text" = "The payment is on its way and shows in Spark once it settles. If it fails, the amount stays in your connection.";
 "lightning__move_to_spark__in_flight_title" = "Moving to\n<accent>Spark</accent>";

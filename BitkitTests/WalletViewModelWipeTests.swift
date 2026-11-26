@@ -29,7 +29,7 @@ private final class FakeNodeLifecycle: Bitkit.NodeLifecycleService {
         hasNode = true
     }
 
-    func start(onEvent _: ((Event) -> Void)?) async throws {
+    func start(onEvent _: (@MainActor (Event) -> Void)?) async throws {
         record("start")
         if let startError {
             throw startError

@@ -138,6 +138,11 @@ class BackupService {
     /// Set while the Spark exit data restore hasn't succeeded or found no older backup, kept across launches, so a fresh
     /// export never replaces the remote backup it couldn't read yet.
     private static let sparkExitRestorePendingKey = "sparkExitRestorePending"
+    private let connectionRecovery: ConnectionRecoveryService?
+    @MainActor private var connectionRecoveryService: ConnectionRecoveryService {
+        connectionRecovery ?? .shared
+    }
+
     private let backupData: ((BackupCategory) async throws -> Data)?
     private let isSparkExitActive: () async -> Bool
     private let uploadBackup: (String, Data) async throws -> Void
@@ -170,6 +175,7 @@ class BackupService {
 
     init(
         defaults: UserDefaults = .standard,
+        connectionRecovery: ConnectionRecoveryService? = nil,
         backupData: ((BackupCategory) async throws -> Data)? = nil,
         isSparkExitActive: @escaping () async -> Bool = { @MainActor in SparkExitManager.shared.isExiting },
         usdtRecoveryBackup: UsdtRecoveryBackupStore = UsdtRecoveryBackupStore(),
@@ -193,6 +199,7 @@ class BackupService {
         self.defaults = defaults
         self.isSparkExitActive = isSparkExitActive
         self.fetchBackup = fetchBackup
+        self.connectionRecovery = connectionRecovery
         self.backupData = backupData
         self.usdtRecoveryBackup = usdtRecoveryBackup
         self.uploadBackup = uploadBackup
@@ -703,6 +710,12 @@ class BackupService {
 
     /// Performs full restore from latest backup
     func performFullRestoreFromLatestBackup() async throws {
+        try await connectionRecoveryService.perform {
+            try await self.restoreLatestWalletBackup()
+        }
+    }
+
+    private func restoreLatestWalletBackup() async throws {
         if UsdtRecoveryRestoreGate.isPending, try !walletRestoreGate.hasPendingRestore() {
             try await restoreUsdtRecoveryAfterLegacyMigration()
             return
@@ -715,7 +728,7 @@ class BackupService {
         Logger.debug("Full restore starting", context: "BackupService")
 
         do {
-            _ = try await walletRestoreGate.performRestore { retainedWalletBackup in
+            _ = try await connectionRecoveryService.restoreRequired(gate: walletRestoreGate) { [self] retainedWalletBackup in
                 try UsdtRecoveryRestoreGate.begin()
                 await usdtWallet?.pauseForRecoveryRestore()
                 await usdtBackupWriter.waitUntilIdle()
@@ -760,7 +773,14 @@ class BackupService {
     }
 
     func restoreUsdtRecoveryAfterLegacyMigration() async throws {
+        try await connectionRecoveryService.perform {
+            try await self.restoreLegacyUsdtRecovery()
+        }
+    }
+
+    private func restoreLegacyUsdtRecovery() async throws {
         let retained = try UsdtRecoveryRestoreGate.begin()
+        _ = try await connectionRecoveryService.replay()
         await usdtWallet?.pauseForRecoveryRestore()
         await usdtBackupWriter.waitUntilIdle()
         await walletBackupWriter.waitUntilIdle()
@@ -789,6 +809,7 @@ class BackupService {
                 try await PaykitUsdtPaymentService.shared.restoreBackup($0)
             }
         )
+        _ = try await connectionRecoveryService.replay()
         try UsdtRecoveryRestoreGate.complete()
         await usdtWallet?.resumeAfterRecoveryRestore()
         markRestoreComplete(category: .usdt)
@@ -798,8 +819,11 @@ class BackupService {
         do {
             try await performRestore(category: .settings) { dataBytes in
                 let payload = try SettingsBackupV1.decode(from: dataBytes)
-                await SettingsViewModel.shared.restoreSettingsDictionary(payload.settings)
+                let settings = try await connectionRecoveryService.mergeRestoredSettings(payload.settings)
+                await SettingsViewModel.shared.restoreSettingsDictionary(settings)
             }
+
+            _ = try await connectionRecoveryService.replay()
 
             try await performRestore(category: .widgets) { dataBytes in
                 let payload = try WidgetsBackupV1.decode(from: dataBytes)

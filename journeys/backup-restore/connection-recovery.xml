@@ -1,0 +1,27 @@
+<journey name="connection recovery during required wallet restore">
+  <description>
+    Use a disposable dev wallet and a controlled recovery fixture with an acknowledged complete wallet
+    backup. Prepare a failing Electrum endpoint and a reachable replacement, plus a backup SETTINGS
+    record containing the old endpoint. Required WALLET and USDT recovery must remain pending until
+    their imports succeed. Never reset an existing wallet or use live funds. iOS restores required backup state before starting a rebuilt node; Android can need a running node
+    during restoration. The iOS editor validates Electrum syntax on Save; permitted startup proves
+    connectivity. RGS uses an independent endpoint probe. Installed simulator checks cover authenticated
+    restoration, correction persistence, retry and restart, required-marker/local-storage failures, and
+    optional profile failure/recovery. The fixture's successful empty USDT record listing is not a
+    nonempty USDT import or proof of full chain synchronization or spending. Actual wallet wipe remains
+    unrun and outside the no-reset authorization. Component tests are separate from these app checks.
+  </description>
+  <actions>
+    <action>Restore the fixture wallet and verify failed node startup offers Connection Settings without access to ordinary wallet actions</action>
+    <action>Open Connection Settings and verify the screen tagged WalletConnectionRecovery is visible without Proceed Without Backup</action>
+    <action>Enter the reachable Electrum endpoint in RecoveryElectrumInput and tap RecoveryElectrumSave; verify RecoverySaved appears without automatically retrying restoration</action>
+    <action>Change and save RGS independently; verify a failed probe shows RecoveryError and retains the last acknowledged correction</action>
+    <action>Return to the restore error and tap Try Again; verify required wallet restoration resumes with the saved correction before a rebuilt node starts</action>
+    <action>Keep required recovery unavailable and restart the app; verify the correction is retained and spending remains gated</action>
+    <action>While required recovery remains unavailable, background and foreground three times and tap Try Again; verify the correction and gates remain and no already-running node is rebuilt solely because the unchanged correction is retained</action>
+    <action>Allow restoration of the old SETTINGS backup; verify only the explicitly corrected endpoints override that backup and unrelated preferences restore normally</action>
+    <action>Complete required WALLET and USDT recovery; verify ordinary wallet actions become available only after both acknowledgements</action>
+    <action>Repeat with only optional profile caching unavailable after required recovery; verify that error retains its optional recovery controls and is not classified as failed node startup</action>
+    <action>On a separate empty test installation, go offline before tapping New Wallet; verify creation stays in initialization without Spending balance error or Connection Settings. Restore connectivity and verify startup resumes through the ordinary coordinator without bypassing any required recovery marker</action>
+  </actions>
+</journey>

@@ -54,12 +54,24 @@ final class AppReset: WipeStepExecutor {
             TrezorUiHandler.shared.allowPinRequests()
             TrezorTransport.shared.allowPairingCodeRequests()
         }
-        try await PaykitSdkService.shared.withWalletWipe(acquireTimeout: Self.waitTimeout) {
-            // A server switch restarts the node, so one under way finishes first, and no new one starts until the wipe ends.
-            defer { SettingsViewModel.shared.endServerSettingsWipe() }
-            try await Self.bounded("server settings") { await SettingsViewModel.shared.beginServerSettingsWipe() }
-            try await steps()
+        try await Self.withConnectionRecoveryPaused(recovery: .shared) {
+            try await PaykitSdkService.shared.withWalletWipe(acquireTimeout: Self.waitTimeout) {
+                try await steps()
+            }
         }
+    }
+
+    static func withConnectionRecoveryPaused(
+        recovery: ConnectionRecoveryService,
+        timeout: Duration = waitTimeout,
+        operation: () async throws -> Void
+    ) async throws {
+        let connectionWipe = try await recovery.beginWipe(timeout: timeout)
+        defer { recovery.endWipe(connectionWipe) }
+        // A server switch restarts the node, so drain it before acquiring the wipe's SDK scope.
+        defer { SettingsViewModel.shared.endServerSettingsWipe() }
+        try await bounded("server settings") { await SettingsViewModel.shared.beginServerSettingsWipe() }
+        try await operation()
     }
 
     func withLocalStateWipeScope(_ steps: () async throws -> Void) async throws {
