@@ -439,22 +439,29 @@ class BackupService {
     {
         guard let wipeGeneration = try? captureWipeGeneration() else { return .failed }
         while !Task.isCancelled {
-            let admission = try? await ServiceQueue.background(.backup) { [self] () -> (
-                task: Task<BackupOutcome, Never>?,
-                owned: Bool,
-                stopping: Bool
-            ) in
-                try requireWipeGeneration(wipeGeneration)
-                if let generation, generation != currentSchedulingGeneration {
-                    return (nil, false, false)
+            // The run starts on the backup queue before this caller resumes; a cancel in between must still reach it.
+            let cancellation = BackupRunCancellation()
+            let admission = try? await withTaskCancellationHandler {
+                try await ServiceQueue.background(.backup) { [self] () -> (
+                    task: Task<BackupOutcome, Never>?,
+                    owned: Bool,
+                    stopping: Bool
+                ) in
+                    try requireWipeGeneration(wipeGeneration)
+                    if let generation, generation != currentSchedulingGeneration {
+                        return (nil, false, false)
+                    }
+                    guard !isStoppingBackups else { return (nil, false, true) }
+                    if let existing = runningBackupTasks[category] {
+                        return (waitForExisting ? existing : nil, false, false)
+                    }
+                    let task = Task { await self.runBackup(category: category, isScheduled: isScheduled, wipeGeneration: wipeGeneration) }
+                    runningBackupTasks[category] = task
+                    cancellation.attach(task)
+                    return (task, true, false)
                 }
-                guard !isStoppingBackups else { return (nil, false, true) }
-                if let existing = runningBackupTasks[category] {
-                    return (waitForExisting ? existing : nil, false, false)
-                }
-                let task = Task { await self.runBackup(category: category, isScheduled: isScheduled, wipeGeneration: wipeGeneration) }
-                runningBackupTasks[category] = task
-                return (task, true, false)
+            } onCancel: {
+                cancellation.cancel()
             }
             guard let admission else { return .failed }
             if admission.stopping, !isScheduled {
@@ -1974,5 +1981,30 @@ struct SparkExitBackupMark {
         guard let version, version != markedVersion else { return false }
         markedVersion = version
         return true
+    }
+}
+
+/// Cancels a backup run its caller owns, even when the cancel arrives before the caller has resumed with that run.
+private final class BackupRunCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<BackupService.BackupOutcome, Never>?
+    private var isCancelled = false
+
+    func attach(_ task: Task<BackupService.BackupOutcome, Never>) {
+        let cancelled = lock.withLock {
+            self.task = task
+            return isCancelled
+        }
+        if cancelled {
+            task.cancel()
+        }
+    }
+
+    func cancel() {
+        let task = lock.withLock {
+            isCancelled = true
+            return self.task
+        }
+        task?.cancel()
     }
 }
