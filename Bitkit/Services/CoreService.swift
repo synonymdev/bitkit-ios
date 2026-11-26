@@ -1407,16 +1407,19 @@ class ActivityService {
     }
 
     /// Marks the stored Lightning send `id` failed while it is still pending, read, checked and written in one core-queue
-    /// operation, so a change saved meanwhile isn't overwritten.
-    func failPendingLightningSend(id: String) async throws {
+    /// operation, so a change saved meanwhile isn't overwritten. Returns the send's status after it, nil when none is stored.
+    @discardableResult
+    func failPendingLightningSend(id: String) async throws -> PaymentState? {
         try await ServiceQueue.background(.core) {
             guard case let .lightning(activity) = try getActivityById(walletId: WalletScope.default, activityId: id),
-                  activity.txType == .sent, activity.status == .pending
-            else { return }
+                  activity.txType == .sent
+            else { return nil }
+            guard activity.status == .pending else { return activity.status }
             var failed = activity
             failed.status = .failed
             try updateActivity(activityId: id, activity: .lightning(failed))
             self.activitiesChangedSubject.send()
+            return .failed
         }
     }
 

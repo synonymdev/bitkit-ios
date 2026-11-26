@@ -52,7 +52,7 @@ final class SparkSendKeyTests: XCTestCase {
 
     func testARetryReusesItsAttemptsKeyUntilSparkListsThatAttemptFailed() {
         let secret = SparkSendKey.secret(seed: seed)
-        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 1, expiresAt: 2000, now: 1000)
+        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 1, amountSats: 1000, expiresAt: 2000, now: 1000)
         let firstFailed: Set = [SparkSendKey.key(secret: secret, paymentHash: paymentHash, attempt: 0)]
 
         XCTAssertEqual(SparkSendAttempts.next(paymentHash: paymentHash, secret: secret, failedIds: firstFailed), 1)
@@ -60,7 +60,7 @@ final class SparkSendKeyTests: XCTestCase {
 
     func testARetryTakesTheNextKeyOnceSparkListsItsAttemptFailed() {
         let secret = SparkSendKey.secret(seed: seed)
-        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 0, expiresAt: 2000, now: 1000)
+        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 0, amountSats: 1000, expiresAt: 2000, now: 1000)
         let failed = Set([0, 1].map { SparkSendKey.key(secret: secret, paymentHash: paymentHash, attempt: $0) })
 
         XCTAssertEqual(SparkSendAttempts.next(paymentHash: paymentHash, secret: secret, failedIds: failed), 2)
@@ -68,8 +68,8 @@ final class SparkSendKeyTests: XCTestCase {
 
     func testAnExpiredInvoicesAttemptIsDropped() {
         let secret = SparkSendKey.secret(seed: seed)
-        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 3, expiresAt: 1500, now: 1000)
-        SparkSendAttempts.set(paymentHash: String(repeating: "ab", count: 32), attempt: 0, expiresAt: 3000, now: 2000)
+        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 3, amountSats: 1000, expiresAt: 1500, now: 1000)
+        SparkSendAttempts.set(paymentHash: String(repeating: "ab", count: 32), attempt: 0, amountSats: 1000, expiresAt: 3000, now: 2000)
 
         XCTAssertEqual(SparkSendAttempts.next(paymentHash: paymentHash, secret: secret, failedIds: []), 0)
     }
@@ -106,9 +106,19 @@ final class SparkSendKeyTests: XCTestCase {
     }
 
     func testANewKeyWaitsWhileTheEarlierAttemptIsInDoubt() {
-        XCTAssertTrue(Bitkit.SparkManager.waitsForHold(isReusedKey: false, isInDoubt: true))
-        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: true, isInDoubt: true))
-        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: false, isInDoubt: false))
+        XCTAssertTrue(Bitkit.SparkManager.waitsForHold(isReusedKey: false, isInDoubt: true, changesAmount: false))
+        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: true, isInDoubt: true, changesAmount: false))
+        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: false, isInDoubt: false, changesAmount: false))
+    }
+
+    func testAReusedKeyAtAnotherAmountWaits() {
+        XCTAssertTrue(Bitkit.SparkManager.waitsForHold(isReusedKey: true, isInDoubt: true, changesAmount: true))
+    }
+
+    func testAnExpiredSendAlreadyPaidStaysPaid() {
+        XCTAssertEqual(Bitkit.SparkManager.expiredSendStatus(stored: .succeeded), .succeeded)
+        XCTAssertEqual(Bitkit.SparkManager.expiredSendStatus(stored: .failed), .failed)
+        XCTAssertEqual(Bitkit.SparkManager.expiredSendStatus(stored: nil), .failed)
     }
 
     func testAFailedPaymentSparkReturnsIsRefused() {
@@ -212,13 +222,14 @@ final class SparkSendKeyTests: XCTestCase {
     }
 
     func testARefusedAttemptGivesBackTheEarlierOne() {
-        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 1, expiresAt: 2000, now: 1000)
-        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 2, expiresAt: 2000, now: 1000)
+        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 1, amountSats: 1000, expiresAt: 2000, now: 1000)
+        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 2, amountSats: 2000, expiresAt: 2000, now: 1000)
 
-        SparkSendAttempts.restore(paymentHash: paymentHash, attempt: 1, expiresAt: 2000)
+        SparkSendAttempts.restore(paymentHash: paymentHash, attempt: 1, amountSats: 1000, expiresAt: 2000)
         XCTAssertEqual(SparkSendAttempts.latest(paymentHash: paymentHash), 1)
+        XCTAssertEqual(SparkSendAttempts.latestAmountSats(paymentHash: paymentHash), 1000)
 
-        SparkSendAttempts.restore(paymentHash: paymentHash, attempt: nil, expiresAt: 2000)
+        SparkSendAttempts.restore(paymentHash: paymentHash, attempt: nil, amountSats: nil, expiresAt: 2000)
         XCTAssertNil(SparkSendAttempts.latest(paymentHash: paymentHash))
     }
 

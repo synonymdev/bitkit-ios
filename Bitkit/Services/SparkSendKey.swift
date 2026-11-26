@@ -40,6 +40,8 @@ enum SparkSendAttempts {
     private struct Attempt: Codable {
         let attempt: UInt32
         let expiresAt: UInt64
+        /// The amount the attempt sent; nil for one kept before amounts were.
+        var amountSats: UInt64?
     }
 
     /// The attempt whose key pays the invoice with `paymentHash`: the latest kept one, past each whose key is in
@@ -58,22 +60,27 @@ enum SparkSendAttempts {
         lock.withLock { stored[paymentHash.lowercased()]?.attempt }
     }
 
-    /// Keeps `attempt` as the latest at the invoice with `paymentHash`, which expires at `expiresAt`, and drops the
-    /// attempts of invoices expired before `now`, both in epoch seconds.
-    static func set(paymentHash: String, attempt: UInt32, expiresAt: UInt64, now: UInt64) {
+    /// The amount the latest attempt at the invoice with `paymentHash` sent, nil when none was kept with one.
+    static func latestAmountSats(paymentHash: String) -> UInt64? {
+        lock.withLock { stored[paymentHash.lowercased()]?.amountSats }
+    }
+
+    /// Keeps `attempt`, sending `amountSats`, as the latest at the invoice with `paymentHash`, which expires at
+    /// `expiresAt`, and drops the attempts of invoices expired before `now`, both in epoch seconds.
+    static func set(paymentHash: String, attempt: UInt32, amountSats: UInt64, expiresAt: UInt64, now: UInt64) {
         lock.withLock {
             var attempts = stored.filter { $0.value.expiresAt >= now }
-            attempts[paymentHash.lowercased()] = Attempt(attempt: attempt, expiresAt: expiresAt)
+            attempts[paymentHash.lowercased()] = Attempt(attempt: attempt, expiresAt: expiresAt, amountSats: amountSats)
             stored = attempts
         }
     }
 
-    /// Puts back `attempt`, the latest kept before a send whose key never reached Spark, or drops the invoice's entry
-    /// when it had none.
-    static func restore(paymentHash: String, attempt: UInt32?, expiresAt: UInt64) {
+    /// Puts back `attempt` and its `amountSats`, the latest kept before a send whose key never reached Spark, or drops
+    /// the invoice's entry when it had none.
+    static func restore(paymentHash: String, attempt: UInt32?, amountSats: UInt64?, expiresAt: UInt64) {
         lock.withLock {
             var attempts = stored
-            attempts[paymentHash.lowercased()] = attempt.map { Attempt(attempt: $0, expiresAt: expiresAt) }
+            attempts[paymentHash.lowercased()] = attempt.map { Attempt(attempt: $0, expiresAt: expiresAt, amountSats: amountSats) }
             stored = attempts
         }
     }
