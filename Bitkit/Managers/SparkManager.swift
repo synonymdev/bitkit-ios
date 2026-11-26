@@ -2001,14 +2001,18 @@ final class SparkManager: ChannelFreeLightningRail {
     private func recordExpiredSend(paymentHash: String) async -> LDKNode.PaymentStatus? {
         guard let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return nil }
         let isEarlierAttempt = { LightningService.shared.isEarlierRailAttempt(paymentHash: $0, createdAt: $1) }
-        // A paid attempt settles the invoice whenever Spark dated it.
-        let paid = Self.expiredSendAttempt(payments.filter { $0.status == .completed }, paymentHash: paymentHash) { _, _ in false }
-        if let own = paid ?? Self.expiredSendAttempt(payments, paymentHash: paymentHash, isEarlierAttempt: isEarlierAttempt) {
+        if let own = Self.expiredSendDecidingAttempt(payments, paymentHash: paymentHash, isEarlierAttempt: isEarlierAttempt) {
             guard await recordActivity(own) else { return nil }
             switch own.status {
             case .completed: return .succeeded
             case .pending: return .pending
-            case .failed: return .failed
+            case .failed:
+                // A success saved since the list was read keeps its row, and stays paid.
+                do {
+                    return try await Self.expiredSendStatus(stored: CoreService.shared.activity.failPendingLightningSend(id: paymentHash))
+                } catch {
+                    return nil
+                }
             }
         }
         do {
@@ -2022,6 +2026,21 @@ final class SparkManager: ChannelFreeLightningRail {
     /// succeeded, as Spark's success can land after the list was read, and failed otherwise.
     nonisolated static func expiredSendStatus(stored: PaymentState?) -> LDKNode.PaymentStatus {
         stored == .succeeded ? .succeeded : .failed
+    }
+
+    /// The attempt that decides a send whose invoice expired: a paid one, then a pending one, whenever Spark dated them,
+    /// as either can still settle the invoice, else the latest attempt not listed before the send went out.
+    nonisolated static func expiredSendDecidingAttempt(
+        _ payments: [Payment],
+        paymentHash: String,
+        isEarlierAttempt: (_ hash: String, _ createdAt: UInt64) -> Bool
+    ) -> Payment? {
+        for status in [BreezSdkSpark.PaymentStatus.completed, .pending] {
+            if let live = expiredSendAttempt(payments.filter { $0.status == status }, paymentHash: paymentHash, isEarlierAttempt: { _, _ in false }) {
+                return live
+            }
+        }
+        return expiredSendAttempt(payments, paymentHash: paymentHash, isEarlierAttempt: isEarlierAttempt)
     }
 
     /// The latest of Spark's attempts of a send whose invoice expired, none when Spark lists only attempts before it.

@@ -2128,6 +2128,16 @@ extension ChannelFreeRailTests {
         )
     }
 
+    func testAnExpiredSendSparkStillListsPendingIsDecidedByThatAttempt() {
+        let hash = String(repeating: "cd", count: 32)
+        let pending = Self.sparkPayment(hash: hash, status: .pending, timestamp: 100)
+        let failed = Self.sparkPayment(hash: hash, status: .failed, timestamp: 200)
+
+        let deciding = SparkManager.expiredSendDecidingAttempt([pending, failed], paymentHash: hash) { _, _ in true }
+
+        XCTAssertEqual(deciding?.status, .pending)
+    }
+
     func testAnEarlierFailureWhileARetryEntersSparksSendCallStaysOffItsScreen() async throws {
         let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
         let hash = String(invoice.paymentHash())
