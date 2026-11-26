@@ -1102,8 +1102,9 @@ actor OnchainSendAttemptService {
     /// The journal's attempt before a new send. One that can't be read stays unresolved: it may hold an earlier send. Once
     /// read, only clearing an unsigned attempt left from before a restart can fail, a write before anything went out.
     private func currentAdmissionAttempt() throws -> OnchainSendAttempt? {
-        do { _ = try store.load() } catch { throw OnchainSendAttemptError.unresolved }
-        do { return try currentAttempt() }
+        let attempts: [OnchainSendAttempt]
+        do { attempts = try store.load() } catch { throw OnchainSendAttemptError.unresolved }
+        do { return try currentAttempt(in: attempts) }
         catch let error as OnchainSendAttemptError { throw error }
         catch { throw OnchainSendAttemptError.preDispatch(error) }
     }
@@ -1120,7 +1121,10 @@ actor OnchainSendAttemptService {
     }
 
     private func currentAttempt() throws -> OnchainSendAttempt? {
-        let attempts = try store.load()
+        try currentAttempt(in: store.load())
+    }
+
+    private func currentAttempt(in attempts: [OnchainSendAttempt]) throws -> OnchainSendAttempt? {
         guard attempts.count <= 1 else { throw OnchainSendAttemptError.unresolved }
         guard let saved = attempts.first else { return nil }
         if knownAttempt?.id != saved.id, nativeDispatchInProgress == nil,
