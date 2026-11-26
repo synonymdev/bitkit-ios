@@ -154,8 +154,9 @@ struct SendPendingScreen: View {
 
             Spacer()
 
-            if pendingHardwareWalletId == nil, Self.offersRetry(onchainAttempt, isSparkExitFunding: isSparkExitFunding), !ordinarySendResolved,
-               !onchainStateUnavailable
+            if pendingHardwareWalletId == nil,
+               Self.offersRetry(onchainAttempt, isSparkExitFunding: isSparkExitFunding, releaseOffered: abandonableAttempt != nil),
+               !ordinarySendResolved, !onchainStateUnavailable
             {
                 CustomButton(
                     title: t("wallet__onchain_retry_original"), variant: .secondary, isDisabled: retryingOnchain || abandoningOnchain
@@ -380,10 +381,10 @@ struct SendPendingScreen: View {
         navigationPath.append(route)
     }
 
-    /// Whether "Retry original payment" shows: never for a Spark exit's funding, which its Progress pays again while the
-    /// exit runs, and which could pay a funded address again once it no longer needs it; the release takes its place.
-    static func offersRetry(_ attempt: OnchainSendAttempt?, isSparkExitFunding: Bool) -> Bool {
-        attempt?.canRetrySamePayment == true && !isSparkExitFunding
+    /// Whether "Retry original payment" shows: for a Spark exit's funding only while its release is not offered, so the
+    /// exit no longer needing it shows the release in its place. The retry itself checks the exit again before dispatch.
+    static func offersRetry(_ attempt: OnchainSendAttempt?, isSparkExitFunding: Bool, releaseOffered: Bool) -> Bool {
+        attempt?.canRetrySamePayment == true && !(isSparkExitFunding && releaseOffered)
     }
 
     static func abandonNoteKey(_ attempt: OnchainSendAttempt?) -> String {
@@ -460,8 +461,8 @@ struct SendPendingScreen: View {
                             guard await requestPinCheck() else { throw CancellationError() }
                         }
                     }
-                    // Read again right before dispatch: a Spark exit's funding is paid from its Progress, never from here.
-                    guard await !proofService.isSparkExitFunding(attempt) else { throw OnchainSendAttemptError.retryUnavailable }
+                    // Read right before dispatch: a Spark exit's funding is paid again only while the exit still asks for it.
+                    try await SparkExitFundingRelease.authorizePayAgain(attempt)
                     if attempt.requestId != nil {
                         let authorization = try await paymentRequests.ensureOnchainRecoveryAllowed(attempt, proofService: proofService)
                         guard authorization.paymentDeadline == paymentDeadline,

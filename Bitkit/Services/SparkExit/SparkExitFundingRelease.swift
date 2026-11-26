@@ -38,13 +38,19 @@ enum SparkExitFundingRelease {
 
     /// Whether savings may pay `attempt` to the exit again now, over what its funding address holds (`utxos`, nil when
     /// it could not be read): only while the exit still asks for funding there and nothing reached it, or while it
-    /// waits for this very payment. A send to no exit's address is not this check's to refuse.
+    /// waits for this very payment, and never once its release was approved. A send to no exit's address is not this
+    /// check's to refuse.
     static func mayPayAgain(_ attempt: OnchainSendAttempt, exit: Exit, utxos: [EsploraUtxo]?) -> Bool {
         guard isExitFunding(attempt, exit: exit) else { return true }
-        guard let record = exit.record, record.isActive, record.funding.first?.address == attempt.address, let utxos else { return false }
+        // A release approved for it is Send Pending's to finish.
+        guard attempt.releaseApproved != true, let record = exit.record, record.isActive,
+              record.funding.first?.address == attempt.address, let utxos
+        else { return false }
         switch SparkExitMath.fundingState(record, utxos: utxos) {
         case .ask(_, 0): return true
-        case let .paid(txid): return attempt.containsCandidate(txid) && SparkExitMath.newFunding(utxos, record: record).allSatisfy { attempt.containsCandidate($0.txid) }
+        case let .paid(txid):
+            let otherFunding = SparkExitMath.newFunding(utxos, record: record).filter { !attempt.containsCandidate($0.txid) }
+            return attempt.containsCandidate(txid) && otherFunding.isEmpty
         default: return false
         }
     }
@@ -61,6 +67,17 @@ enum SparkExitFundingRelease {
         } catch {
             return nil
         }
+    }
+
+    /// Refuses paying `attempt` to a Spark exit again once the stored exit of its wallet no longer asks for it, read right
+    /// before dispatch; an exit that cannot be read refuses a send that may fund one.
+    static func authorizePayAgain(_ attempt: OnchainSendAttempt) async throws {
+        guard attempt.mayFundSparkExit else { return }
+        guard let exit = storedExit(for: attempt) else {
+            throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "The Spark exit could not be read")
+        }
+        let chain = SparkManager.exitNetwork.map { EsploraSparkExitChain.network($0) }
+        try await authorizePayAgain(attempt, exit: exit, chain: chain)
     }
 
     /// Refuses paying `attempt` to a Spark exit again once the exit no longer asks for it, read right before dispatch.

@@ -4401,7 +4401,7 @@ final class SparkExitFundingReleaseServiceTests: XCTestCase {
         XCTAssertTrue(hasEnded)
     }
 
-    func testSendPendingNeverRetriesTheFundingOfARunningExit() async throws {
+    func testSendPendingKnowsTheFundingOfARunningExit() async throws {
         let running = SparkExitFundingRelease.Exit(record: exitRecord(.awaitingFunding(requiredSats: 5000)), earlier: [])
         for (address, exit, owned) in [
             (fundingAddress, running, true), (fundingAddress, nil, true), ("bcrt1qordinary", running, false),
@@ -4409,7 +4409,7 @@ final class SparkExitFundingReleaseServiceTests: XCTestCase {
             let (service, _, attempt) = try await unresolvedSavingsSend(to: address, exit: exit)
             let isExitFunding = await service.isSparkExitFunding(attempt)
             XCTAssertEqual(isExitFunding, owned)
-            XCTAssertEqual(SendPendingScreen.offersRetry(attempt, isSparkExitFunding: isExitFunding), !owned)
+            XCTAssertTrue(SendPendingScreen.offersRetry(attempt, isSparkExitFunding: isExitFunding, releaseOffered: false))
         }
     }
 

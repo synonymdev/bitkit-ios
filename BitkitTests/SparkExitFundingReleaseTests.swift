@@ -31,10 +31,12 @@ final class SparkExitFundingReleaseTests: XCTestCase {
         EsploraUtxo(txid: txid, vout: 0, value: 6000, status: EsploraTxStatus(confirmed: false))
     }
 
-    func testSendPendingNeverRetriesAnExitFunding() {
+    func testSendPendingRetriesAnExitFundingUntilItsReleaseIsOffered() {
         let send = attempt()
-        XCTAssertTrue(SendPendingScreen.offersRetry(send, isSparkExitFunding: false))
-        XCTAssertFalse(SendPendingScreen.offersRetry(send, isSparkExitFunding: true), "The exit's Progress owns its funding")
+        XCTAssertTrue(SendPendingScreen.offersRetry(send, isSparkExitFunding: false, releaseOffered: false))
+        XCTAssertTrue(SendPendingScreen.offersRetry(send, isSparkExitFunding: true, releaseOffered: false),
+                      "An unresolved exit funding is never left without a way out")
+        XCTAssertFalse(SendPendingScreen.offersRetry(send, isSparkExitFunding: true, releaseOffered: true), "The release takes its place")
         XCTAssertEqual(SendPendingScreen.abandonNoteKey(send), "wallet__onchain_abandon_exit_note")
     }
 
@@ -52,6 +54,9 @@ final class SparkExitFundingReleaseTests: XCTestCase {
         XCTAssertFalse(SparkExitFundingRelease.mayPayAgain(send, exit: .init(record: awaiting, earlier: []),
                                                            utxos: [utxo(String(repeating: "f1", count: 32))]),
                        "Another wallet funded the address")
+        var approved = send
+        approved.releaseApproved = true
+        XCTAssertFalse(SparkExitFundingRelease.mayPayAgain(approved, exit: asking, utxos: []), "Its release is Send Pending's to finish")
         awaiting.fundingPaymentTxid = String(repeating: "f1", count: 32)
         XCTAssertFalse(SparkExitFundingRelease.mayPayAgain(send, exit: .init(record: awaiting, earlier: []), utxos: []))
 
