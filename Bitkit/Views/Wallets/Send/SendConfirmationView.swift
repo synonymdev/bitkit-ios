@@ -1372,14 +1372,20 @@ struct SendConfirmationView: View {
             throw error
         }
         // The send runs this again after its last await before submission, so a contact blocked meanwhile isn't paid.
-        return try await send {
-            guard let request else { return }
-            do {
-                try await authorize(request)
-            } catch {
-                await onAuthorizationFailure(error)
-                throw error
+        do {
+            return try await send {
+                guard let request else { return }
+                do {
+                    try await authorize(request)
+                } catch {
+                    throw SubmissionRecheckRefusal(error: error)
+                }
             }
+        } catch let refusal as SubmissionRecheckRefusal {
+            // Ended as a refusal only when the refusal comes back: a retry of a send still in doubt comes back pending,
+            // and keeps its proof.
+            await onAuthorizationFailure(refusal.error)
+            throw refusal.error
         }
     }
 
@@ -2013,7 +2019,6 @@ struct SendConfirmationView: View {
         var preparedPaymentProof: (endpointIdentifier: String, kind: PaykitPaymentProofKind, appId: String)?
         var onchainPaymentStarted = false
         var lightningPaymentSubmitted = false
-        var lightningAuthorizationRefused = false
         var originalPaymentIdentity: String?
         var privatePaymentListOutcome = PrivatePaymentListSendOutcome.definitePreBroadcastFailure
         var manualAllowanceAttemptId: String?
@@ -2097,7 +2102,6 @@ struct SendConfirmationView: View {
                     authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
                     onAuthorizationFailure: { _ in
                         // A refusal at the recheck before submission sent nothing, so it ends as a refusal up front does.
-                        lightningAuthorizationRefused = true
                         privatePaymentListOutcome = .definitePreBroadcastFailure
                         await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
                     }
@@ -2139,7 +2143,7 @@ struct SendConfirmationView: View {
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
-                        if lightningAuthorizationRefused {
+                        if error is SubmissionRecheckRefusal {
                             throw error
                         }
                         if incomingPaymentRequest != nil, !lightningPaymentSubmitted {
@@ -3426,4 +3430,10 @@ struct SendUpdateFeeSection: View {
     .environmentObject(TagManager())
     .environment(HwWalletManager())
     .preferredColorScheme(.dark)
+}
+
+/// A payment request refused by the recheck right before submission. It reaches the send's caller only when nothing of the
+/// payment is in doubt.
+struct SubmissionRecheckRefusal: Error {
+    let error: Error
 }

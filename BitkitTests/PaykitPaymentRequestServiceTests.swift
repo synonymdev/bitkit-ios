@@ -2274,6 +2274,51 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testLightningRecheckRefusalOfARetryInDoubtStaysPending() async throws {
+        for route in ["lightning", "lnurl"] {
+            let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
+            let sdk = PaymentRequestSdkMock(records: [record])
+            let manager = paymentRequestManager(sdk: sdk)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            try await manager.prepareForPayment(request)
+            var authorizationFailureCalls = 0
+            let authorize: (PaykitPaymentRequest) async throws -> Void = { try await manager.ensurePaymentAllowed($0) }
+            let onFailure: (Error) async -> Void = { _ in authorizationFailureCalls += 1 }
+            // Refused at the recheck, but an earlier attempt of the invoice is in doubt, so the send reports it pending.
+            let pending = NodeError.DuplicatePayment(message: "An earlier attempt is still pending")
+            let send: (@escaping () async throws -> Void) async throws -> Void = { recheckBeforeSubmission in
+                await sdk.configureRecipients(
+                    peers: [self.linkedPeer(counterparty: record.counterparty, state: .blocked)],
+                    requestCapabilitiesByPublicKey: [:]
+                )
+                do {
+                    try await recheckBeforeSubmission()
+                } catch {
+                    throw pending
+                }
+            }
+            do {
+                if route == "lightning" {
+                    try await SendConfirmationView.sendLightningPayment(
+                        invoiceAmountSats: 1000, reviewedAmountSats: 1000,
+                        request: request, authorize: authorize, onAuthorizationFailure: onFailure, send: send
+                    )
+                } else {
+                    try await LnurlPayConfirm.sendLightningPayment(
+                        request: request, authorize: authorize, onAuthorizationFailure: onFailure, send: send
+                    )
+                }
+                XCTFail("Expected the \(route) send to come back pending")
+            } catch {
+                guard case .DuplicatePayment = error as? NodeError else {
+                    return XCTFail("Expected the pending error for \(route), got \(error)")
+                }
+            }
+            XCTAssertEqual(authorizationFailureCalls, 0, route)
+        }
+    }
+
     func testOnchainSendRechecksAuthorizationAfterItsAttemptIsMarkedSending() async throws {
         let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
         let sdk = PaymentRequestSdkMock(records: [record])

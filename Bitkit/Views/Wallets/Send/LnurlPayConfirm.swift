@@ -40,8 +40,7 @@ struct LnurlPayConfirm: View {
         onAuthorizationFailure: @escaping (Error) async -> Void,
         send: (_ recheckBeforeSubmission: @escaping () async throws -> Void) async throws -> Result
     ) async throws -> Result {
-        let checkAuthorization: () async throws -> Void = {
-            guard let request else { return }
+        if let request {
             do {
                 try await authorize(request)
             } catch {
@@ -49,9 +48,22 @@ struct LnurlPayConfirm: View {
                 throw error
             }
         }
-        try await checkAuthorization()
         // The send runs it again after its last await before submission, so a contact blocked meanwhile isn't paid.
-        return try await send(checkAuthorization)
+        do {
+            return try await send {
+                guard let request else { return }
+                do {
+                    try await authorize(request)
+                } catch {
+                    throw SubmissionRecheckRefusal(error: error)
+                }
+            }
+        } catch let refusal as SubmissionRecheckRefusal {
+            // Ended as a refusal only when the refusal comes back: a retry of a send still in doubt comes back pending,
+            // and keeps its proof.
+            await onAuthorizationFailure(refusal.error)
+            throw refusal.error
+        }
     }
 
     private var shouldAutomaticallyPay: Bool {
