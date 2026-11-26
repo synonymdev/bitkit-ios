@@ -1428,8 +1428,6 @@ final class PaykitPaymentRequestManager {
     /// Loading until a discovery for the current identity finishes; failed when it could not check every contact.
     private(set) var eligibleTargetsStatus: PaykitPaymentRequestTargetsStatus = .loading
     private var eligibilityRefreshCount = 0
-    private var eligibilityRefreshesInFlight = 0
-    private var lastEligibilityLoadDate: Date?
     private(set) var requestedPresentationId: PaykitPaymentRequest.ID?
     private(set) var requestedSubscriptionProposalId: PaykitSubscription.ID?
     private(set) var isCreatingRequest = false
@@ -1617,21 +1615,7 @@ final class PaykitPaymentRequestManager {
         }
     }
 
-    /// Refreshes for a picker that just appeared, unless a refresh is running or a recent one loaded.
-    func refreshEligibleTargetsIfNeeded(savedPublicKeys: [String]) async {
-        guard eligibilityRefreshesInFlight == 0 else { return }
-        if eligibleTargetsStatus == .loaded,
-           let lastEligibilityLoadDate,
-           now().timeIntervalSince(lastEligibilityLoadDate) < Self.recentEligibilityCheckInterval
-        {
-            return
-        }
-        await refreshEligibleTargets(savedPublicKeys: savedPublicKeys)
-    }
-
     func refreshEligibleTargets(savedPublicKeys: [String]) async {
-        eligibilityRefreshesInFlight += 1
-        defer { eligibilityRefreshesInFlight -= 1 }
         updateSavedPublicKeys(savedPublicKeys)
         eligibilityGeneration += 1
         eligibilityRefreshCount += 1
@@ -1678,7 +1662,6 @@ final class PaykitPaymentRequestManager {
             }
             eligibleTargets = discovery.targets.filter { !isNewerSingleRefresh($0) } + eligibleTargets.filter(isNewerSingleRefresh)
             eligibleTargetsStatus = discovery.isComplete ? .loaded : .failed
-            lastEligibilityLoadDate = discovery.isComplete ? now() : nil
             lastFullEligibilityWriteGeneration = generation
             if discovery.isComplete {
                 let checkedAt = now()
@@ -1812,7 +1795,6 @@ final class PaykitPaymentRequestManager {
     func clearEligibleTargets() {
         eligibilityGeneration += 1
         eligibilityRefreshCount += 1
-        lastEligibilityLoadDate = nil
         singleEligibilityWriteGenerations = [:]
         eligibilityCheckDates = [:]
         savedPublicKeys = []
@@ -2362,7 +2344,6 @@ final class PaykitPaymentRequestManager {
         invalidateRefresh()
         eligibilityGeneration += 1
         eligibilityRefreshCount += 1
-        lastEligibilityLoadDate = nil
         singleEligibilityWriteGenerations = [:]
         eligibilityCheckDates = [:]
         expirationTask?.cancel()

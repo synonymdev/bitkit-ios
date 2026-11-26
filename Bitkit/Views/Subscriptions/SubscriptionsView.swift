@@ -589,6 +589,7 @@ struct SubscriptionDetailView: View {
 
 struct SubscriptionSheet: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Environment(HwWalletManager.self) private var hwWalletManager
@@ -671,6 +672,12 @@ struct SubscriptionSheet: View {
             if case let .review(subscription) = route {
                 now = SubscriptionClock.subscriptionNow()
                 paymentRequests.markSubscriptionProposalPresented(subscription)
+            }
+            switch route {
+            case .create, .createRecipient:
+                await paymentRequests.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+            default:
+                break
             }
         }
         .onChange(of: route) { _, route in

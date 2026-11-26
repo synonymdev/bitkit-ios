@@ -245,9 +245,6 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
         .navigationBarHidden(true)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(accessibilityIdentifier)
-        .task {
-            await paymentRequests.refreshEligibleTargetsIfNeeded(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
-        }
     }
 
     private func emptyMessage(_ key: String) -> some View {

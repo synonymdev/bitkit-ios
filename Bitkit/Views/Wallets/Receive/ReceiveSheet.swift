@@ -47,6 +47,8 @@ struct ReceiveSheetItem: SheetItem {
 
 struct ReceiveSheet: View {
     @EnvironmentObject private var tagManager: TagManager
+    @EnvironmentObject private var contactsManager: ContactsManager
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(TrezorManager.self) private var trezorManager
 
@@ -77,11 +79,18 @@ struct ReceiveSheet: View {
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
+        .onChange(of: navigationPath) { oldPath, newPath in
+            guard newPath.count > oldPath.count, case .paymentRequestRecipient? = newPath.last else { return }
+            refreshPaymentRequestRecipients()
+        }
         .onAppear {
             navigationPath = []
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
             tagManager.clearSelectedTags()
+            if case .paymentRequestRecipient = config.initialRoute {
+                refreshPaymentRequestRecipients()
+            }
             guard config.initialRoute.requiresInvoiceRefresh else { return }
             Task {
                 // Reset tags for current payment ID before refreshing
@@ -89,6 +98,12 @@ struct ReceiveSheet: View {
                 try? await wallet.refreshBip21(forceRefreshBolt11: true)
             }
         }
+    }
+
+    /// Checks eligibility once each time the picker is opened; going back to it from a later step does not.
+    private func refreshPaymentRequestRecipients() {
+        let savedPublicKeys = contactsManager.contacts.map(\.publicKey)
+        Task { await paymentRequests.refreshEligibleTargets(savedPublicKeys: savedPublicKeys) }
     }
 
     private var reconnectPairingBinding: Binding<Bool> {
