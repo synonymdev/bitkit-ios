@@ -482,6 +482,19 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testDroppingALostAdoptedIdentityEndsPendingSignIn() async throws {
+        try await withEmptyIdentityStorage {
+            AdoptedPubkyReference.current = (sourceApp: "missing.test.app", pubky: "pubky\(String(repeating: "m", count: 52))")
+            let manager = PubkyProfileManager()
+
+            await manager.initialize { .restorationFailed }
+
+            XCTAssertTrue(manager.adoptedSourceLost)
+            XCTAssertFalse(manager.isProfileSignInPending)
+        }
+    }
+
+    @MainActor
     func testDisconnectingAnUnrestoredProfileEndsPendingSignIn() async throws {
         try await withEmptyIdentityStorage {
             let manager = PubkyProfileManager()

@@ -420,6 +420,8 @@ class PubkyProfileManager: ObservableObject {
               SharedPubkyKeychain.isDefinitelyMissing(sourceApp: adopted.sourceApp, pubky: adopted.pubky)
         else { return }
 
+        hasUnrestoredSession = false
+        sessionRestorationDeferred = false
         clearAuthenticatedState()
         await Self.clearLocalState()
         adoptedSourceLost = true
