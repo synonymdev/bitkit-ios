@@ -9592,10 +9592,17 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let record = pickerContactRecord(savedKey)
         let (gate, release) = AsyncStream<Void>.makeStream()
         defer { release.finish() }
-        let contactsManager = ContactsManager(contactRecords: {
-            for await _ in gate {}
-            return [record]
-        }, fetchRemoteProfile: { _, _ in nil })
+        let hostKeys = [PublicPaykitService.cleanupPendingKey, PrivatePaykitService.cleanupPendingKey]
+        let hostValues = hostKeys.map { UserDefaults.standard.object(forKey: $0) as? Bool }
+        var prunedKeys: [[String]] = []
+        let contactsManager = ContactsManager(
+            contactRecords: {
+                for await _ in gate {}
+                return [record]
+            },
+            fetchRemoteProfile: { _, _ in nil },
+            pruneUnsavedContactState: { keys, _ in prunedKeys.append(keys) }
+        )
         contactsManager.loadErrorMessage = "offline"
 
         let reopenedPicker = Task {
@@ -9609,6 +9616,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(contactsManager.hasLoaded)
         XCTAssertEqual(manager.eligibleTargetsStatus, .loaded)
         XCTAssertEqual(manager.eligibleTargets, [PaykitPaymentRequestTarget(publicKey: savedKey)])
+        XCTAssertEqual(prunedKeys, [[savedKey]])
+        XCTAssertEqual(hostKeys.map { UserDefaults.standard.object(forKey: $0) as? Bool }, hostValues)
     }
 
     func testPickerWithoutProfileShowsNoEligibleTargetsAtOnce() async {
