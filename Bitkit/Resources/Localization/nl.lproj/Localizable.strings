@@ -399,6 +399,7 @@
 "lightning__spark_exit__fees" = "Netwerkkosten";
 "lightning__spark_exit__receive" = "U ontvangt (schatting)";
 "lightning__spark_exit__savings_refused" = "Je betaling uit spaargeld is niet gelukt. Betaal opnieuw of financier vanuit een andere wallet.";
+"lightning__spark_exit__savings_unresolved" = "Je betaling uit spaargeld is nog niet bevestigd. Wacht erop voordat je vanuit een andere wallet betaalt.";
 "lightning__spark_exit__quote_loading" = "Kosten ophalen…";
 "lightning__spark_exit__quote_settling" = "Wachten tot Spark klaar is met het verplaatsen van je saldo. Dit kan tot 5 minuten duren.";
 "lightning__spark_exit__quote_error" = "Kon de kosten van de overboeking niet ophalen. Probeer opnieuw.";
@@ -919,6 +920,7 @@
 "pubky_auth__use_ring" = "Pubky Ring gebruiken";
 "pubky_auth__use_ring_desc" = "Bitkit kan de sleutel voor deze pubky niet uit Pubky Ring lezen. Open Pubky Ring om dit verzoek goed te keuren.";
 "pubky_auth__invalid_request" = "Ongeldig autorisatieverzoek";
+"pubky_auth__other_pubky" = "Dit verzoek is voor {pubky}, niet voor de pubky van deze wallet.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Maak een nieuwe Pubky-identiteit aan op deze homeserver. Ga alleen verder als u deze vertrouwt.";
 "pubky_auth__approval_failed" = "Autorisatie mislukt";

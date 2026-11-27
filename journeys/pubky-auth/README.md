@@ -4,6 +4,7 @@ This suite covers the uniquely targetable `bitkit://pubky-auth/setup` and `bitki
 It stops at explicit watch-only consent and never authorizes or exports account material.
 Bitkit retains links delivered during startup, restoration, or PIN entry and presents consent only after the main wallet UI is available.
 A sign-in link keeps its place when another link arrives: `signin-with-second-link.xml` checks that a payment link opened on the PIN screen in either order, or over the open authorization sheet, opens only after that sheet closes.
+`signin-expected-pubky.xml` checks a sign-in link that names the pubky it must be approved with (`spk`): this wallet's pubky opens the authorization sheet, another pubky is refused with a message naming it, and a repeated or malformed `spk` is an invalid request. Nothing is authorized.
 
 ## Preconditions
 

@@ -373,6 +373,7 @@
 "lightning__spark_exit__fees" = "Τέλη δικτύου";
 "lightning__spark_exit__receive" = "Λαμβάνετε (εκτίμηση)";
 "lightning__spark_exit__savings_refused" = "Η πληρωμή σας από αποταμιεύσεις δεν ολοκληρώθηκε. Πληρώστε ξανά ή χρηματοδοτήστε από άλλο πορτοφόλι.";
+"lightning__spark_exit__savings_unresolved" = "Η πληρωμή σας από αποταμιεύσεις δεν έχει επιβεβαιωθεί ακόμη. Περιμένετέ την πριν πληρώσετε από άλλο πορτοφόλι.";
 "lightning__spark_exit__quote_loading" = "Λήψη κόστους…";
 "lightning__spark_exit__quote_settling" = "Αναμονή για να ολοκληρώσει το Spark τη μεταφορά του υπολοίπου σας. Αυτό μπορεί να διαρκέσει έως 5 λεπτά.";
 "lightning__spark_exit__quote_error" = "Δεν ήταν δυνατή η λήψη του κόστους μεταφοράς. Δοκιμάστε ξανά.";
@@ -809,6 +810,7 @@
 "pubky_auth__use_ring" = "Χρήση Pubky Ring";
 "pubky_auth__use_ring_desc" = "Το Bitkit δεν μπορεί να διαβάσει το κλειδί αυτού του pubky από το Pubky Ring. Άνοιξε το Pubky Ring για να εγκρίνεις αυτό το αίτημα.";
 "pubky_auth__invalid_request" = "Μη έγκυρο αίτημα εξουσιοδότησης";
+"pubky_auth__other_pubky" = "Αυτό το αίτημα προορίζεται για το {pubky}, όχι για το pubky αυτού του πορτοφολιού.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Δημιούργησε μια νέα ταυτότητα Pubky σε αυτόν τον homeserver. Συνέχισε μόνο αν τον εμπιστεύεσαι.";
 "pubky_auth__approval_failed" = "Η Εξουσιοδότηση Απέτυχε";

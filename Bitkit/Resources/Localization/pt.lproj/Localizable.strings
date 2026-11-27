@@ -402,6 +402,7 @@
 "lightning__spark_exit__fees" = "Taxas de rede";
 "lightning__spark_exit__receive" = "Recebe (estimativa)";
 "lightning__spark_exit__savings_refused" = "O seu pagamento da poupança não foi concluído. Pague novamente ou financie a partir de outra carteira.";
+"lightning__spark_exit__savings_unresolved" = "O seu pagamento da poupança ainda não foi confirmado. Aguarde antes de pagar a partir de outra carteira.";
 "lightning__spark_exit__quote_loading" = "A obter os custos…";
 "lightning__spark_exit__quote_settling" = "A aguardar que a Spark termine de mover o seu saldo. Isto pode demorar até 5 minutos.";
 "lightning__spark_exit__quote_error" = "Não foi possível obter os custos da transferência. Tente novamente.";
@@ -828,6 +829,7 @@
 "pubky_auth__use_ring" = "Usar o Pubky Ring";
 "pubky_auth__use_ring_desc" = "A Bitkit não consegue ler a chave deste pubky a partir do Pubky Ring. Abra o Pubky Ring para aprovar este pedido.";
 "pubky_auth__invalid_request" = "Pedido de autenticação inválido";
+"pubky_auth__other_pubky" = "Este pedido destina-se a {pubky}, não ao pubky desta carteira.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crie uma nova identidade Pubky neste homeserver. Continue apenas se confiar nele.";
 "pubky_auth__approval_failed" = "Falha na autorização";

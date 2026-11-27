@@ -807,6 +807,41 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertTrue(record.isAwaitingOwnPayment)
     }
 
+    /// Progress says that payment may still land only while the exit waits for it: once the own-payment wait forgets
+    /// it, the ask comes back, even with the send journal still unresolved.
+    func testASavingsPaymentMayStillLandOnlyWhileTheExitWaitsForIt() {
+        var record = SparkExitFixtures.record()
+        record.fundingPaymentTxid = "unk"
+        XCTAssertTrue(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding"))
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: nil), .paid(txid: "unk"))
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: nil), "accepted")
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qelsewhere"))
+        XCTAssertEqual(SparkExitManager.currentFundingState(.paid(txid: "unk"), record: record), .paid(txid: "unk"))
+        var adopted = record
+        adopted.funding = [.init(index: 0, address: "bcrt1qfunding", pubkey: "02", txid: "unk", vout: 0, valueSats: 20000)]
+        XCTAssertFalse(adopted.isAwaitingOwnPayment)
+        XCTAssertNil(SparkExitManager.currentFundingState(.paid(txid: "unk"), record: adopted), "adopted: the record says what is left")
+        record.fundingPaymentTxid = nil
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding"))
+        // A paid state read before the payment was forgotten, as by a background run, no longer holds the ask.
+        XCTAssertNil(SparkExitManager.currentFundingState(.paid(txid: "unk"), record: record))
+        guard case .ask = SparkExitMath.fundingState(record, utxos: nil) else { return XCTFail("the ask comes back") }
+    }
+
+    /// A tick that forgot a short savings payment and failed to read the address again still asks only for the rest.
+    func testAShortSavingsPaymentKeepsItsRemainderAskedWhenTheRereadFails() {
+        var record = SparkExitFixtures.record()
+        let short = [SparkExitFixtures.utxo("short", value: 8000)]
+        let utxos = SparkExitManager.fundingReread(nil, earlier: short)
+        XCTAssertEqual(utxos?.map(\.txid), ["short"])
+        record.fundingPaymentTxid = nil
+        guard case let .ask(_, receivedSats) = SparkExitMath.fundingState(record, utxos: utxos) else {
+            return XCTFail("the rest is asked for")
+        }
+        XCTAssertEqual(receivedSats, 8000, "the payment the first read found still counts")
+        XCTAssertEqual(SparkExitManager.fundingReread([], earlier: short)?.count, 0, "a read that worked wins")
+    }
+
     /// The unknown payment confirming late is adopted like any funding, and the exit builds.
     func testALateConfirmationOfAnUnknownFundingSendIsAdopted() async throws {
         var record = SparkExitFixtures.record()
@@ -1289,8 +1324,15 @@ final class SparkExitReviewTests: XCTestCase {
             contexts.append(context)
             return .accepted(txid: "again")
         }
-        XCTAssertEqual(txid, "again")
+        XCTAssertEqual(txid?.txid, "again")
+        XCTAssertEqual(txid?.isAccepted, true, "an accepted payment ends its send")
         XCTAssertEqual(contexts, [OnchainSendPendingContext(attemptId: refused.id, walletId: "wallet", txid: "refused")])
+
+        let unknown = try await SparkExitManager.payRefusedAgain(refused, record: SparkExitFixtures.record()) { _ in
+            .unknown(txid: "maybe")
+        }
+        XCTAssertEqual(unknown?.txid, "maybe", "a payment that may still land is kept")
+        XCTAssertEqual(unknown?.isAccepted, false, "and its send stays open, so Progress says it may still land")
 
         do {
             _ = try await SparkExitManager.payRefusedAgain(refusedPayment(status: .unknown), record: SparkExitFixtures.record()) { context in

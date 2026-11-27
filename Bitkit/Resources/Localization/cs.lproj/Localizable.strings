@@ -401,6 +401,7 @@
 "lightning__spark_exit__fees" = "Síťové poplatky";
 "lightning__spark_exit__receive" = "Obdržíte (odhad)";
 "lightning__spark_exit__savings_refused" = "Vaše platba z úspor neprošla. Zaplaťte znovu, nebo financujte z jiné peněženky.";
+"lightning__spark_exit__savings_unresolved" = "Vaše platba z úspor ještě není potvrzena. Počkejte na ni, než zaplatíte z jiné peněženky.";
 "lightning__spark_exit__quote_loading" = "Zjišťuji náklady…";
 "lightning__spark_exit__quote_settling" = "Čekáme, až Spark dokončí přesun vašeho zůstatku. Může to trvat až 5 minut.";
 "lightning__spark_exit__quote_error" = "Náklady na převod se nepodařilo zjistit. Zkuste to znovu.";
@@ -921,6 +922,7 @@
 "pubky_auth__use_ring" = "Použít Pubky Ring";
 "pubky_auth__use_ring_desc" = "Bitkit nemůže z Pubky Ring načíst klíč pro tento pubky. Pro schválení tohoto požadavku otevřete Pubky Ring.";
 "pubky_auth__invalid_request" = "Neplatný požadavek na ověření";
+"pubky_auth__other_pubky" = "Tento požadavek je určen pro {pubky}, ne pro pubky této peněženky.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Vytvořte si na tomto homeserveru novou identitu Pubky. Pokračujte, jen pokud mu důvěřujete.";
 "pubky_auth__approval_failed" = "Autorizace se nezdařila";

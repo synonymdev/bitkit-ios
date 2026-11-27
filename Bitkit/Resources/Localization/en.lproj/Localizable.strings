@@ -394,6 +394,7 @@
 "lightning__spark_exit__fees" = "Network fees";
 "lightning__spark_exit__receive" = "You receive (estimate)";
 "lightning__spark_exit__savings_refused" = "Your savings payment didn't go through. Pay again, or fund from another wallet.";
+"lightning__spark_exit__savings_unresolved" = "Your savings payment hasn't confirmed yet. Wait for it before you pay from another wallet.";
 "lightning__spark_exit__quote_loading" = "Getting the costs…";
 "lightning__spark_exit__quote_settling" = "Waiting for Spark to finish moving your balance. This can take up to 5 minutes.";
 "lightning__spark_exit__quote_error" = "Could not get the transfer costs. Try again.";
@@ -909,6 +910,7 @@
 "pubky_auth__use_ring" = "Use Pubky Ring";
 "pubky_auth__use_ring_desc" = "Bitkit can't read the key for this pubky from Pubky Ring. Open Pubky Ring to approve this request.";
 "pubky_auth__invalid_request" = "Invalid auth request";
+"pubky_auth__other_pubky" = "This request is for {pubky}, not this wallet's pubky.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Create a new Pubky identity on this homeserver. Only continue if you trust it.";
 "pubky_auth__approval_failed" = "Authorization Failed";

@@ -349,6 +349,7 @@
 "lightning__spark_exit__fees" = "رسوم الشبكة";
 "lightning__spark_exit__receive" = "ستستلم (تقديريًا)";
 "lightning__spark_exit__savings_refused" = "لم يكتمل دفعك من المدخرات. ادفع مرة أخرى، أو موّل من محفظة أخرى.";
+"lightning__spark_exit__savings_unresolved" = "لم يتأكد دفعك من المدخرات بعد. انتظره قبل أن تدفع من محفظة أخرى.";
 "lightning__spark_exit__quote_loading" = "جارٍ الحصول على التكاليف…";
 "lightning__spark_exit__quote_settling" = "بانتظار أن ينتهي Spark من نقل رصيدك. قد يستغرق ذلك حتى 5 دقائق.";
 "lightning__spark_exit__quote_error" = "تعذّر الحصول على تكاليف التحويل. حاول مرة أخرى.";
@@ -778,6 +779,7 @@
 "pubky_auth__use_ring" = "استخدام Pubky Ring";
 "pubky_auth__use_ring_desc" = "لا يستطيع Bitkit قراءة مفتاح هذا الـ pubky من Pubky Ring. افتح Pubky Ring للموافقة على هذا الطلب.";
 "pubky_auth__invalid_request" = "طلب مصادقة غير صالح";
+"pubky_auth__other_pubky" = "هذا الطلب موجّه إلى {pubky}، وليس إلى pubky هذه المحفظة.";
 "pubky_auth__homeserver" = "الخادم الرئيسي";
 "pubky_auth__signup_description" = "أنشئ هوية Pubky جديدة على هذا الخادم الرئيسي. تابع فقط إذا كنت تثق به.";
 "pubky_auth__approval_failed" = "فشل التفويض";

@@ -1416,6 +1416,8 @@ actor PaykitPaymentProofService {
         let underlyingError = (submissionError as? AppError)?.underlyingError ?? submissionError
         if underlyingError as? PaykitPaymentRequestError == .requestExpired {
             // The local deadline gate runs before submitting to the node.
+        } else if underlyingError as? PaykitPaymentRequestError == .requestUnavailable {
+            // The authorization recheck before submission refused it, for instance for a contact blocked meanwhile.
         } else if underlyingError is ChannelFreeRailSendRefused {
             // Spark refused it before sending: not connected, not preparable, or over the fee limit.
         } else if underlyingError is MoveToSparkError {

@@ -12,9 +12,15 @@ protocol ChannelFreeLightningRail: AnyObject {
     @MainActor var isReady: Bool { get }
     @MainActor var balanceSats: UInt64 { get }
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String
-    /// Refuses before sending when the prepared fee is above `maxFeeSats`, and runs `beforeSubmission` right before the
-    /// payment goes out, as the node path does.
-    func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash
+    /// Refuses before sending when the prepared fee is above `maxFeeSats`, runs `recheckBeforeSubmission` after its last
+    /// await before the payment goes out, and `beforeSubmission` right before it does, as the node path does.
+    func send(
+        bolt11: String,
+        sats: UInt64?,
+        maxFeeSats: UInt64?,
+        recheckBeforeSubmission: @escaping () async throws -> Void,
+        beforeSubmission: @escaping () throws -> Void
+    ) async throws -> PaymentHash
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64
     /// Throws when the rail could not list its payments, so a duplicate-payment check can tell that from none.
     func lightningPayments() async throws -> [ChannelFreeRailPayment]
@@ -158,6 +164,10 @@ class LightningService: NodeLifecycleService {
 
     private let restartLock = NSLock()
     private var lastRestart: Task<Void, Error>?
+    /// Counts the stops callers asked for, so a recovery start can tell that one came in after it began.
+    private var requestedStops = 0
+    /// Starts while a stopped node's VSS writes keep the store busy; each build waits up to 60 s for them.
+    static let busyStoreStartAttempts = 5
 
     private let eventLoopLock = NSLock()
     /// The current event loop and the node it serves, so only that node's lifecycle can cancel it.
@@ -435,42 +445,56 @@ class LightningService: NodeLifecycleService {
         // Stop the current node if it exists, ignore errors if already stopped
         if let node {
             do {
-                try await stop()
+                try await stopNode()
             } catch {
                 Logger.debug("Node was already stopped or failed to stop: \(error)")
                 // Clear the node reference anyway
                 await releaseAfterFailedStop(of: node)
             }
         }
+        let stopsBefore = restartLock.withLock { requestedStops }
 
-        // Restart the node with the current configuration
+        try await Self.applyConfigChange(
+            stopRequested: { self.restartLock.withLock { self.requestedStops != stopsBefore } },
+            start: {
+                try await self.setup(walletIndex: self.currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
+                try await self.start()
+            },
+            recover: { try await self.restartWithPreviousConfig(stopsBefore: stopsBefore) }
+        )
+    }
+
+    /// Starts the node with a changed config, retrying while the store is busy with the stopped node's VSS writes, which have
+    /// nothing to do with the new config. Any other failure, or a busy store past every attempt, runs `recover` and rethrows.
+    static func applyConfigChange(
+        stopRequested: () -> Bool,
+        start: () async throws -> Void,
+        recover: () async throws -> Void
+    ) async throws {
         do {
-            try await setup(walletIndex: currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
-            try await start()
-            Logger.info("Node restarted successfully")
+            try await startRetryingBusyStore(stopRequested: stopRequested, start: start)
+            Logger.info("Node restarted successfully", context: "LightningService")
         } catch {
-            Logger.warn("Failed ldk-node config change, attempting recovery…")
-            // Attempt to restart with previous config
+            Logger.warn("Failed ldk-node config change, attempting recovery…", context: "LightningService")
             // If recovery fails, log it but still throw the original error
             do {
-                try await restartWithPreviousConfig()
+                try await recover()
             } catch {
-                Logger.error("Recovery attempt also failed: \(error)")
+                Logger.error("Recovery attempt also failed: \(error)", context: "LightningService")
             }
-            // Always re-throw the original error that caused the restart failure
             throw error
         }
     }
 
     /// Restarts the node with the previous stored configuration (recovery method)
     /// This is called when a config change fails to restore the node to a working state
-    private func restartWithPreviousConfig() async throws {
+    private func restartWithPreviousConfig(stopsBefore: Int) async throws {
         Logger.debug("Stopping node for recovery attempt")
 
         // Stop the current node if it exists
         if let node {
             do {
-                try await stop()
+                try await stopNode()
             } catch {
                 Logger.error("Failed to stop node during recovery: \(error)")
                 await releaseAfterFailedStop(of: node)
@@ -480,14 +504,51 @@ class LightningService: NodeLifecycleService {
         Logger.debug("Starting node with previous config for recovery")
 
         do {
-            // Restart with nil URLs to use stored/default configuration
-            try await setup(walletIndex: currentWalletIndex, electrumServerUrl: nil, rgsServerUrl: nil)
-            try await start()
+            // The stopped node's VSS writes can keep retrying for minutes, past one build's wait for them.
+            try await Self.startRetryingBusyStore(stopRequested: { self.restartLock.withLock { self.requestedStops != stopsBefore } }) {
+                // Restart with nil URLs to use stored/default configuration
+                try await self.setup(walletIndex: self.currentWalletIndex, electrumServerUrl: nil, rgsServerUrl: nil)
+                try await self.start()
+            }
             Logger.debug("Successfully started node with previous config")
         } catch {
             Logger.error("Failed starting node with previous config: \(error)")
             throw error
         }
+    }
+
+    /// Runs `start` again while it fails because the store is still busy with a stopped node's VSS writes, up to
+    /// `busyStoreStartAttempts` times. A stop requested meanwhile wins: no further start runs.
+    static func startRetryingBusyStore(
+        attempts: Int = busyStoreStartAttempts,
+        stopRequested: () -> Bool,
+        start: () async throws -> Void
+    ) async throws {
+        var attempt = 0
+        while true {
+            guard !stopRequested() else {
+                Logger.info("Skipped node start because a stop was requested", context: "LightningService")
+                throw AppError(serviceError: .nodeNotSetup)
+            }
+            attempt += 1
+            if attempt > 1 {
+                Logger.warn("Retrying node start on a busy store '\(attempt)/\(attempts)'", context: "LightningService")
+            }
+            do {
+                try await start()
+                return
+            } catch where isKvStoreSetupFailure(error) && attempt < attempts {
+                continue
+            }
+        }
+    }
+
+    static func isKvStoreSetupFailure(_ error: Error) -> Bool {
+        let underlying = (error as? AppError)?.underlyingError ?? error
+        if case BuildError.KvStoreSetupFailed = underlying {
+            return true
+        }
+        return false
     }
 
     /// Pass onEvent when being used in the background to listen for payments, channels, closes, etc
@@ -550,6 +611,12 @@ class LightningService: NodeLifecycleService {
     }
 
     func stop(clearEventCallback: Bool = false) async throws {
+        restartLock.withLock { requestedStops += 1 }
+        try await stopNode(clearEventCallback: clearEventCallback)
+    }
+
+    /// Stops the node without counting as a requested stop, for the restart and its recovery.
+    private func stopNode(clearEventCallback: Bool = false) async throws {
         guard let node else {
             Logger.warn("Node not started, nothing to stop")
             return
@@ -1233,6 +1300,7 @@ class LightningService: NodeLifecycleService {
         sats: UInt64? = nil,
         params: RouteParametersConfig? = nil,
         channelsOnly: Bool = false,
+        recheckBeforeSubmission: @escaping () async throws -> Void = {},
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
         let invoice = try? Bolt11Invoice.fromStr(invoiceStr: bolt11)
@@ -1287,6 +1355,7 @@ class LightningService: NodeLifecycleService {
                     sats: sats,
                     maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
                         ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
+                    recheckBeforeSubmission: recheckBeforeSubmission,
                     beforeSubmission: { [weak self] in
                         try beforeSubmission()
                         // Spark checks again before it retries the same attempt, which is already admitted.
@@ -1362,6 +1431,8 @@ class LightningService: NodeLifecycleService {
                 endLdkSend(paymentHash: sendKey)
             }
         }
+        // After this send's last await before the queue, so a refusal since the caller's checks leaves nothing recorded.
+        try await recheckBeforeSubmission()
         do {
             return try await Self.submitPayment(beforeSubmission: { [weak self] in
                 try beforeSubmission()

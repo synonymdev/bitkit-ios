@@ -61,4 +61,103 @@ final class LightningServiceTests: XCTestCase {
         release.continuation.finish()
         await task.value
     }
+
+    // Regression: a stopped node's VSS writes can keep retrying past one build's wait for them, so the recovery start
+    // retries while the build fails on the busy store instead of leaving the node offline.
+    func testRecoveryStartRetriesWhileTheVssStoreIsBusy() async throws {
+        let busy = Bitkit.AppError(error: BuildError.KvStoreSetupFailed(message: "in flight"))
+        var attempts = 0
+        try await Bitkit.LightningService.startRetryingBusyStore(stopRequested: { false }) {
+            attempts += 1
+            if attempts < 3 {
+                throw busy
+            }
+        }
+        XCTAssertEqual(attempts, 3)
+    }
+
+    func testRecoveryStartGivesUpAfterItsAttempts() async {
+        var attempts = 0
+        do {
+            try await Bitkit.LightningService.startRetryingBusyStore(stopRequested: { false }) {
+                attempts += 1
+                throw Bitkit.AppError(error: BuildError.KvStoreSetupFailed(message: "in flight"))
+            }
+            XCTFail("expected the last failure")
+        } catch {}
+        XCTAssertEqual(attempts, Bitkit.LightningService.busyStoreStartAttempts)
+    }
+
+    func testRecoveryStartDoesNotRetryOtherFailures() async {
+        var attempts = 0
+        do {
+            try await Bitkit.LightningService.startRetryingBusyStore(stopRequested: { false }) {
+                attempts += 1
+                throw Bitkit.AppError(error: BuildError.WalletSetupFailed(message: ""))
+            }
+            XCTFail("expected the failure")
+        } catch {}
+        XCTAssertEqual(attempts, 1)
+    }
+
+    // Regression: a stop requested while the recovery runs wins over its retry.
+    func testRecoveryStartDoesNotRetryOverARequestedStop() async {
+        var attempts = 0
+        var stopRequested = false
+        do {
+            try await Bitkit.LightningService.startRetryingBusyStore(stopRequested: { stopRequested }) {
+                attempts += 1
+                stopRequested = true
+                throw Bitkit.AppError(error: BuildError.KvStoreSetupFailed(message: "in flight"))
+            }
+            XCTFail("expected the skipped start to fail")
+        } catch {}
+        XCTAssertEqual(attempts, 1)
+    }
+
+    func testRecoveryStartDoesNotStartOverAStopRequestedBeforeIt() async {
+        var attempts = 0
+        do {
+            try await Bitkit.LightningService.startRetryingBusyStore(stopRequested: { true }) { attempts += 1 }
+            XCTFail("expected the skipped start to fail")
+        } catch {}
+        XCTAssertEqual(attempts, 0)
+    }
+
+    // Regression: a busy store has nothing to do with the requested Electrum or RGS server, so the change retries it
+    // instead of falling back to the previous config.
+    func testConfigChangeRetriesItsOwnStartWhileTheVssStoreIsBusy() async throws {
+        var attempts = 0
+        var recovered = false
+        try await Bitkit.LightningService.applyConfigChange(
+            stopRequested: { false },
+            start: {
+                attempts += 1
+                if attempts < 2 {
+                    throw Bitkit.AppError(error: BuildError.KvStoreSetupFailed(message: "in flight"))
+                }
+            },
+            recover: { recovered = true }
+        )
+        XCTAssertEqual(attempts, 2)
+        XCTAssertFalse(recovered)
+    }
+
+    func testConfigChangeRecoversAfterAnotherFailure() async {
+        var attempts = 0
+        var recovered = false
+        do {
+            try await Bitkit.LightningService.applyConfigChange(
+                stopRequested: { false },
+                start: {
+                    attempts += 1
+                    throw Bitkit.AppError(error: BuildError.WalletSetupFailed(message: ""))
+                },
+                recover: { recovered = true }
+            )
+            XCTFail("expected the change to fail")
+        } catch {}
+        XCTAssertEqual(attempts, 1)
+        XCTAssertTrue(recovered)
+    }
 }

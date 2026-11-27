@@ -399,6 +399,7 @@
 "lightning__spark_exit__fees" = "Netzwerkgebühren";
 "lightning__spark_exit__receive" = "Du erhältst (Schätzung)";
 "lightning__spark_exit__savings_refused" = "Deine Zahlung vom Sparkonto ist nicht durchgegangen. Zahle erneut oder finanziere aus einer anderen Wallet.";
+"lightning__spark_exit__savings_unresolved" = "Deine Zahlung vom Sparkonto ist noch nicht bestätigt. Warte darauf, bevor du aus einer anderen Wallet zahlst.";
 "lightning__spark_exit__quote_loading" = "Kosten werden abgerufen…";
 "lightning__spark_exit__quote_settling" = "Warte, bis Spark dein Guthaben fertig verschoben hat. Das kann bis zu 5 Minuten dauern.";
 "lightning__spark_exit__quote_error" = "Die Übertragungskosten konnten nicht abgerufen werden. Versuche es erneut.";
@@ -919,6 +920,7 @@
 "pubky_auth__use_ring" = "Pubky Ring verwenden";
 "pubky_auth__use_ring_desc" = "Bitkit kann den Schlüssel für diesen pubky nicht aus Pubky Ring lesen. Öffne Pubky Ring, um diese Anfrage zu genehmigen.";
 "pubky_auth__invalid_request" = "Ungültige Autorisierungsanfrage";
+"pubky_auth__other_pubky" = "Diese Anfrage ist für {pubky} bestimmt, nicht für den Pubky dieses Wallets.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Erstelle eine neue Pubky-Identität auf diesem Homeserver. Fahre nur fort, wenn du ihm vertraust.";
 "pubky_auth__approval_failed" = "Autorisierung fehlgeschlagen";
