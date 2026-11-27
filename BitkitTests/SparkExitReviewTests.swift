@@ -178,18 +178,19 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertNil(SparkExitManager.savingsRefusalToPay(record, utxos: [], hasSavingsSend: accepted, feeSats: 650))
 
         // A tick keeps it as the exit's payment, before a later send can take its place in the journal.
-        let paid = SparkExitManager.keepingAcceptedSend(record, address: address, txid: "accepted")
-        XCTAssertEqual(paid?.fundingPaymentTxid, "accepted")
+        let acceptedSend = refusedPayment(status: .accepted, address: address)
+        let paid = SparkExitManager.keepingSavingsSend(record, attempt: acceptedSend)
+        XCTAssertEqual(paid?.fundingPaymentTxid, "refused")
         XCTAssertNil(paid?.savingsRefusal)
-        XCTAssertNil(SparkExitManager.keepingAcceptedSend(record, address: "bcrt1qelsewhere", txid: "other"))
-        XCTAssertNil(SparkExitManager.keepingAcceptedSend(record, address: address, txid: nil))
+        XCTAssertNil(SparkExitManager.keepingSavingsSend(record, attempt: refusedPayment(status: .accepted, address: "bcrt1qelsewhere")))
+        XCTAssertNil(SparkExitManager.keepingSavingsSend(record, attempt: nil))
         var kept = record
         kept.fundingPaymentTxid = "kept"
-        XCTAssertNil(SparkExitManager.keepingAcceptedSend(kept, address: address, txid: "accepted"))
+        XCTAssertNil(SparkExitManager.keepingSavingsSend(kept, attempt: acceptedSend))
         // Kept once: a payment the exit forgot since (dropped, or short) has no refusal left and is never kept again.
         var forgotten = try XCTUnwrap(paid)
         forgotten.fundingPaymentTxid = nil
-        XCTAssertNil(SparkExitManager.keepingAcceptedSend(forgotten, address: address, txid: "accepted"))
+        XCTAssertNil(SparkExitManager.keepingSavingsSend(forgotten, attempt: acceptedSend))
         XCTAssertTrue(SparkExitManager.canCancel(forgotten, fundingSeenSats: 0), "a forgotten payment kept the exit from cancelling")
     }
 

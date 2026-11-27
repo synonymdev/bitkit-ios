@@ -66,6 +66,14 @@ struct SparkExitRecord: Codable, Equatable {
         let feeSats: UInt64
     }
 
+    /// A savings payment to `address` started at `atHeight`, nil until a tick read the tip. `earlierAttemptId` is the
+    /// send journal's attempt before it, which the journal keeps once finished: never this payment.
+    struct SavingsSendStarted: Codable, Equatable {
+        let address: String
+        var atHeight: UInt32?
+        let earlierAttemptId: String?
+    }
+
     /// A leaf an older state of the wallet claimed on-chain first, which this exit cannot recover.
     struct LostLeaf: Codable, Equatable {
         let leafId: String
@@ -209,6 +217,9 @@ struct SparkExitRecord: Codable, Equatable {
     /// The start's savings payment of the fee funding, refused before it went out because its fee rose above the one
     /// confirmed: progress offers to pay it from savings at the new fee.
     var savingsRefusal: SavingsRefusal?
+    /// A savings payment to the funding address, saved before it goes out: until its txid is kept as
+    /// `fundingPaymentTxid`, it may still land, so nothing is asked for and the exit cannot be cancelled.
+    var savingsSendStarted: SavingsSendStarted?
     /// The tip when the exit first looked for that payment, and the tip since which no host knows it. A payment no
     /// host knows for a block, or not adopted within `SparkExitDriver.ownPaymentTimeoutBlocks`, is forgotten, so the
     /// exit asks and reminds again.
@@ -551,8 +562,33 @@ struct SparkExitRecord: Codable, Equatable {
     /// A savings payment Bitkit made to the funding address, such as a higher fee's, that the exit has not adopted yet:
     /// nothing to ask the user for while it confirms.
     var isAwaitingOwnPayment: Bool {
-        guard let paid = fundingPaymentTxid, fundingShortfallSats != nil else { return false }
+        guard fundingShortfallSats != nil else { return false }
+        if isSavingsSendUnsaved {
+            return true
+        }
+        guard let paid = fundingPaymentTxid else { return false }
         return !funding.contains { $0.txid == paid }
+    }
+
+    /// A savings payment started before the exit was funded, whose txid was never kept: it may still land.
+    var isSavingsSendUnsaved: Bool {
+        guard savingsSendStarted != nil, fundingPaymentTxid == nil, isActive, case .awaitingFunding = phase else { return false }
+        return true
+    }
+
+    /// The started savings payment at `tip`: forgotten `SparkExitDriver.ownPaymentTimeoutBlocks` after it started, as
+    /// an unadopted own payment is, so the ask comes back.
+    func withSavingsSendLooked(tip: UInt32) -> SparkExitRecord {
+        guard isSavingsSendUnsaved, var started = savingsSendStarted else { return self }
+        var looked = self
+        let atHeight = started.atHeight ?? tip
+        if tip.saturatingSub(atHeight) >= SparkExitDriver.ownPaymentTimeoutBlocks {
+            looked.savingsSendStarted = nil
+        } else {
+            started.atHeight = atHeight
+            looked.savingsSendStarted = started
+        }
+        return looked
     }
 
     /// A top-up is awaited for a generation that is still valid (a higher fee, not a diverged rebuild): its steps keep

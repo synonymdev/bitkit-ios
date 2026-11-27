@@ -231,9 +231,9 @@ struct SparkExitDriver {
     /// replaced), or once it is older than `ownPaymentTimeoutBlocks` without being adopted, so the ask and the reminder
     /// come back. Nothing changes without a tip.
     private func noteOwnPayment(_ record: inout SparkExitRecord) async {
-        guard record.isAwaitingOwnPayment || record.isEndedPaymentPending, let paid = record.fundingPaymentTxid,
-              let tip = try? await chain.tipHeight()
-        else { return }
+        guard record.isAwaitingOwnPayment || record.isEndedPaymentPending, let tip = try? await chain.tipHeight() else { return }
+        record = record.withSavingsSendLooked(tip: tip)
+        guard record.isAwaitingOwnPayment || record.isEndedPaymentPending, let paid = record.fundingPaymentTxid else { return }
         let seenAt = record.fundingPaymentSeenAtHeight ?? tip
         record.fundingPaymentSeenAtHeight = seenAt
         switch try? await chain.isKnown(txid: paid) {
