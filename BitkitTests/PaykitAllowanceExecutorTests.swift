@@ -1595,10 +1595,13 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         let harness = AllowanceHarness()
         await harness.payer.setLightningError(AllowanceMockError.unsupported)
         await harness.payer.setLightningErrorIsDefinite(false)
+        await harness.payer.readJournalOnNodeRejection(harness.store, identity: Fixtures.identityKey)
 
         let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
 
         XCTAssertEqual(result, .started)
+        let stages = await harness.payer.journalStagesOnNodeRejection
+        XCTAssertEqual(stages, [.sending], "A send that may have reached the node stays sending")
         let listOutcomes = await harness.payer.paymentListOutcomes
         XCTAssertEqual(listOutcomes, [.uncertain])
         let outcomes = await harness.sdk.recordedOutcomes
@@ -2282,7 +2285,10 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         // Killed after the refusal cleared the proof, before the failure reached the ledger.
         await harness.executor.manualLightningPaymentRefused(attemptId: manualAttemptId)
         try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
-            Fixtures.occurrence(requestId: "req-a", attempts: [Fixtures.attemptRecord(id: manualAttemptId, status: .submitted)]),
+            Fixtures.occurrence(
+                requestId: "req-a",
+                attempts: [Fixtures.attemptRecord(id: manualAttemptId, mode: .manual, allowanceId: nil, status: .submitted)]
+            ),
         ]))
         await harness.executor.recover(identity: Fixtures.identityKey)
 
