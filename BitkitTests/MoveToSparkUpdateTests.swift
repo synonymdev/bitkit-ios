@@ -140,6 +140,33 @@ final class MoveToSparkUpdateTests: XCTestCase {
         XCTAssertEqual(kept, quote, "A payment the quote covers lost the fee's headroom")
     }
 
+    func testTheUpdateFallsShortWhenOnlyAQuoteAboveTheFeeShownCoversThePayment() async {
+        let services = FakeServices()
+        services.spark = SparkSendState(isReady: true, isExiting: false, balanceSats: 0)
+        services.channelFee = { _ in 5 }
+        let manager = MoveToSparkManager(services: services)
+        let smallChannels = [ChannelDetails.mock(outboundCapacityMsat: 5_000_000)]
+        let shown = MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 4000, feeSats: 6)
+        let maxSats = MoveToSparkMath.combinedSendableSats(channels: smallChannels, spark: services.spark)
+
+        await assertFallsShort {
+            try await manager.checkCoverage(quote: shown, bolt11: "lnbcrt1pay", amountSats: maxSats, channels: smallChannels)
+        }
+    }
+
+    func testTheUpdateFallsShortWhenEvenTheQuoteWithoutHeadroomFallsShortOfThePayment() async {
+        let services = FakeServices()
+        services.spark = SparkSendState(isReady: true, isExiting: false, balanceSats: 0)
+        services.channelFee = { _ in 5 }
+        let manager = MoveToSparkManager(services: services)
+        let smallChannels = [ChannelDetails.mock(outboundCapacityMsat: 5_000_000)]
+        let shown = MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 4000, feeSats: 60)
+
+        await assertFallsShort {
+            try await manager.checkCoverage(quote: shown, bolt11: "lnbcrt1pay", amountSats: 6000, channels: smallChannels)
+        }
+    }
+
     func testTheMostTheUpdateCanSendIsPricedAtItsOwnSizeOnAFeeThatGrowsWithTheAmount() async throws {
         let services = FakeServices()
         services.spark = SparkSendState(isReady: true, isExiting: false, balanceSats: 0)

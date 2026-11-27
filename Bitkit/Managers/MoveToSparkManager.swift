@@ -1164,9 +1164,8 @@ final class MoveToSparkManager {
         guard let feeSats = try? await services.estimateSparkFee(bolt11: bolt11, amountSats: amountSats) else {
             throw MoveToSparkError.updateFallsShort(amountSats: amountSats)
         }
-        let spark = services.spark
-        let covers = { (quote: MoveToSparkQuote) in
-            MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: amountSats, feeSats: feeSats)
+        let covers = { [services] (quote: MoveToSparkQuote) in
+            MoveToSparkMath.coversPayment(quote: quote, spark: services.spark, amountSats: amountSats, feeSats: feeSats)
         }
         if covers(quote) {
             return quote
