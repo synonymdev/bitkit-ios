@@ -35,7 +35,7 @@ struct GradientCircleButton: View {
                             endPoint: .bottom
                         )
                     )
-                    .shadow(color: .white10, radius: 0, x: 0, y: -1)
+                    .overlay(topInnerHighlight)
 
                 if isLoading {
                     ActivityIndicator(size: 24)
@@ -55,5 +55,11 @@ struct GradientCircleButton: View {
         }
         .disabled(isLoading)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var topInnerHighlight: some View {
+        Circle()
+            .subtracting(Circle().offset(x: 0, y: 1))
+            .fill(Color.white10)
     }
 }
