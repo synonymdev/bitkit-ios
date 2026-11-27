@@ -327,8 +327,6 @@ struct SparkSendState: Equatable {
 struct MoveToSparkPart: Equatable {
     let amountSats: UInt64
     let feeSats: UInt64
-    /// The estimate and its margin, without the headroom in `feeSats`.
-    var baseFeeSats: UInt64?
     /// The amount a route that did not carry the wanted one halved it to, when one did.
     var routeHalvedToSats: UInt64?
 }
@@ -340,26 +338,12 @@ struct MoveToSparkQuote: Equatable {
     let amountSats: UInt64
     let feeSats: UInt64
     let firstFeeSats: UInt64
-    /// The estimate and its margin, without the headroom in `feeSats`.
-    let baseFeeSats: UInt64
 
-    init(invoice: String, amountSats: UInt64, feeSats: UInt64, firstFeeSats: UInt64? = nil, baseFeeSats: UInt64? = nil) {
+    init(invoice: String, amountSats: UInt64, feeSats: UInt64, firstFeeSats: UInt64? = nil) {
         self.invoice = invoice
         self.amountSats = amountSats
         self.feeSats = feeSats
         self.firstFeeSats = firstFeeSats ?? feeSats
-        self.baseFeeSats = baseFeeSats ?? feeSats
-    }
-
-    /// The same one-part move with the fee's headroom moved too, for a payment that needs the whole balance.
-    func withoutHeadroom() -> MoveToSparkQuote {
-        let headroomSats = feeSats.subtractingReportingOverflow(baseFeeSats)
-        let movedSats = amountSats.addingReportingOverflow(headroomSats.overflow ? 0 : headroomSats.partialValue)
-        return MoveToSparkQuote(
-            invoice: invoice,
-            amountSats: movedSats.overflow ? amountSats : movedSats.partialValue,
-            feeSats: baseFeeSats
-        )
     }
 }
 
@@ -1060,12 +1044,14 @@ final class MoveToSparkManager {
         try await updateQuote(channels: wallet.channels)
     }
 
-    func updateQuote(channels: [ChannelDetails]?) async throws -> MoveToSparkQuote {
+    /// Without `withHeadroom`, the fee is the estimate and its margin alone, so the whole balance moves.
+    func updateQuote(channels: [ChannelDetails]?, withHeadroom: Bool = true) async throws -> MoveToSparkQuote {
         let (invoice, limitSats) = try await moveInvoice(channels: channels)
-        guard let part = try await fittingPart(invoice: invoice, limitSats: limitSats, wantedSats: limitSats) else {
+        guard let part = try await fittingPart(invoice: invoice, limitSats: limitSats, wantedSats: limitSats, withHeadroom: withHeadroom)
+        else {
             throw MoveToSparkError.noRoute
         }
-        return MoveToSparkQuote(invoice: invoice, amountSats: part.amountSats, feeSats: part.feeSats, baseFeeSats: part.baseFeeSats)
+        return MoveToSparkQuote(invoice: invoice, amountSats: part.amountSats, feeSats: part.feeSats)
     }
 
     /// Spark's fee for a payment of `amountSats` once the spending balance is updated; Spark's service fee alone when
@@ -1129,7 +1115,7 @@ final class MoveToSparkManager {
         wallet: WalletViewModel,
         transfer: TransferViewModel
     ) async throws {
-        let quote = try await checkCoverage(quote: quote, bolt11: bolt11, amountSats: amountSats)
+        let quote = try await checkCoverage(quote: quote, bolt11: bolt11, amountSats: amountSats, channels: wallet.channels)
         // A request that expired while the update was quoted moves nothing, as its payment would be refused.
         try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
         let channelsBefore = wallet.channels ?? []
@@ -1166,17 +1152,31 @@ final class MoveToSparkManager {
     }
 
     /// Before any move: Spark must price the payment, and the quote with Spark's balance must cover it and that fee.
-    /// Returns the quote to pay: `quote`, or the same move with its fee's headroom moved too when only that covers it.
+    /// Returns the quote to pay: `quote`, or, when only a move without the fee's headroom covers it, `channels` quoted
+    /// again without it, at no more than the fee shown.
     @discardableResult
-    func checkCoverage(quote: MoveToSparkQuote, bolt11: String, amountSats: UInt64) async throws -> MoveToSparkQuote {
-        guard let feeSats = try? await services.estimateSparkFee(bolt11: bolt11, amountSats: amountSats),
-              let covered = [quote, quote.withoutHeadroom()].first(where: {
-                  MoveToSparkMath.coversPayment(quote: $0, spark: services.spark, amountSats: amountSats, feeSats: feeSats)
-              })
-        else {
+    func checkCoverage(
+        quote: MoveToSparkQuote,
+        bolt11: String,
+        amountSats: UInt64,
+        channels: [ChannelDetails]? = nil
+    ) async throws -> MoveToSparkQuote {
+        guard let feeSats = try? await services.estimateSparkFee(bolt11: bolt11, amountSats: amountSats) else {
             throw MoveToSparkError.updateFallsShort(amountSats: amountSats)
         }
-        return covered
+        let spark = services.spark
+        let covers = { (quote: MoveToSparkQuote) in
+            MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: amountSats, feeSats: feeSats)
+        }
+        if covers(quote) {
+            return quote
+        }
+        if let channels, let plain = try? await updateQuote(channels: channels, withHeadroom: false),
+           plain.feeSats <= quote.feeSats, covers(plain)
+        {
+            return plain
+        }
+        throw MoveToSparkError.updateFallsShort(amountSats: amountSats)
     }
 
     /// Waits until Spark alone covers a payment of `amountSats` to `bolt11` and Spark's fee for it, by the rule
@@ -1329,7 +1329,12 @@ final class MoveToSparkManager {
     }
 
     /// Prices up to `wantedSats` under `limitSats`; `nil` when it does not route or its fee never fits.
-    private func fittingPart(invoice: String, limitSats: UInt64, wantedSats: UInt64) async throws -> MoveToSparkPart? {
+    private func fittingPart(
+        invoice: String,
+        limitSats: UInt64,
+        wantedSats: UInt64,
+        withHeadroom: Bool = true
+    ) async throws -> MoveToSparkPart? {
         var amountSats = MoveToSparkMath.firstCandidate(wantedSats: wantedSats, limitSats: limitSats)
         var fitting: MoveToSparkPart?
         // The first amount leaves room for a guessed fee; once the real fee is known, the amount grows to fit it.
@@ -1341,14 +1346,12 @@ final class MoveToSparkManager {
                 guard fitting != nil || Self.isNoRoute(error) else { throw error }
                 return fitting
             }
-            let feeSats = MoveToSparkMath.cappedFeeSats(estimateSats: estimateSats, limitSats: limitSats)
-            let nextSats = min(wantedSats, MoveToSparkMath.amountAfterCappedFee(limitSats: limitSats, estimateSats: estimateSats))
+            let feeSats = withHeadroom
+                ? MoveToSparkMath.cappedFeeSats(estimateSats: estimateSats, limitSats: limitSats)
+                : MoveToSparkMath.quotedFeeSats(estimateSats: estimateSats)
+            let nextSats = min(wantedSats, limitSats > feeSats ? limitSats - feeSats : 0)
             if amountSats + feeSats <= limitSats {
-                let part = MoveToSparkPart(
-                    amountSats: amountSats,
-                    feeSats: feeSats,
-                    baseFeeSats: MoveToSparkMath.quotedFeeSats(estimateSats: estimateSats)
-                )
+                let part = MoveToSparkPart(amountSats: amountSats, feeSats: feeSats)
                 fitting = part
                 if nextSats <= amountSats {
                     return part
