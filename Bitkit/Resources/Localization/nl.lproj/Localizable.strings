@@ -906,7 +906,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>VERDIEN BITCOIN</accent>\nMET UW\nCONTENT";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit kon geen geldige account-xpub aanmaken.";
 "pubky_auth__trust_warning" = "Zorg dat u de service, browser en het apparaat vertrouwt voordat u met uw pubky autoriseert.";
-"pubky_auth__authorization_relay" = "AUTORISATIERELAY";
+"pubky_auth__authorization_relay" = "RELAY";
 "pubky_auth__authorizing" = "Autoriseren...";
 "pubky_auth__success_title" = "Autorisatie geslaagd";
 "pubky_auth__success_prefix" = "U hebt geautoriseerd met pubky ";

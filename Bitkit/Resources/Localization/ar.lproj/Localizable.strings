@@ -765,7 +765,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>اربح BITCOIN</accent>\nمن\nمحتواك";
 "pubky_auth__watch_only_account_xpub_error" = "تعذر على Bitkit إنشاء xpub صالح للحساب.";
 "pubky_auth__trust_warning" = "تأكد من أنك تثق بالخدمة والمتصفح والجهاز قبل التفويض باستخدام pubky الخاص بك.";
-"pubky_auth__authorization_relay" = "مُرحّل التفويض";
+"pubky_auth__authorization_relay" = "المُرحّل";
 "pubky_auth__authorizing" = "جارٍ التفويض...";
 "pubky_auth__success_title" = "تم التفويض بنجاح";
 "pubky_auth__success_prefix" = "لقد فوّضت باستخدام pubky ";

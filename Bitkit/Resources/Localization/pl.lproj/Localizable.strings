@@ -908,7 +908,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>ZARABIAJ BITCOINY</accent>\nNA SWOICH\nTREŚCIACH";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit nie mógł utworzyć prawidłowego xpub konta.";
 "pubky_auth__trust_warning" = "Upewnij się, że ufasz usłudze, przeglądarce i urządzeniu, zanim autoryzujesz za pomocą swojego pubky.";
-"pubky_auth__authorization_relay" = "PRZEKAŹNIK AUTORYZACJI";
+"pubky_auth__authorization_relay" = "PRZEKAŹNIK";
 "pubky_auth__authorizing" = "Autoryzowanie...";
 "pubky_auth__success_title" = "Autoryzacja zakończona";
 "pubky_auth__success_prefix" = "Autoryzowano za pomocą pubky ";

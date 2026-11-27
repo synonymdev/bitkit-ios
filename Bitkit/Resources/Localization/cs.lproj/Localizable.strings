@@ -908,7 +908,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>VYDĚLÁVEJTE BITCOIN</accent>\nZE SVÉHO\nOBSAHU";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit nemohl vytvořit platný xpub účtu.";
 "pubky_auth__trust_warning" = "Než se autorizujete pomocí svého pubky, ujistěte se, že službě, prohlížeči a zařízení důvěřujete.";
-"pubky_auth__authorization_relay" = "AUTORIZAČNÍ RELAY";
+"pubky_auth__authorization_relay" = "RELAY";
 "pubky_auth__authorizing" = "Autorizování...";
 "pubky_auth__success_title" = "Autorizace proběhla úspěšně";
 "pubky_auth__success_prefix" = "Autorizovali jste se pomocí pubky ";

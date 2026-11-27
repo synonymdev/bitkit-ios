@@ -796,7 +796,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>ΚΕΡΔΙΣΤΕ BITCOIN</accent>\nΑΠΟ ΤΟ\nΠΕΡΙΕΧΟΜΕΝΟ ΣΑΣ";
 "pubky_auth__watch_only_account_xpub_error" = "Το Bitkit δεν μπόρεσε να δημιουργήσει έγκυρο xpub λογαριασμού.";
 "pubky_auth__trust_warning" = "Βεβαιωθείτε ότι εμπιστεύεστε την υπηρεσία, τον browser και τη συσκευή πριν εξουσιοδοτήσετε με το pubky σας.";
-"pubky_auth__authorization_relay" = "ΑΝΑΜΕΤΑΔΟΤΗΣ ΕΞΟΥΣΙΟΔΟΤΗΣΗΣ";
+"pubky_auth__authorization_relay" = "ΑΝΑΜΕΤΑΔΟΤΗΣ";
 "pubky_auth__authorizing" = "Εξουσιοδότηση...";
 "pubky_auth__success_title" = "Επιτυχής Εξουσιοδότηση";
 "pubky_auth__success_prefix" = "Εξουσιοδοτήσατε με το pubky ";

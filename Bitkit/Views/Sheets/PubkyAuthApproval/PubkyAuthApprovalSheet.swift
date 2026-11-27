@@ -438,22 +438,29 @@ struct PubkyAuthApprovalSheet: View {
                             .padding(.bottom, 32)
                     }
 
-                    if let relayOrigin = config.request.relayOrigin {
-                        relayOriginSection(relayOrigin)
-                            .padding(.bottom, 32)
-                    }
+                    let relayUrl = config.request.relayDisplayUrl
+                    let showsPaykitAccess = config.request.bitkitClaim?.includesPaykitAccess == true
 
                     if !config.request.permissions.isEmpty {
                         permissionsSection
+                        if relayUrl != nil || showsPaykitAccess {
+                            sectionDivider
+                        }
                     }
 
-                    if config.request.bitkitClaim?.includesPaykitAccess == true {
+                    if let relayUrl {
+                        relaySection(relayUrl)
+                        if showsPaykitAccess {
+                            sectionDivider
+                        }
+                    }
+
+                    if showsPaykitAccess {
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("pubky_auth__details"), textColor: .white64).frame(minHeight: 18)
                             BodySText(t("pubky_auth__paykit_access_description"), textColor: .textPrimary, kerning: 0, lineHeight: 20)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.top, 32)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("PubkyAuthPaykitAccess")
                     }
@@ -539,13 +546,31 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
-    private func relayOriginSection(_ relayOrigin: String) -> some View {
+    private func relaySection(_ relayUrl: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("pubky_auth__authorization_relay"), textColor: .white64)
-            BodySSBText(relayOrigin)
-                .accessibilityIdentifier("PubkyAuthRelayOrigin")
-            CustomDivider(color: .white10)
+            CaptionMText(t("pubky_auth__authorization_relay"), textColor: .white64).frame(minHeight: 18)
+            HStack(alignment: .top, spacing: 4) {
+                Image("globe")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(.white)
+                    .frame(width: 16, height: 16)
+                    .padding(.top, 2)
+                    .accessibilityHidden(true)
+
+                BodySSBText(pubkyAuthLiteralText(relayUrl))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("PubkyAuthRelayOrigin")
+
+                Spacer(minLength: 0)
+            }
         }
+    }
+
+    private var sectionDivider: some View {
+        CustomDivider(color: .white10)
+            .padding(.vertical, 12)
     }
 
     private var successDescriptionText: some View {

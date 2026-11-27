@@ -849,7 +849,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>GUANYA BITCOIN</accent>\nAMB EL TEU\nCONTINGUT";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit no ha pogut crear un xpub de compte vàlid.";
 "pubky_auth__trust_warning" = "Assegura't que confies en el servei, el navegador i el dispositiu abans d'autoritzar amb el teu pubky.";
-"pubky_auth__authorization_relay" = "RELÉ D'AUTORITZACIÓ";
+"pubky_auth__authorization_relay" = "RELÉ";
 "pubky_auth__authorizing" = "Autoritzant...";
 "pubky_auth__success_title" = "Autorització correcta";
 "pubky_auth__success_prefix" = "T'has autoritzat amb el pubky ";
