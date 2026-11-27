@@ -194,12 +194,15 @@ struct PubkyAuthRequest {
 
     /// The relay as shown on the approval sheet: scheme, host, port, path and query, exactly as the Pubky SDK's URL parser
     /// keeps them. Nil when `relay` is not already in that form apart from letter case, user info, the fragment and a
-    /// missing root path: a backslash, a space, control or non-ASCII characters, characters the parser percent-encodes,
-    /// a missing, percent-encoded or non-canonical host, a default, padded or out-of-range port, or a `.` or `..` path
-    /// segment.
+    /// missing root path: a space, control or non-ASCII characters, a backslash before the query, characters the parser
+    /// percent-encodes in the path or in the query, a missing, percent-encoded or non-canonical host, a default, padded
+    /// or out-of-range port, or a `.` or `..` path segment.
     static func displayRelay(_ relay: String) -> String? {
-        let rewritten = "\\\"<>`{}^'".unicodeScalars
-        guard relay.unicodeScalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F && !rewritten.contains($0) }),
+        // rust-url 2.5.8 (`url/src/parser.rs`): the `PATH` set is percent-encoded in a path and a backslash becomes a
+        // slash; a query of an http(s) URL percent-encodes the `SPECIAL_QUERY` set.
+        let pathRewritten = "\\\"<>`{}"
+        let queryRewritten = "\"<>'"
+        guard relay.unicodeScalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F }),
               let schemeEnd = relay.range(of: "://"), schemeEnd.lowerBound > relay.startIndex
         else { return nil }
         let scheme = relay[..<schemeEnd.lowerBound].lowercased()
@@ -210,9 +213,13 @@ struct PubkyAuthRequest {
         let hostPort = authority[(authority.lastIndex(of: "@").map { authority.index(after: $0) } ?? authority.startIndex)...]
             .lowercased()
         let pathAndQuery = rest[authorityEnd...].prefix { $0 != "#" }
-        let hasDotSegment = pathAndQuery.prefix { $0 != "?" }.split(separator: "/", omittingEmptySubsequences: false)
+        let path = pathAndQuery.prefix { $0 != "?" }
+        let query = pathAndQuery[path.endIndex...].dropFirst()
+        let hasDotSegment = path.split(separator: "/", omittingEmptySubsequences: false)
             .contains { [".", ".."].contains($0.lowercased().replacingOccurrences(of: "%2e", with: ".")) }
-        guard !hasDotSegment, isUnchangedRelayHostPort(hostPort, defaultPort: defaultPort) else { return nil }
+        let isRewritten = authority.contains("\\") || path.contains { pathRewritten.contains($0) }
+            || query.contains { queryRewritten.contains($0) } || hasDotSegment
+        guard !isRewritten, isUnchangedRelayHostPort(hostPort, defaultPort: defaultPort) else { return nil }
         return "\(scheme)://\(hostPort)\(pathAndQuery.hasPrefix("/") ? "" : "/")\(pathAndQuery)"
     }
 
