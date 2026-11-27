@@ -697,6 +697,16 @@
 "other__lnurl_auth_success_title" = "Ingelogd";
 "other__lnurl_auth_success_msg_domain" = "Du hast dich erfolgreich bei {domain} angemeldet.";
 "other__lnurl_auth_success_msg_no_domain" = "U bent succesvol ingelogd.";
+"other__lnurl_auth_auth_prompt" = "Authenticeren bij {domain}?";
+"other__lnurl_auth_auth_title" = "Authenticeren";
+"other__lnurl_auth_link_prompt" = "Account koppelen aan {domain}?";
+"other__lnurl_auth_link_title" = "Koppelen";
+"other__lnurl_auth_login_button" = "Inloggen";
+"other__lnurl_auth_login_prompt" = "Inloggen bij {domain}?";
+"other__lnurl_auth_login_title" = "Inloggen";
+"other__lnurl_auth_register_prompt" = "Registreren bij {domain}?";
+"other__lnurl_auth_register_title" = "Registreren";
+"other__lnurl_auth_unknown_domain" = "Onbekend domein";
 "other__lnurl_withdr_error" = "Opname Mislukt (LNURL)";
 "other__lnurl_withdr_error_generic" = "Entschuldigung, ein Fehler ist aufgetreten.";
 "other__lnurl_withdr_error_no_capacity" = "Niet genoeg ontvangstcapaciteit om opnameverzoek te voltooien.";
@@ -1015,6 +1025,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay ondersteunt uitsluitend betalingen vanaf uw Bestedingssaldo.";
 "wallet__send_quickpay__currency_conversion" = "Valutaconversie mislukt";
+"wallet__send_quickpay__already_paid" = "Deze factuur is al betaald.";
 "settings__security__title" = "Veiligheid en privacy";
 "settings__security__swipe_balance_to_hide" = "Veeg de balans om te verbergen";
 "settings__security__hide_balance_on_open" = "Saldo verbergen bij open";

@@ -1305,6 +1305,18 @@ extension AppViewModel {
         }
     }
 
+    /// Handles the payment or sign-in data of a deep link. A lookup (e.g. an LNURL) that outlasts a PIN lock is
+    /// dropped, so neither its sheet nor its error shows after the unlock.
+    func handleDeepLinkData(_ uri: String, alternativeOnchainBalanceSats: UInt64 = 0) async throws {
+        let isBeforeLock = lockCheck()
+        do {
+            try await handleScannedData(uri, alternativeOnchainBalanceSats: alternativeOnchainBalanceSats, isCurrentScan: isBeforeLock)
+        } catch {
+            guard isBeforeLock() else { throw CancellationError() }
+            throw error
+        }
+    }
+
     private func ensureScannedDataHandlingOwnership(
         _ handlingId: UUID,
         claimedContactPaymentContext: ContactPaymentContext?,
@@ -1326,7 +1338,13 @@ extension AppViewModel {
             return
         }
 
-        sheetViewModel.showSheet(.btcpayConnection, data: BTCPayConnectionConfig(setup: setup))
+        showScannedRouteSheet(.btcpayConnection, data: BTCPayConnectionConfig(setup: setup))
+    }
+
+    /// Opens the setup or approval sheet a scanned route asks for. When it replaces an open sheet (the scanner or Send),
+    /// it opens after the replacement delay; a PIN lock in that delay drops it, so it does not open after the unlock.
+    private func showScannedRouteSheet(_ id: SheetID, data: Any) {
+        sheetViewModel.showSheet(id, data: data, isCurrent: lockCheck())
     }
 
     private func handleInvalidBTCPayConnection(_ uri: String) {
@@ -1452,7 +1470,7 @@ extension AppViewModel {
             return
         }
 
-        sheetViewModel.showSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
+        showScannedRouteSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
     }
 
     private func handlePubkyAuthApproval(_ authUrl: String) async {
@@ -1480,10 +1498,7 @@ extension AppViewModel {
                     return
                 }
                 if !hasIdentity {
-                    sheetViewModel.showSheet(
-                        .pubkyAuthApproval,
-                        data: PubkyAuthApprovalConfig(request: request)
-                    )
+                    showScannedRouteSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(request: request))
                     return
                 }
             } catch {
@@ -1506,7 +1521,7 @@ extension AppViewModel {
             return
         }
 
-        sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(request: request))
+        showScannedRouteSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(request: request))
     }
 
     private func handleNodeUri(_ url: String) {

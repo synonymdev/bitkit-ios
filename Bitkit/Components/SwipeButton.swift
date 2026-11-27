@@ -11,6 +11,8 @@ struct SwipeButton: View {
     var isComplete = false
     /// Optional binding for swipe progress (0...1), e.g. to drive animations in the parent.
     var swipeProgress: Binding<CGFloat>?
+    /// Each change puts a submitted knob back at the start, for a swipe whose screen moved on without the swipe throwing.
+    var resetCount = 0
     let onComplete: () async throws -> Void
 
     @State private var offset: CGFloat = 0
@@ -125,6 +127,11 @@ struct SwipeButton: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: buttonHeight)
+        .onChange(of: resetCount) {
+            if isSubmitting {
+                reset()
+            }
+        }
     }
 
     private func reset() {

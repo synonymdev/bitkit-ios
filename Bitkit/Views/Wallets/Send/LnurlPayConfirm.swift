@@ -211,7 +211,8 @@ struct LnurlPayConfirm: View {
                 accentColor: .greenAccent,
                 isDisabled: isSparkUpdateQuoting,
                 isLoading: hasStartedAutomaticPayment || isSubmittingPayment,
-                isSubmitted: hasStartedAutomaticPayment
+                isSubmitted: hasStartedAutomaticPayment,
+                resetCount: swipeLock.idleReturns
             ) {
                 swipeLock.begin()
                 defer { swipeLock.end() }

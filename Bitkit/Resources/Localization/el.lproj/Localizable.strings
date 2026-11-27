@@ -624,6 +624,16 @@
 "other__lnurl_auth_error_msg" = "Παρουσιάστηκε σφάλμα όταν προσπαθήσατε να συνδεθείτε. {raw}";
 "other__lnurl_auth_success_title" = "Συνδεθήκατε";
 "other__lnurl_auth_success_msg_no_domain" = "Συνδεθήκατε επιτυχώς.";
+"other__lnurl_auth_auth_prompt" = "Επαλήθευση στο {domain};";
+"other__lnurl_auth_auth_title" = "Επαλήθευση";
+"other__lnurl_auth_link_prompt" = "Διασύνδεση λογαριασμού με το {domain};";
+"other__lnurl_auth_link_title" = "Διασύνδεση";
+"other__lnurl_auth_login_button" = "Σύνδεση";
+"other__lnurl_auth_login_prompt" = "Σύνδεση στο {domain};";
+"other__lnurl_auth_login_title" = "Σύνδεση";
+"other__lnurl_auth_register_prompt" = "Εγγραφή στο {domain};";
+"other__lnurl_auth_register_title" = "Εγγραφή";
+"other__lnurl_auth_unknown_domain" = "Άγνωστος τομέας";
 "other__lnurl_withdr_error" = "Η Ανάληψη Απέτυχε (LNURL)";
 "other__lnurl_withdr_error_no_capacity" = "Δεν υπάρχει αρκετή χωρητικότητα λήψης για να ολοκληρωθεί το αίτημα ανάληψης.";
 "other__lnurl_withdr_error_minmax" = "Λανθασμένες παράμετροι ανάληψης LNURL, το min/max δεν έχει οριστεί σωστά.";
@@ -905,6 +915,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Το Bitkit QuickPay υποστηρίζει αποκλειστικά πληρωμές από το Υπόλοιπο Δαπανών σας.";
 "wallet__send_quickpay__currency_conversion" = "Η μετατροπή νομίσματος απέτυχε";
+"wallet__send_quickpay__already_paid" = "Αυτό το τιμολόγιο έχει ήδη πληρωθεί.";
 "settings__security__title" = "Ασφάλεια Και Απόρρητο";
 "settings__security__swipe_balance_to_hide" = "Σύρετε υπόλοιπο για απόκρυψη";
 "settings__security__hide_balance_on_open" = "Απόκρυψη υπολοίπου στο άνοιγμα";

@@ -699,6 +699,16 @@
 "other__lnurl_auth_success_title" = "Entrou com sucesso.";
 "other__lnurl_auth_success_msg_domain" = "Você entrou com sucesso em {domain}";
 "other__lnurl_auth_success_msg_no_domain" = "Você entrou com sucesso.";
+"other__lnurl_auth_auth_prompt" = "Autenticar-se em {domain}?";
+"other__lnurl_auth_auth_title" = "Autenticar";
+"other__lnurl_auth_link_prompt" = "Vincular a conta a {domain}?";
+"other__lnurl_auth_link_title" = "Vincular";
+"other__lnurl_auth_login_button" = "Entrar";
+"other__lnurl_auth_login_prompt" = "Entrar em {domain}?";
+"other__lnurl_auth_login_title" = "Entrar";
+"other__lnurl_auth_register_prompt" = "Cadastrar-se em {domain}?";
+"other__lnurl_auth_register_title" = "Cadastrar";
+"other__lnurl_auth_unknown_domain" = "Domínio desconhecido";
 "other__lnurl_withdr_error" = "O Saque Falhou (LNURL)";
 "other__lnurl_withdr_error_generic" = "Desculpe, ocorreu um erro.";
 "other__lnurl_withdr_error_no_capacity" = "Capacidade de recebimento insuficiente para concluir a solicitação de saque.";
@@ -1017,6 +1027,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* O QuickPay suporta exclusivamente pagamentos a partir do seu saldo de gastos.";
 "wallet__send_quickpay__currency_conversion" = "Falha na conversão de moeda";
+"wallet__send_quickpay__already_paid" = "Esta fatura já foi paga.";
 "settings__security__title" = "Segurança e Privacidade";
 "settings__security__swipe_balance_to_hide" = "Arraste o saldo para ocultar";
 "settings__security__hide_balance_on_open" = "Ocultar saldo ao abrir o app";

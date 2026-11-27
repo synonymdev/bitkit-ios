@@ -88,7 +88,7 @@ private struct KeptClaim {
     var hasWaited: Bool
 }
 
-enum SparkClaimState: Equatable {
+enum SparkClaimState: Codable, Equatable {
     /// Instant was chosen and Spark has not listed the deposit yet.
     case looking
     /// Accepting the early claim.
@@ -108,6 +108,76 @@ enum SparkClaimState: Equatable {
 
     var isDone: Bool {
         self == .added
+    }
+}
+
+/// A deposit the transfer flow sent, kept until Spark claims it, so a relaunch shows and follows its claim as before: its
+/// amount for the transfer banner, the fee ceiling the user approved, and where its claim stood with the user's choice
+/// over a changed fee.
+struct SparkSentDeposit: Codable, Equatable {
+    var amountSats: UInt64
+    var sentAt: Date
+    /// The wallet that sent it, whose activity says when a fee bump replaced it; nil for the app's own wallet.
+    var walletId: String?
+    var ceilingSats: UInt64 = 0
+    /// Nil until the transfer flow saves its claim: such a deposit shows in the banner but its claim is not resumed.
+    var state: SparkClaimState?
+    var isFeeApproved = false
+    var hasWaited = false
+    /// The offer an early claim was attempted for, whose fee cap Wait clears.
+    var claimedOffer: SparkClaimOffer?
+}
+
+/// The sent deposits kept across launches, by txid.
+struct SparkSentDeposits {
+    /// A deposit Spark never claimed is kept this long: a mempool drops its transaction after 2 weeks.
+    static let lifetime: TimeInterval = 14 * 24 * 60 * 60
+    private static let key = "sparkSentDeposits"
+
+    var defaults: UserDefaults = .standard
+
+    func load(now: Date = Date()) -> [String: SparkSentDeposit] {
+        guard let data = defaults.data(forKey: Self.key),
+              let saved = try? JSONDecoder().decode([String: SparkSentDeposit].self, from: data)
+        else { return [:] }
+        return saved.filter { now.timeIntervalSince($0.value.sentAt) < Self.lifetime }
+    }
+
+    /// Keeps the deposit Spark was handed in `txid` with its amount.
+    func record(txid: String, amountSats: UInt64, walletId: String? = nil) {
+        update(txid: txid) {
+            $0.amountSats = amountSats
+            $0.walletId = walletId
+        }
+    }
+
+    /// Changes the kept deposit in `txid`. One not kept, as once Spark claimed it, is kept from now only when `isNew`.
+    func update(txid: String, isNew: Bool = true, _ change: (inout SparkSentDeposit) -> Void) {
+        var all = load()
+        let key = all.keys.first { $0.caseInsensitiveCompare(txid) == .orderedSame } ?? txid
+        guard var deposit = all[key] ?? (isNew ? SparkSentDeposit(amountSats: 0, sentAt: Date()) : nil) else { return }
+        change(&deposit)
+        all[key] = deposit
+        save(all)
+    }
+
+    /// Stops keeping the deposits in `txids`, as once Spark claimed them.
+    func remove(txids: [String]) {
+        let settled = Set(txids.map { $0.lowercased() })
+        let all = load()
+        let kept = all.filter { !settled.contains($0.key.lowercased()) }
+        guard kept.count != all.count else { return }
+        save(kept)
+    }
+
+    func clear() {
+        defaults.removeObject(forKey: Self.key)
+    }
+
+    private func save(_ deposits: [String: SparkSentDeposit]) {
+        guard !deposits.isEmpty else { return clear() }
+        guard let data = try? JSONEncoder().encode(deposits) else { return }
+        defaults.set(data, forKey: Self.key)
     }
 }
 
@@ -216,6 +286,9 @@ final class SparkTransferFlow {
     @ObservationIgnored private(set) var fixedFeeFloorSats: UInt64?
     @ObservationIgnored private let operations: SparkClaimOperations
     @ObservationIgnored private let pollAttempts: Int
+    @ObservationIgnored private let sentDeposits: SparkSentDeposits
+    /// Deposits whose claim a relaunch took back, until Spark is ready to follow them again.
+    @ObservationIgnored private var restoredTxids: [String] = []
 
     init(
         amountSats: UInt64 = 0,
@@ -225,16 +298,42 @@ final class SparkTransferFlow {
         claimState: SparkClaimState = .looking,
         operations: SparkClaimOperations = .live,
         pollAttempts: Int = SparkTransferFlow.pollAttempts,
-        hwSend: HwSendCoordinator? = nil
+        hwSend: HwSendCoordinator? = nil,
+        sentDeposits: SparkSentDeposits = SparkSentDeposits()
     ) {
         self.hwSend = hwSend ?? HwSendCoordinator()
         self.operations = operations
         self.pollAttempts = pollAttempts
+        self.sentDeposits = sentDeposits
         self.amountSats = amountSats
         self.isMaxAmount = isMaxAmount
         self.speed = speed
         self.quote = quote
         self.claimState = claimState
+        guard !Self.isRunningInPreview else { return }
+        for (txid, sent) in sentDeposits.load() {
+            guard let state = sent.state else { continue }
+            keptClaims[txid.lowercased()] = KeptClaim(state: state, isFeeApproved: sent.isFeeApproved, hasWaited: sent.hasWaited)
+            ceilings[txid] = sent.ceilingSats
+            claimedOffers[txid] = sent.claimedOffer
+            restoredTxids.append(txid)
+        }
+    }
+
+    /// Starts again the Instant claims a relaunch cut short, at the fee ceiling the user approved, once Spark is ready, and
+    /// clears again the early claim caps of those left to the claim at 3 confirmations.
+    func resumeSentDeposits() {
+        let txids = restoredTxids
+        restoredTxids = []
+        // Spark's first refresh drops the deposits it claimed meanwhile.
+        let kept = sentDeposits.load().keys.map { $0.lowercased() }
+        for txid in txids where watchTasks[txid] == nil && kept.contains(txid.lowercased()) {
+            switch self.txid == txid ? claimState : keptClaims[txid.lowercased()]?.state {
+            case .looking, .claiming: watch(txid: txid)
+            case .later, .unavailable, .notSeen: releaseEarlyClaimCap(txid: txid)
+            default: break
+            }
+        }
     }
 
     func start(amountSats: UInt64, isMaxAmount: Bool, walletId: String? = nil) {
@@ -397,6 +496,7 @@ final class SparkTransferFlow {
         hasWaited = false
         watchTasks[txid]?.cancel()
         watchTasks[txid] = nil
+        saveClaim(of: txid, isNew: true)
         if speed == .instant {
             watch(txid: txid)
         }
@@ -485,6 +585,7 @@ final class SparkTransferFlow {
         watchTasks[txid]?.cancel()
         watchTasks[txid] = nil
         claimState = .added
+        sentDeposits.remove(txids: [txid])
     }
 
     /// Accepts the early claim at the repriced fee.
@@ -493,6 +594,7 @@ final class SparkTransferFlow {
         ceilings[txid] = feeSats
         claimState = .claiming
         isFeeApproved = true
+        saveClaim(of: txid)
         watch(txid: txid)
     }
 
@@ -508,18 +610,26 @@ final class SparkTransferFlow {
             releaseEarlyClaimCap(txid: txid)
         }
         claimState = .later
+        if let txid {
+            saveClaim(of: txid)
+        }
     }
 
     /// Clears the fee cap an early claim attempt left on the deposit, so Spark no longer claims it early.
     private func releaseEarlyClaimCap(txid: String) {
-        guard let offer = claimedOffers.removeValue(forKey: txid) else { return }
+        // Kept until cleared, so a relaunch while it is tried again clears it then.
+        guard let offer = claimedOffers[txid] else { return }
         let operations = operations
         let attempts = max(pollAttempts, 1)
         // Not awaited: the SDK call ignores cancellation and can take a while. Tried again while another claim of the
         // deposit, such as Spark's own sync, leaves the cap in place.
-        Task {
+        Task { [weak self] in
             for attempt in 1 ... attempts {
                 if await operations.releaseEarlyClaim(offer) {
+                    if self?.claimedOffers[txid] == offer {
+                        self?.claimedOffers[txid] = nil
+                        self?.saveClaim(of: txid)
+                    }
                     return
                 }
                 if attempt < attempts {
@@ -547,11 +657,37 @@ final class SparkTransferFlow {
     /// Shows a claim's progress only while its deposit is the transfer on screen.
     private func setClaimState(_ state: SparkClaimState, for txid: String) {
         guard !Task.isCancelled else { return }
-        guard self.txid == txid else {
+        if self.txid == txid {
+            claimState = state
+        } else {
             keptClaims[txid.lowercased()]?.state = state
-            return
         }
-        claimState = state
+        if state.isDone {
+            sentDeposits.remove(txids: [txid])
+        } else {
+            saveClaim(of: txid)
+        }
+    }
+
+    /// Keeps the claim of `txid` as it stands now, so a relaunch shows and follows it as before.
+    private func saveClaim(of txid: String, isNew: Bool = false) {
+        let isOnScreen = self.txid == txid
+        guard let kept = isOnScreen ? KeptClaim(state: claimState, isFeeApproved: isFeeApproved, hasWaited: hasWaited)
+            : keptClaims[txid.lowercased()]
+        else { return }
+        let ceilingSats = ceilings[txid] ?? 0
+        let claimedOffer = claimedOffers[txid]
+        let shownAmountSats = isOnScreen ? quote?.depositSats ?? amountSats : 0
+        sentDeposits.update(txid: txid, isNew: isNew) {
+            if $0.amountSats == 0 {
+                $0.amountSats = shownAmountSats
+            }
+            $0.ceilingSats = ceilingSats
+            $0.state = kept.state
+            $0.isFeeApproved = kept.isFeeApproved
+            $0.hasWaited = kept.hasWaited
+            $0.claimedOffer = claimedOffer
+        }
     }
 
     private func keepCurrentClaim() {
@@ -593,8 +729,8 @@ final class SparkTransferFlow {
                         setClaimState(next, for: txid)
                         return
                     }
-                    setClaimState(.claiming, for: txid)
                     claimedOffers[txid] = found
+                    setClaimState(.claiming, for: txid)
                     let claim = try await operations.claimEarly(found, ceilings[txid] ?? 0)
                     guard !Task.isCancelled else { return }
                     if let state = SparkClaimDecision.onClaim(claim) {

@@ -3,6 +3,26 @@ import LDKNode
 import XCTest
 
 final class MoveToSparkLateOutcomeTests: XCTestCase {
+    private let suiteName = "MoveToSparkLateOutcomeTests-\(UUID().uuidString)"
+    private var appDefaults: UserDefaults?
+
+    /// A wipe clears the moves' stored hashes, so the suite keeps them out of the app's own defaults.
+    @MainActor
+    override func setUp() async throws {
+        try await super.setUp()
+        appDefaults = MoveToSparkPayments.defaults
+        MoveToSparkPayments.defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+
+    @MainActor
+    override func tearDown() async throws {
+        if let appDefaults {
+            MoveToSparkPayments.defaults = appDefaults
+        }
+        UserDefaults().removePersistentDomain(forName: suiteName)
+        try await super.tearDown()
+    }
+
     @MainActor
     func testAMoveKeptForItsResultKeepsItsScreenReachableUntilTheWalletIsWiped() {
         let manager = MoveToSparkManager()
@@ -27,6 +47,59 @@ final class MoveToSparkLateOutcomeTests: XCTestCase {
         manager.reset()
         _ = manager.beginMove()
         XCTAssertEqual(manager.wipes, wipe + 1, "Closing the modal or a new move stopped the closes of an earlier move")
+    }
+
+    func testARestThatNoLongerRoutesOrIsGoneShowsTheBalanceUpdated() {
+        let done = MoveToSparkState.done(amountSats: 60000, feeSats: 60)
+        XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.noRoute, afterMove: (60000, 60)), done)
+        XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.nothingToMove, afterMove: (60000, 60)), done)
+    }
+
+    func testARestQuoteThatFailsOtherwiseOffersTryAgain() {
+        struct NetworkDown: Error {}
+        XCTAssertEqual(
+            MoveToSparkManager.state(forQuoteError: NetworkDown(), afterMove: (60000, 60)),
+            .failed(.unknown),
+            "A move with balance left reported the balance updated"
+        )
+        XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.sparkUnavailable, afterMove: (60000, 60)), .failed(.sparkUnavailable))
+        XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.noRoute, afterMove: nil), .failed(.unknown))
+    }
+
+    @MainActor
+    func testTryAgainAfterAPartialMoveShowsItMovedOnceTheRestNoLongerRoutes() async {
+        struct NetworkDown: Error {}
+        let manager = MoveToSparkManager()
+        await manager.quote(afterMove: (60000, 60)) { throw NetworkDown() }
+        XCTAssertEqual(manager.state, .failed(.unknown))
+
+        await manager.quote(afterMove: nil) { throw MoveToSparkError.noRoute }
+
+        XCTAssertEqual(manager.state, .done(amountSats: 60000, feeSats: 60), "Try Again forgot what the move moved")
+    }
+
+    @MainActor
+    func testClosingTheModalForgetsThePartialMoveForTryAgain() async {
+        struct NetworkDown: Error {}
+        let manager = MoveToSparkManager()
+        await manager.quote(afterMove: (60000, 60)) { throw NetworkDown() }
+        manager.reset()
+
+        await manager.quote(afterMove: nil) { throw MoveToSparkError.noRoute }
+
+        XCTAssertEqual(manager.state, .failed(.unknown))
+    }
+
+    @MainActor
+    func testANewOpeningQuotesAfreshAfterAFailedRestQuote() async {
+        struct NetworkDown: Error {}
+        let manager = MoveToSparkManager()
+        await manager.quote(afterMove: (60000, 60)) { throw NetworkDown() }
+
+        // A node that is not set up leaves nothing to move.
+        await manager.start(wallet: WalletViewModel())
+
+        XCTAssertEqual(manager.state, .failed(.nothingToMove), "A new opening ended on an earlier move's outcome")
     }
 
     func testTheInFlightMoveIsTheOneOnScreen() {

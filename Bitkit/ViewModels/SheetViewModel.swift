@@ -80,7 +80,9 @@ class SheetViewModel: ObservableObject {
         activeSheetConfiguration?.id == .pubkyAuthApproval || replacingSheetID == .pubkyAuthApproval
     }
 
-    func showSheet(_ id: SheetID, data: Any? = nil) {
+    /// Shows a sheet. When another sheet is open, it closes first and the new one opens after a delay; the new one opens
+    /// only if `isCurrent` still holds then (e.g. the app has not locked since the route asked for it).
+    func showSheet(_ id: SheetID, data: Any? = nil, isCurrent: @escaping () -> Bool = { true }) {
         if activeSheetConfiguration?.id == .send, id == .receivedTx {
             Logger.debug("Skipping received-transaction sheet while send is active", context: "SheetViewModel")
             return
@@ -100,6 +102,10 @@ class SheetViewModel: ObservableObject {
                     replacingSheetID = nil
                 }
                 guard pendingReplacements.remove(replacement) != nil else { return }
+                guard isCurrent() else {
+                    Logger.debug("Dropped sheet \(id.rawValue): its route is no longer current", context: "SheetViewModel")
+                    return
+                }
                 Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)
