@@ -12,9 +12,15 @@ protocol ChannelFreeLightningRail: AnyObject {
     @MainActor var isReady: Bool { get }
     @MainActor var balanceSats: UInt64 { get }
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String
-    /// Refuses before sending when the prepared fee is above `maxFeeSats`, and runs `beforeSubmission` right before the
-    /// payment goes out, as the node path does.
-    func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash
+    /// Refuses before sending when the prepared fee is above `maxFeeSats`, runs `recheckBeforeSubmission` after its last
+    /// await before the payment goes out, and `beforeSubmission` right before it does, as the node path does.
+    func send(
+        bolt11: String,
+        sats: UInt64?,
+        maxFeeSats: UInt64?,
+        recheckBeforeSubmission: @escaping () async throws -> Void,
+        beforeSubmission: @escaping () throws -> Void
+    ) async throws -> PaymentHash
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64
     /// Throws when the rail could not list its payments, so a duplicate-payment check can tell that from none.
     func lightningPayments() async throws -> [ChannelFreeRailPayment]
@@ -1233,6 +1239,7 @@ class LightningService: NodeLifecycleService {
         sats: UInt64? = nil,
         params: RouteParametersConfig? = nil,
         channelsOnly: Bool = false,
+        recheckBeforeSubmission: @escaping () async throws -> Void = {},
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
         let invoice = try? Bolt11Invoice.fromStr(invoiceStr: bolt11)
@@ -1287,6 +1294,7 @@ class LightningService: NodeLifecycleService {
                     sats: sats,
                     maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
                         ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
+                    recheckBeforeSubmission: recheckBeforeSubmission,
                     beforeSubmission: { [weak self] in
                         try beforeSubmission()
                         // Spark checks again before it retries the same attempt, which is already admitted.
@@ -1362,6 +1370,8 @@ class LightningService: NodeLifecycleService {
                 endLdkSend(paymentHash: sendKey)
             }
         }
+        // After this send's last await before the queue, so a refusal since the caller's checks leaves nothing recorded.
+        try await recheckBeforeSubmission()
         do {
             return try await Self.submitPayment(beforeSubmission: { [weak self] in
                 try beforeSubmission()

@@ -25,6 +25,25 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
     // MARK: Admission
 
+    func testAFailedRecheckBeforeSubmissionEndsAsARefusalTheProofTreatsAsUnsent() async throws {
+        struct StorageFailure: Error {}
+        let cases: [(Error, PaykitPaymentRequestError)] = [
+            (PaykitPaymentRequestError.requestExpired, .requestExpired),
+            (PaykitPaymentRequestError.requestUnavailable, .requestUnavailable),
+            (StorageFailure(), .requestUnavailable),
+            (CancellationError(), .requestUnavailable),
+        ]
+        for (thrown, expected) in cases {
+            do {
+                try await PaykitAllowanceLivePayer.recheckBeforeSubmission { throw thrown }
+                XCTFail("expected \(expected)")
+            } catch {
+                XCTAssertEqual(error as? PaykitPaymentRequestError, expected)
+            }
+        }
+        try await PaykitAllowanceLivePayer.recheckBeforeSubmission {}
+    }
+
     func testUncoveredRequestNeverReachesTheSdk() async throws {
         let harness = AllowanceHarness()
         let request = try Fixtures.paymentRequest()
