@@ -650,6 +650,16 @@
 "other__lnurl_auth_error_msg" = "Ocorreu um erro ao tentar fazer o login. {raw}";
 "other__lnurl_auth_success_title" = "Entrou com sucesso.";
 "other__lnurl_auth_success_msg_no_domain" = "Você entrou com sucesso.";
+"other__lnurl_auth_auth_prompt" = "Autenticar-se em {domain}?";
+"other__lnurl_auth_auth_title" = "Autenticar";
+"other__lnurl_auth_link_prompt" = "Associar a conta a {domain}?";
+"other__lnurl_auth_link_title" = "Associar";
+"other__lnurl_auth_login_button" = "Entrar";
+"other__lnurl_auth_login_prompt" = "Entrar em {domain}?";
+"other__lnurl_auth_login_title" = "Entrar";
+"other__lnurl_auth_register_prompt" = "Registar-se em {domain}?";
+"other__lnurl_auth_register_title" = "Registar";
+"other__lnurl_auth_unknown_domain" = "Domínio desconhecido";
 "other__lnurl_withdr_error" = "O Saque Falhou (LNURL)";
 "other__lnurl_withdr_error_no_capacity" = "Capacidade de receção insuficiente para concluir o pedido de levantamento.";
 "other__lnurl_withdr_error_minmax" = "Parâmetros de saque LNURL incorretos, mínimo/máximo não configurados corretamente.";
@@ -817,6 +827,7 @@
 "pubky_auth__use_ring" = "Usar o Pubky Ring";
 "pubky_auth__use_ring_desc" = "A Bitkit não consegue ler a chave deste pubky a partir do Pubky Ring. Abra o Pubky Ring para aprovar este pedido.";
 "pubky_auth__invalid_request" = "Pedido de autenticação inválido";
+"pubky_auth__other_pubky" = "Este pedido destina-se a {pubky}, não ao pubky desta carteira.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crie uma nova identidade Pubky neste homeserver. Continue apenas se confiar nele.";
 "pubky_auth__approval_failed" = "Falha na autorização";
@@ -917,6 +928,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* O QuickPay suporta exclusivamente pagamentos a partir do seu saldo de gastos.";
 "wallet__send_quickpay__currency_conversion" = "Falha na conversão de moeda";
+"wallet__send_quickpay__already_paid" = "Esta fatura já foi paga.";
 "settings__security__swipe_balance_to_hide" = "Arraste o saldo para ocultar";
 "settings__security__hide_balance_on_open" = "Ocultar saldo ao abrir o app";
 "settings__security__clipboard" = "Ler área de transferência";

@@ -665,6 +665,16 @@
 "other__lnurl_auth_error_msg" = "Ocurrió un error al intentar iniciar sesión. {raw}";
 "other__lnurl_auth_success_title" = "Sesión Iniciada";
 "other__lnurl_auth_success_msg_no_domain" = "Has iniciado sesión correctamente.";
+"other__lnurl_auth_auth_prompt" = "¿Autenticarse en {domain}?";
+"other__lnurl_auth_auth_title" = "Autenticar";
+"other__lnurl_auth_link_prompt" = "¿Vincular la cuenta a {domain}?";
+"other__lnurl_auth_link_title" = "Vincular";
+"other__lnurl_auth_login_button" = "Iniciar sesión";
+"other__lnurl_auth_login_prompt" = "¿Iniciar sesión en {domain}?";
+"other__lnurl_auth_login_title" = "Iniciar sesión";
+"other__lnurl_auth_register_prompt" = "¿Registrarse en {domain}?";
+"other__lnurl_auth_register_title" = "Registrarse";
+"other__lnurl_auth_unknown_domain" = "Dominio desconocido";
 "other__lnurl_withdr_error" = "Retiro Fallido (LNURL)";
 "other__lnurl_withdr_error_generic" = "Lo siento, ocurrió un error.";
 "other__lnurl_withdr_error_no_capacity" = "No hay suficiente capacidad de recepción para completar la solicitud de retiro.";
@@ -860,6 +870,7 @@
 "pubky_auth__use_ring" = "Usar Pubky Ring";
 "pubky_auth__use_ring_desc" = "Bitkit no puede leer la clave de este pubky desde Pubky Ring. Abra Pubky Ring para aprobar esta solicitud.";
 "pubky_auth__invalid_request" = "Solicitud de autenticación no válida";
+"pubky_auth__other_pubky" = "Esta solicitud es para {pubky}, no para el pubky de este monedero.";
 "pubky_auth__homeserver" = "Servidor principal";
 "pubky_auth__signup_description" = "Cree una nueva identidad Pubky en este servidor principal. Continúe solo si confía en él.";
 "pubky_auth__approval_failed" = "Error de autorización";
@@ -966,6 +977,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay solo admite pagos desde tu Saldo de Gasto.";
 "wallet__send_quickpay__currency_conversion" = "Error en la conversión de moneda";
+"wallet__send_quickpay__already_paid" = "Esta factura ya se ha pagado.";
 "settings__security__title" = "Seguridad y Privacidad";
 "settings__security__swipe_balance_to_hide" = "Desliza el saldo para ocultar";
 "settings__security__hide_balance_on_open" = "Ocultar saldo al abrir";

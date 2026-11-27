@@ -355,7 +355,7 @@ final class PaykitRouteTests: XCTestCase {
 
         let txid = await pay { beforeSend in try await beforeSend(); return "txid" }
         XCTAssertEqual(txid, "txid")
-        XCTAssertEqual(events, ["begin", "authorize", "sending attempt", "finish attempt succeeded txid"])
+        XCTAssertEqual(events, ["begin", "authorize", "sending attempt", "authorize", "finish attempt succeeded txid"])
 
         events = []
         _ = await pay(authorize: { throw Refused() }) { beforeSend in
@@ -365,13 +365,29 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertEqual(events, ["begin", "authorize", "finish attempt failed -"], "A send Spark refused paid nothing")
 
         events = []
+        var authorizations = 0
+        // Allowed up front, then the contact is blocked while the attempt is marked sending.
+        _ = await pay(authorize: {
+            authorizations += 1
+            guard authorizations == 1 else { throw Refused() }
+        }) { beforeSend in
+            do { try await beforeSend() } catch { throw SparkWithdrawalNotSent(underlying: error) }
+            return "txid"
+        }
+        XCTAssertEqual(
+            events,
+            ["begin", "authorize", "sending attempt", "authorize", "finish attempt failed -"],
+            "A request refused once its attempt is marked sending paid nothing"
+        )
+
+        events = []
         _ = await pay { beforeSend in
             try await beforeSend()
             throw SparkWithdrawalNotSent(underlying: Refused())
         }
         XCTAssertEqual(
             events,
-            ["begin", "authorize", "sending attempt", "finish attempt failed -"],
+            ["begin", "authorize", "sending attempt", "authorize", "finish attempt failed -"],
             "A withdrawal Spark returned as failed paid nothing either"
         )
 
@@ -379,7 +395,7 @@ final class PaykitRouteTests: XCTestCase {
         _ = await pay { beforeSend in try await beforeSend(); throw Lost() }
         XCTAssertEqual(
             events,
-            ["begin", "authorize", "sending attempt", "finish attempt unknown -"],
+            ["begin", "authorize", "sending attempt", "authorize", "finish attempt unknown -"],
             "A send that may have gone out stays unknown until recovery settles it"
         )
     }
