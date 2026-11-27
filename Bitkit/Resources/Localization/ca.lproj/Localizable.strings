@@ -862,6 +862,7 @@
 "pubky_auth__use_ring" = "Utilitzar Pubky Ring";
 "pubky_auth__use_ring_desc" = "Bitkit no pot llegir la clau d'aquest pubky des de Pubky Ring. Obre Pubky Ring per aprovar aquesta sol·licitud.";
 "pubky_auth__invalid_request" = "Sol·licitud d'autenticació no vàlida";
+"pubky_auth__other_pubky" = "Aquesta sol·licitud és per a {pubky}, no per al pubky d'aquesta cartera.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crea una nova identitat Pubky en aquest homeserver. Continua només si hi confies.";
 "pubky_auth__approval_failed" = "Ha fallat l'autorització";

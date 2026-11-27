@@ -49,6 +49,8 @@ func pubkyAuthLiteralText(_ value: String) -> String {
 /// A homeserver that refuses the signup code and a failed connection get their own messages, since retrying is safe for both.
 func pubkyAuthApprovalFailureDescription(_ error: Error) -> String {
     switch error {
+    case let PubkyAuthRequestError.signerMismatch(expectedSigner):
+        pubkyAuthOtherPubkyDescription(expectedSigner)
     case let PaykitError.Identity(code, _) where code == "signup_code_rejected":
         t("profile__auth_error_signup_code_rejected")
     case PaykitError.Transport:
@@ -56,6 +58,11 @@ func pubkyAuthApprovalFailureDescription(_ error: Error) -> String {
     default:
         error.localizedDescription
     }
+}
+
+/// Names the pubky a refused request is for. `expectedSigner` is always a bare 52-character key.
+func pubkyAuthOtherPubkyDescription(_ expectedSigner: String) -> String {
+    t("pubky_auth__other_pubky", variables: ["pubky": "\(expectedSigner.prefix(4))...\(expectedSigner.suffix(4))"])
 }
 
 /// Fills each `{placeholder}` from the template only, so request data that itself contains a placeholder stays as it is.

@@ -778,6 +778,7 @@
 "pubky_auth__use_ring" = "استخدام Pubky Ring";
 "pubky_auth__use_ring_desc" = "لا يستطيع Bitkit قراءة مفتاح هذا الـ pubky من Pubky Ring. افتح Pubky Ring للموافقة على هذا الطلب.";
 "pubky_auth__invalid_request" = "طلب مصادقة غير صالح";
+"pubky_auth__other_pubky" = "هذا الطلب موجّه إلى {pubky}، وليس إلى pubky هذه المحفظة.";
 "pubky_auth__homeserver" = "الخادم الرئيسي";
 "pubky_auth__signup_description" = "أنشئ هوية Pubky جديدة على هذا الخادم الرئيسي. تابع فقط إذا كنت تثق به.";
 "pubky_auth__approval_failed" = "فشل التفويض";
