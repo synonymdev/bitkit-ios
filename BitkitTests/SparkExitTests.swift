@@ -3627,7 +3627,7 @@ final class SparkExitBroadcasterTests: XCTestCase {
         guard case .rejected = outcome else { return XCTFail("Expected the refusal, got \(outcome)") }
     }
 
-    /// Esplora hosts (bitkit.to, blockstream.info) answer a step that already confirmed in Core's newer plain-text form.
+    /// Esplora hosts (api.bitkit.to, blockstream.info) answer a step that already confirmed in Core's newer plain-text form.
     func testReadsAStepAlreadyInTheUtxoSetAsAccepted() {
         let text = "sendrawtransaction RPC error -27: Transaction outputs already in utxo set"
         XCTAssertEqual(SparkExitBroadcastClassifier.single(status: 400, body: Data(text.utf8)), .accepted)
@@ -3742,7 +3742,7 @@ final class SparkExitBroadcasterTests: XCTestCase {
 
     func testSendsAPackageToBitkitElectrsWithoutTheV1Path() async {
         let http = FakeHTTP()
-        http.responses = [("bitkit.to/electrs/txs/package", 200, #"{"package_msg":"success"}"#)]
+        http.responses = [("api.bitkit.to/electrs/txs/package", 200, #"{"package_msg":"success"}"#)]
         let mainnet = EsploraSparkExitChain.network(.mainnet)
         let chain = EsploraSparkExitChain(readHosts: mainnet.readHosts, broadcastHosts: mainnet.broadcastHosts, http: http)
 
@@ -3755,9 +3755,9 @@ final class SparkExitBroadcasterTests: XCTestCase {
     func testBroadcastFallsBackFromBitkitElectrsButReadsNeverDo() async {
         let http = FakeHTTP()
         http.responses = [
-            ("bitkit.to/electrs/tx", 503, ""),
+            ("api.bitkit.to/electrs/tx", 503, ""),
             ("mempool.space/api/tx", 200, "s1"),
-            ("bitkit.to/electrs/blocks/tip/height", 503, ""),
+            ("api.bitkit.to/electrs/blocks/tip/height", 503, ""),
         ]
         let mainnet = EsploraSparkExitChain.network(.mainnet)
         let chain = EsploraSparkExitChain(readHosts: mainnet.readHosts, broadcastHosts: mainnet.broadcastHosts, http: http)
