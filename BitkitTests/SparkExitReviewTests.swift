@@ -66,6 +66,40 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(outcome, .notCancellable)
     }
 
+    /// A refused savings payment is never paid again while the funding address cannot be read: another wallet may have
+    /// funded it since.
+    @MainActor func testARefusedSavingsPaymentIsNotPaidAgainOverAnUnreadFundingAddress() async throws {
+        let record = SparkExitFixtures.record()
+        let store = SparkExitStore(walletIndex: 9999)
+        try? store.deleteWithCopies()
+        try store.save(record)
+        defer { try? store.deleteWithCopies() }
+        let journal = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: journal)
+        let sender = PreparedAttemptNodeMock()
+        sender.result = .rejected(txid: sender.txid, reason: "min relay fee not met")
+        _ = try? await attempts.send(using: sender, address: record.funding[0].address, amountSats: sender.amount, satsPerVbyte: 2,
+                                     utxosToSpend: nil, isMaxAmount: false)
+        let refused = try XCTUnwrap(journal.snapshot().first)
+        XCTAssertEqual(refused.status, .rejected)
+        XCTAssertTrue(refused.canRetrySamePayment)
+        chain.isUtxosUnreadable = true
+        let exit = SparkExitManager(walletIndex: 9999, chain: chain, attempts: attempts)
+        await exit.refreshRefusedSavingsPayment()
+        XCTAssertEqual(exit.refusedSavingsPayment, refused)
+
+        do {
+            try await exit.retrySavingsPayment()
+            XCTFail("Paid again over an unread funding address")
+        } catch {
+            XCTAssertEqual((error as? Bitkit.AppError)?.debugMessage, "Spark exit funding address could not be read", "error=\(error)")
+        }
+
+        XCTAssertEqual(journal.snapshot(), [refused], "A retry was dispatched")
+        XCTAssertNil(exit.record?.fundingPaymentTxid)
+        XCTAssertNil(try store.load()?.fundingPaymentTxid)
+    }
+
     /// A forgotten exit gives its funding address back, so a payment that lands there late is seen by the next exit.
     func testAForgottenExitGivesItsFundingAddressBack() {
         XCTAssertEqual(SparkExitManager.fundingCounterAfterForget(4, index: 3), 3)
