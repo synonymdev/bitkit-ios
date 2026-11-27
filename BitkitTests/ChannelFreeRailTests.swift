@@ -1316,6 +1316,26 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(rail.sends, 1, "A send stopped before submission must not hold the invoice")
     }
 
+    func testASendRefusedAtTheRecheckBeforeSubmissionLeavesNoHold() async {
+        rail.balanceSats = 100_000
+        var submissionChecks = 0
+        do {
+            _ = try await Bitkit.LightningService.shared.send(
+                bolt11: Self.invoice,
+                recheckBeforeSubmission: { throw PaykitPaymentRequestError.requestUnavailable },
+                beforeSubmission: { submissionChecks += 1 }
+            )
+            XCTFail("Expected the recheck to stop the payment")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        XCTAssertEqual(rail.sends, 0)
+        XCTAssertEqual(submissionChecks, 0)
+
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        XCTAssertEqual(rail.sends, 1, "A send refused at the recheck must not hold the invoice")
+    }
+
     func testSparkHistoryReadsAsUnavailableWhileSparkIsDisconnected() async {
         Bitkit.LightningService.shared.channelFreeRail = nil
 
@@ -2460,7 +2480,7 @@ extension ChannelFreeRailTests {
         struct Expired: Error {}
 
         do {
-            _ = try await Bitkit.LightningService.shared.send(bolt11: "lnbcrt1rail", sats: 100) { throw Expired() }
+            _ = try await Bitkit.LightningService.shared.send(bolt11: "lnbcrt1rail", sats: 100, beforeSubmission: { throw Expired() })
             XCTFail("Expected the submission check to stop the payment")
         } catch {
             XCTAssertTrue(error is Expired)
@@ -2572,11 +2592,18 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
         "lnbcrt1fake"
     }
 
-    func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash {
+    func send(
+        bolt11: String,
+        sats: UInt64?,
+        maxFeeSats: UInt64?,
+        recheckBeforeSubmission: @escaping () async throws -> Void,
+        beforeSubmission: @escaping () throws -> Void
+    ) async throws -> PaymentHash {
         onSend?()
         if let refusal {
             throw refusal
         }
+        try await recheckBeforeSubmission()
         beforeSubmit?()
         for _ in 0 ..< submissionChecks {
             try beforeSubmission()

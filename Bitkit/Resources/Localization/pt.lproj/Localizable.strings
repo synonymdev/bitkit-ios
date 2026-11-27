@@ -828,6 +828,7 @@
 "pubky_auth__use_ring" = "Usar o Pubky Ring";
 "pubky_auth__use_ring_desc" = "A Bitkit não consegue ler a chave deste pubky a partir do Pubky Ring. Abra o Pubky Ring para aprovar este pedido.";
 "pubky_auth__invalid_request" = "Pedido de autenticação inválido";
+"pubky_auth__other_pubky" = "Este pedido destina-se a {pubky}, não ao pubky desta carteira.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crie uma nova identidade Pubky neste homeserver. Continue apenas se confiar nele.";
 "pubky_auth__approval_failed" = "Falha na autorização";

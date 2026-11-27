@@ -129,6 +129,31 @@ final class SparkSendKeyTests: XCTestCase {
         XCTAssertNoThrow(try Bitkit.SparkManager.checkSentPayment(.completed))
     }
 
+    func testALeafRetryRechecksTheRequestBeforeItsDeadline() async {
+        struct Refused: Error {}
+        var calls: [String] = []
+        let allowed = await Bitkit.SparkManager.canRetrySend(
+            recheckBeforeSubmission: { calls.append("recheck") },
+            beforeSubmission: { calls.append("deadline") }
+        )
+        XCTAssertTrue(allowed)
+        XCTAssertEqual(calls, ["recheck", "deadline"])
+
+        calls = []
+        let refused = await Bitkit.SparkManager.canRetrySend(
+            recheckBeforeSubmission: { calls.append("recheck"); throw Refused() },
+            beforeSubmission: { calls.append("deadline") }
+        )
+        XCTAssertFalse(refused)
+        XCTAssertEqual(calls, ["recheck"])
+
+        let expired = await Bitkit.SparkManager.canRetrySend(
+            recheckBeforeSubmission: {},
+            beforeSubmission: { throw Refused() }
+        )
+        XCTAssertFalse(expired)
+    }
+
     func testAnInvoiceExpiringDuringALeafRetryEndsWithTheLeafFailure() async {
         var sends = 0
 
