@@ -335,7 +335,8 @@ class LightningService: NodeLifecycleService {
         let vssUrl = Env.vssServerUrl
         let lnurlAuthServerUrl = Env.lnurlAuthServerUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         Logger.debug("Building ldk-node with vssUrl: '\(vssUrl)'")
-        Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'")
+        let lnurlAuthKeyDomain = Env.lnurlAuthKeyDomain
+        Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)', keyDomain: '\(lnurlAuthKeyDomain ?? "")'")
 
         guard !lnurlAuthServerUrl.isEmpty else {
             throw CustomServiceError.vssAuthRequired
@@ -378,6 +379,15 @@ class LightningService: NodeLifecycleService {
 
             builder.setEntropyBip39Mnemonic(mnemonic: entropyMnemonic, passphrase: entropyPassphrase)
 
+            if let lnurlAuthKeyDomain {
+                return try builder.buildWithVssStoreAndLnurlAuthKeyDomain(
+                    vssUrl: vssUrl,
+                    storeId: storeId,
+                    lnurlAuthServerUrl: lnurlAuthServerUrl,
+                    keyDomain: lnurlAuthKeyDomain,
+                    fixedHeaders: [:]
+                )
+            }
             return try builder.buildWithVssStore(
                 vssUrl: vssUrl,
                 storeId: storeId,

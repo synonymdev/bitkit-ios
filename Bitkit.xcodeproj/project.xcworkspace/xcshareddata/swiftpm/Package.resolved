@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
-        "revision" : "1dd2f42e44561ee4005f109c0d2cb61e1de99123",
-        "version" : "0.7.0-rc.82"
+        "revision" : "62e47dbfec6c212f1580a966494ebfa81d3fbca7",
+        "version" : "0.7.0-rc.83"
       }
     },
     {
@@ -69,8 +69,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/vss-rust-client-ffi",
       "state" : {
-        "revision" : "cf5b5cdfb8aaa79c06953fc57e98d96236c57d25",
-        "version" : "0.5.26-rc2"
+        "revision" : "3baf76dda37126d313f85ed2298abd65f6ef62b2",
+        "version" : "0.5.26-rc3"
       }
     }
   ],
