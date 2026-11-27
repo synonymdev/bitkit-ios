@@ -176,6 +176,25 @@ final class LightningServiceTests: XCTestCase {
         XCTAssertFalse(started)
     }
 
+    func testQueuedRestartLeavesTheCurrentNodeAfterAStopWhileItWaited() async {
+        var stoppedCurrent = false
+        do {
+            try await Bitkit.LightningService.stopCurrentNodeUnlessStopRequested(stopRequested: { true }) {
+                stoppedCurrent = true
+            }
+            XCTFail("expected the restart to yield to the stop")
+        } catch {}
+        XCTAssertFalse(stoppedCurrent)
+    }
+
+    func testQueuedRestartStopsTheCurrentNodeWithoutAStop() async throws {
+        var stoppedCurrent = false
+        try await Bitkit.LightningService.stopCurrentNodeUnlessStopRequested(stopRequested: { false }) {
+            stoppedCurrent = true
+        }
+        XCTAssertTrue(stoppedCurrent)
+    }
+
     func testBuiltNodeStartsWithoutAStopDuringSetup() async throws {
         var released = false
         var started = false

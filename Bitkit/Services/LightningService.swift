@@ -285,6 +285,21 @@ class LightningService: NodeLifecycleService {
         rgsServerUrl: String? = nil,
         channelMigration: ChannelDataMigration? = nil
     ) async throws {
+        _ = try await setupNode(
+            walletIndex: walletIndex,
+            electrumServerUrl: electrumServerUrl,
+            rgsServerUrl: rgsServerUrl,
+            channelMigration: channelMigration
+        )
+    }
+
+    /// Returns the node this call built, or nil when another setup is running or a node is already set up.
+    private func setupNode(
+        walletIndex: Int,
+        electrumServerUrl: String? = nil,
+        rgsServerUrl: String? = nil,
+        channelMigration: ChannelDataMigration? = nil
+    ) async throws -> Node? {
         // Guard against concurrent setup calls
         let shouldProceed: Bool = setupLock.withLock {
             guard !isSettingUp && configuredNode == nil else {
@@ -294,7 +309,7 @@ class LightningService: NodeLifecycleService {
             isSettingUp = true
             return true
         }
-        guard shouldProceed else { return }
+        guard shouldProceed else { return nil }
         defer { setupLock.withLock { isSettingUp = false } }
 
         Logger.debug("Checking lightning process lock...")
@@ -386,9 +401,10 @@ class LightningService: NodeLifecycleService {
             )
         }
 
-        try await ServiceQueue.background(.ldk) {
+        let node = try await ServiceQueue.background(.ldk) {
             let node = try Self.buildAcceptingPaykitServerAccounts(config: config, build: buildNode)
             self.setupLock.withLock { self.configuredNode = (node, resolvedElectrumServerUrl) }
+            return node
         }
         shouldReleaseLightningLock = false
 
@@ -397,6 +413,7 @@ class LightningService: NodeLifecycleService {
         // Clear memory
         mnemonic = ""
         passphrase = nil
+        return node
     }
 
     /// Runs `reconcile` before a wallet sync. A Paykit Server account that fails to load must not stop the wallet from
@@ -443,24 +460,19 @@ class LightningService: NodeLifecycleService {
 
     private func restartNode(electrumServerUrl: String?, rgsServerUrl: String?, stopsBefore: Int) async throws {
         Logger.info("Restarting node with current configuration")
-
-        // Stop the current node if it exists, ignore errors if already stopped
-        if let node {
-            do {
-                try await stopNode()
-            } catch {
-                Logger.debug("Node was already stopped or failed to stop: \(error)")
-                // Clear the node reference anyway
-                await releaseAfterFailedStop(of: node)
-            }
-        }
         let stopRequested = { self.restartLock.withLock { self.requestedStops != stopsBefore } }
+
+        try await stopCurrentNode(unless: stopRequested)
 
         try await Self.applyConfigChange(
             stopRequested: stopRequested,
             start: {
-                try await self.setup(walletIndex: self.currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
-                try await Self.startUnlessStopRequested(stopRequested: stopRequested, release: { try await self.stopNode() }) {
+                let built = try await self.setupNode(
+                    walletIndex: self.currentWalletIndex,
+                    electrumServerUrl: electrumServerUrl,
+                    rgsServerUrl: rgsServerUrl
+                )
+                try await Self.startUnlessStopRequested(stopRequested: stopRequested, release: { try await self.releaseNode(builtBy: built) }) {
                     try await self.start()
                 }
             },
@@ -496,26 +508,17 @@ class LightningService: NodeLifecycleService {
     /// This is called when a config change fails to restore the node to a working state
     private func restartWithPreviousConfig(stopsBefore: Int) async throws {
         Logger.debug("Stopping node for recovery attempt")
-
-        // Stop the current node if it exists
-        if let node {
-            do {
-                try await stopNode()
-            } catch {
-                Logger.error("Failed to stop node during recovery: \(error)")
-                await releaseAfterFailedStop(of: node)
-            }
-        }
+        let stopRequested = { self.restartLock.withLock { self.requestedStops != stopsBefore } }
+        try await stopCurrentNode(unless: stopRequested)
 
         Logger.debug("Starting node with previous config for recovery")
 
         do {
             // The stopped node's VSS writes can keep retrying for minutes, past one build's wait for them.
-            let stopRequested = { self.restartLock.withLock { self.requestedStops != stopsBefore } }
             try await Self.startRetryingBusyStore(stopRequested: stopRequested) {
                 // Restart with nil URLs to use stored/default configuration
-                try await self.setup(walletIndex: self.currentWalletIndex, electrumServerUrl: nil, rgsServerUrl: nil)
-                try await Self.startUnlessStopRequested(stopRequested: stopRequested, release: { try await self.stopNode() }) {
+                let built = try await self.setupNode(walletIndex: self.currentWalletIndex, electrumServerUrl: nil, rgsServerUrl: nil)
+                try await Self.startUnlessStopRequested(stopRequested: stopRequested, release: { try await self.releaseNode(builtBy: built) }) {
                     try await self.start()
                 }
             }
@@ -550,6 +553,16 @@ class LightningService: NodeLifecycleService {
                 continue
             }
         }
+    }
+
+    /// A stop requested while a restart waited in the queue wins before the restart touches the current node, which may be one
+    /// another start built after that stop.
+    static func stopCurrentNodeUnlessStopRequested(stopRequested: () -> Bool, stopCurrent: () async throws -> Void) async throws {
+        guard !stopRequested() else {
+            Logger.info("Skipped a queued restart because a stop was requested while it waited", context: "LightningService")
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        try await stopCurrent()
     }
 
     /// A stop requested while the node was being built found no node to stop, so it wins here: the built node is released
@@ -639,10 +652,36 @@ class LightningService: NodeLifecycleService {
         try await stopNode(clearEventCallback: clearEventCallback)
     }
 
-    /// Stops the node without counting as a requested stop, for the restart and its recovery.
-    private func stopNode(clearEventCallback: Bool = false) async throws {
-        guard let node else {
+    /// Reads the current node before checking for a stop: `stop()` counts a stop before it releases that node, so a node another
+    /// start built after the stop is never the one stopped here. Errors are ignored, as the node may already be stopped.
+    private func stopCurrentNode(unless stopRequested: () -> Bool) async throws {
+        let current = node
+        try await Self.stopCurrentNodeUnlessStopRequested(stopRequested: stopRequested) {
+            guard let current else { return }
+            do {
+                try await stopNode(only: current)
+            } catch {
+                Logger.debug("Node was already stopped or failed to stop: \(error)")
+                await releaseAfterFailedStop(of: current)
+            }
+        }
+    }
+
+    /// Stops the node a restart's own setup built, and nothing when that setup found a node already set up.
+    private func releaseNode(builtBy built: Node?) async throws {
+        guard let built else { return }
+        try await stopNode(only: built)
+    }
+
+    /// Stops the node without counting as a requested stop, for the restart and its recovery. With `only`, stops that node
+    /// alone, never one another start configured since.
+    private func stopNode(only expected: Node? = nil, clearEventCallback: Bool = false) async throws {
+        guard let node = expected ?? node else {
             Logger.warn("Node not started, nothing to stop")
+            return
+        }
+        guard isConfigured(node) else {
+            Logger.info("Node already released, nothing to stop")
             return
         }
 
