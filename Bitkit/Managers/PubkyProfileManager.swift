@@ -1721,6 +1721,7 @@ class PubkyProfileManager: ObservableObject {
         }
 
         setProfileSetupPending(false)
+        hasUnrestoredSession = false
         clearAuthenticatedState()
     }
 

@@ -480,6 +480,19 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testDisconnectingAnUnrestoredProfileEndsPendingSignIn() async throws {
+        try await withEmptyIdentityStorage {
+            let manager = PubkyProfileManager()
+            await manager.initialize { .restorationFailed }
+            XCTAssertTrue(manager.isProfileSignInPending)
+
+            try await manager.signOut(performSessionCleanup: {})
+
+            XCTAssertFalse(manager.isProfileSignInPending)
+        }
+    }
+
+    @MainActor
     func testFailedRestorationPreservesCachedProfile() async {
         let keys = ["pubky_profile_name", "pubky_profile_image_uri"]
         let defaults = UserDefaults.standard
