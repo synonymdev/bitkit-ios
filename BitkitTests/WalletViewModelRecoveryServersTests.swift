@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class WalletViewModelRecoveryServersTests: XCTestCase {
-    func testRecoveryRestartsWithTheSavedServers() throws {
+    func testWalletViewModelHandsRecoveryTheSavedServers() throws {
         let suiteName = "WalletViewModelRecoveryServersTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
