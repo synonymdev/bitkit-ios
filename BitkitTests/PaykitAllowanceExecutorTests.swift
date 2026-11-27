@@ -1580,6 +1580,17 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(harness.log.entries.contains("failLightningPayment"))
     }
 
+    func testRefusedLightningPaymentIsJournaledUnsentBeforeItsProofIsCleared() async throws {
+        let harness = AllowanceHarness()
+        await harness.payer.setLightningError(PaykitPaymentRequestError.requestUnavailable)
+        await harness.payer.readJournalOnNodeRejection(harness.store, identity: Fixtures.identityKey)
+
+        _ = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        let stages = await harness.payer.journalStagesOnNodeRejection
+        XCTAssertEqual(stages, [.submitted], "Recovery after a kill here finds an unsent attempt and fails it")
+    }
+
     func testUncertainLightningSubmissionErrorKeepsTheReservation() async throws {
         let harness = AllowanceHarness()
         await harness.payer.setLightningError(AllowanceMockError.unsupported)
@@ -2254,6 +2265,29 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertNil(attemptId)
         XCTAssertFalse(harness.log.entries.contains("reconcileAllowanceAccounting"))
         XCTAssertFalse(harness.log.entries.contains("reserveManualPayment"))
+    }
+
+    func testRecoveryFailsARefusedManualLightningPaymentWhoseOutcomeWasNotRecorded() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let paymentHash = String(repeating: "3", count: 64)
+        let attemptId = try await harness.executor.beginManualPayment(
+            Fixtures.paymentRequest(),
+            paymentEndpointIdentifier: Fixtures.lightningIdentifier,
+            paymentHash: paymentHash
+        )
+        let manualAttemptId = try XCTUnwrap(attemptId)
+        await harness.executor.manualLightningPaymentSent(attemptId: manualAttemptId, paymentHash: paymentHash)
+
+        // Killed after the refusal cleared the proof, before the failure reached the ledger.
+        await harness.executor.manualLightningPaymentRefused(attemptId: manualAttemptId)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-a", attempts: [Fixtures.attemptRecord(id: manualAttemptId, status: .submitted)]),
+        ]))
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes.last, Paykit.PaymentOutcomeReport(attemptId: manualAttemptId, outcome: .failed))
     }
 
     func testManualPaymentIsJournaledAndSubmittedWhenReady() async throws {
@@ -3572,10 +3606,26 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         storeFailingOnNodeRejection = store
     }
 
+    private var journalReadOnNodeRejection: (store: AllowanceMemoryStore, identity: String)?
+    private(set) var journalStagesOnNodeRejection: [PaykitAllowanceLocalState.Stage] = []
+
+    /// Reads the journal when the proof is cleared, so a test sees what recovery would find after a kill at that point.
+    func readJournalOnNodeRejection(_ store: AllowanceMemoryStore, identity: String) {
+        journalReadOnNodeRejection = (store, identity)
+    }
+
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
         called("failLightningPayment")
+        if let journalReadOnNodeRejection {
+            journalStagesOnNodeRejection = (try? journalReadOnNodeRejection.store.load(identity: journalReadOnNodeRejection.identity))?
+                .journal.map(\.stage) ?? []
+        }
         storeFailingOnNodeRejection?.failSaves()
         return lightningErrorIsDefinite
+    }
+
+    func submissionSentNothing(_ submissionError: Error) async -> Bool {
+        lightningErrorIsDefinite
     }
 
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async {

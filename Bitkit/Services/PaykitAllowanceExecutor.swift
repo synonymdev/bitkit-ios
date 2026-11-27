@@ -299,6 +299,8 @@ protocol PaykitAllowancePaying: Sendable {
     func payLightning(_ request: PaykitPaymentRequest, bolt11: String, sats: UInt64?) async throws
     /// Removes the proof only when the submission error proves nothing reached the node; returns whether it did.
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool
+    /// Whether the submission error proves nothing reached the node.
+    func submissionSentNothing(_ submissionError: Error) async -> Bool
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async
 }
 
@@ -438,6 +440,10 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
 
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
         await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash, submissionError: submissionError)
+    }
+
+    func submissionSentNothing(_ submissionError: Error) -> Bool {
+        PaykitPaymentProofService.submissionSentNothing(submissionError)
     }
 
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async {
@@ -1353,6 +1359,10 @@ actor PaykitAllowanceExecutor {
                 sats: payment.lightningInvoiceHasAmount ? nil : request.allowanceAmountSats
             )
         } catch {
+            if await payer.submissionSentNothing(error) {
+                // Saved before the cleanup, so recovery after a kill in between ends the attempt as unsent.
+                setStage(.submitted, attemptId: attemptId, identity: identity)
+            }
             guard await payer.failLightningPayment(paymentHash: paymentHash, submissionError: error) else {
                 // The node may have started the payment; its settlement event records the outcome.
                 Logger.warn("Automatic Lightning allowance payment outcome is uncertain: \(error)", context: "PaykitAllowance")
@@ -1469,6 +1479,13 @@ actor PaykitAllowanceExecutor {
             state.journal[index].paymentHash = paymentHash.lowercased()
             state.journal[index].stage = .sent
         }
+    }
+
+    /// Called when the recheck before submission refuses a manual Lightning payment, before its proof is cleared, so
+    /// recovery after a kill reads the attempt as unsent once the node has no payment for it.
+    func manualLightningPaymentRefused(attemptId: String) {
+        guard let identity = activeIdentity else { return }
+        setStage(.submitted, attemptId: attemptId, identity: identity)
     }
 
     /// Called right before a manual on-chain broadcast, so recovery after a kill reads the attempt as unknown, not failed.

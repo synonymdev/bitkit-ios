@@ -1413,6 +1413,13 @@ actor PaykitPaymentProofService {
     }
 
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
+        guard Self.submissionSentNothing(submissionError) else { return false }
+        await failLightningPayment(paymentHash: paymentHash)
+        return true
+    }
+
+    /// Whether the submission error proves nothing reached the node.
+    static func submissionSentNothing(_ submissionError: Error) -> Bool {
         let underlyingError = (submissionError as? AppError)?.underlyingError ?? submissionError
         if underlyingError as? PaykitPaymentRequestError == .requestExpired {
             // The local deadline gate runs before submitting to the node.
@@ -1434,7 +1441,6 @@ actor PaykitPaymentProofService {
         } else {
             return false
         }
-        await failLightningPayment(paymentHash: paymentHash)
         return true
     }
 
