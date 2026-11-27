@@ -37,8 +37,9 @@ enum SparkExitFundingRelease {
     }
 
     /// Whether savings may pay `attempt` to the exit again now, over what its funding address holds (`utxos`, nil when
-    /// it could not be read): only while the exit still asks for funding there and nothing reached it, or while it
-    /// waits for this very payment, and never once its release was approved. A send to no exit's address is not this
+    /// it could not be read): while the exit still asks for funding there, waits for this very payment, or holds this
+    /// payment's own coin, and never once its release was approved. A retry re-signs the same inputs, so it never pays
+    /// twice, and what savings pays beyond the ask comes back as leftover. A send to no exit's address is not this
     /// check's to refuse.
     static func mayPayAgain(_ attempt: OnchainSendAttempt, exit: Exit, utxos: [EsploraUtxo]?) -> Bool {
         // A release approved for it is Send Pending's to finish, even once the exit's record is gone.
@@ -47,11 +48,23 @@ enum SparkExitFundingRelease {
         guard let record = exit.record, record.isActive,
               record.funding.first?.address == attempt.address, let utxos
         else { return false }
+        // Other wallets' coins alone cover the funding: nothing is left to ask, and its release takes care of it.
+        let isOwnPaid = record.fundingPaymentTxid.map { attempt.containsCandidate($0) } ?? false
+        var unpaid = record
+        if isOwnPaid {
+            unpaid.fundingPaymentTxid = nil
+        }
+        if case .seen = SparkExitMath.fundingState(unpaid, utxos: utxos.filter { !attempt.containsCandidate($0.txid) }) {
+            return false
+        }
         switch SparkExitMath.fundingState(record, utxos: utxos) {
-        case .ask(_, 0): return true
-        case let .paid(txid):
-            let otherFunding = SparkExitMath.newFunding(utxos, record: record).filter { !attempt.containsCandidate($0.txid) }
-            return attempt.containsCandidate(txid) && otherFunding.isEmpty
+        // Partial payments from other wallets still leave an ask.
+        case .ask: return true
+        // Waiting for this very payment.
+        case .paid: return isOwnPaid
+        // Covered with this payment's own unconfirmed coin: a retry only bumps it.
+        case .seen:
+            return SparkExitMath.newFunding(utxos, record: record).contains { !$0.status.confirmed && attempt.containsCandidate($0.txid) }
         default: return false
         }
     }
@@ -61,9 +74,10 @@ enum SparkExitFundingRelease {
         let walletIndex = LightningService.shared.currentWalletIndex
         guard attempt.walletId == OnchainSendAttemptService.walletId(index: walletIndex) else { return nil }
         do {
+            // An unreadable list of earlier addresses holds no exit that is still asking.
             return try Exit(
                 record: SparkExitStore(walletIndex: walletIndex).load(),
-                earlier: SparkExitEarlierAddressStore(walletIndex: walletIndex).load()
+                earlier: (try? SparkExitEarlierAddressStore(walletIndex: walletIndex).load()) ?? []
             )
         } catch {
             return nil
