@@ -69,6 +69,23 @@ final class SheetViewModelTests: XCTestCase {
         XCTAssertNil(sheets.activeSheetConfiguration)
     }
 
+    func testReplacementSheetOpensOnlyWhileItsRouteIsCurrent() async throws {
+        for isCurrentWhenDue in [true, false] {
+            let sheets = SheetViewModel()
+            sheets.showSheet(.scanner)
+            var isCurrent = true
+
+            sheets.showSheet(.lnurlAuth, isCurrent: { isCurrent })
+            XCTAssertNil(sheets.activeSheetConfiguration)
+            isCurrent = isCurrentWhenDue
+            try await Task.sleep(nanoseconds: UInt64((SheetViewModel.replacementDelaySeconds + 0.3) * 1_000_000_000))
+
+            XCTAssertEqual(sheets.activeSheetConfiguration?.id, isCurrentWhenDue ? .lnurlAuth : nil)
+            XCTAssertFalse(sheets.isReplacingSheet)
+            XCTAssertNil(sheets.replacingSheetID)
+        }
+    }
+
     func testLateDismissOfReplacedSheetKeepsNewerSheetWithSameID() throws {
         let sheets = SheetViewModel()
 

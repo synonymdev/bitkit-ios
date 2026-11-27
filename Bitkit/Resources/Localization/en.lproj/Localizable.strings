@@ -394,6 +394,7 @@
 "lightning__spark_exit__fees" = "Network fees";
 "lightning__spark_exit__receive" = "You receive (estimate)";
 "lightning__spark_exit__savings_refused" = "Your savings payment didn't go through. Pay again, or fund from another wallet.";
+"lightning__spark_exit__savings_unresolved" = "Your savings payment hasn't confirmed yet. Wait for it before you pay from another wallet.";
 "lightning__spark_exit__quote_loading" = "Getting the costs…";
 "lightning__spark_exit__quote_settling" = "Waiting for Spark to finish moving your balance. This can take up to 5 minutes.";
 "lightning__spark_exit__quote_error" = "Could not get the transfer costs. Try again.";
@@ -689,6 +690,16 @@
 "other__lnurl_auth_success_title" = "Signed In";
 "other__lnurl_auth_success_msg_domain" = "You successfully signed in to {domain}.";
 "other__lnurl_auth_success_msg_no_domain" = "You successfully signed in.";
+"other__lnurl_auth_auth_prompt" = "Authenticate at {domain}?";
+"other__lnurl_auth_auth_title" = "Authenticate";
+"other__lnurl_auth_link_prompt" = "Link account to {domain}?";
+"other__lnurl_auth_link_title" = "Link";
+"other__lnurl_auth_login_button" = "Log In";
+"other__lnurl_auth_login_prompt" = "Log in to {domain}?";
+"other__lnurl_auth_login_title" = "Log In";
+"other__lnurl_auth_register_prompt" = "Register at {domain}?";
+"other__lnurl_auth_register_title" = "Register";
+"other__lnurl_auth_unknown_domain" = "Unknown Domain";
 "other__lnurl_withdr_error" = "Withdraw Failed (LNURL)";
 "other__lnurl_withdr_error_generic" = "Sorry, an error occurred.";
 "other__lnurl_withdr_error_no_capacity" = "Not enough receiving capacity to complete withdraw request.";
@@ -899,6 +910,7 @@
 "pubky_auth__use_ring" = "Use Pubky Ring";
 "pubky_auth__use_ring_desc" = "Bitkit can't read the key for this pubky from Pubky Ring. Open Pubky Ring to approve this request.";
 "pubky_auth__invalid_request" = "Invalid auth request";
+"pubky_auth__other_pubky" = "This request is for {pubky}, not this wallet's pubky.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Create a new Pubky identity on this homeserver. Only continue if you trust it.";
 "pubky_auth__approval_failed" = "Authorization Failed";
@@ -1000,6 +1012,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay exclusively supports payments from your Spending Balance.";
 "wallet__send_quickpay__currency_conversion" = "Currency conversion failed";
+"wallet__send_quickpay__already_paid" = "This invoice has already been paid.";
 "settings__security__title" = "Security And Privacy";
 "settings__security__swipe_balance_to_hide" = "Swipe balance to hide";
 "settings__security__hide_balance_on_open" = "Hide balance on open";

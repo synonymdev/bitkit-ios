@@ -386,6 +386,7 @@
 "lightning__spark_exit__fees" = "Comissions de xarxa";
 "lightning__spark_exit__receive" = "Rebràs (estimació)";
 "lightning__spark_exit__savings_refused" = "El teu pagament dels estalvis no s'ha completat. Torna a pagar o finança des d'un altre moneder.";
+"lightning__spark_exit__savings_unresolved" = "El teu pagament dels estalvis encara no s'ha confirmat. Espera'l abans de pagar des d'un altre moneder.";
 "lightning__spark_exit__quote_loading" = "Obtenint els costos…";
 "lightning__spark_exit__quote_settling" = "Esperant que Spark acabi de moure el teu saldo. Pot trigar fins a 5 minuts.";
 "lightning__spark_exit__quote_error" = "No s'han pogut obtenir els costos de la transferència. Torna-ho a intentar.";
@@ -664,6 +665,16 @@
 "other__lnurl_auth_success_title" = "Sessió iniciada";
 "other__lnurl_auth_success_msg_domain" = "Has iniciat sessió correctament a {domain}.";
 "other__lnurl_auth_success_msg_no_domain" = "Has iniciat sessió amb èxit.";
+"other__lnurl_auth_auth_prompt" = "Autenticar-se a {domain}?";
+"other__lnurl_auth_auth_title" = "Autenticar";
+"other__lnurl_auth_link_prompt" = "Vincular el compte a {domain}?";
+"other__lnurl_auth_link_title" = "Vincular";
+"other__lnurl_auth_login_button" = "Iniciar sessió";
+"other__lnurl_auth_login_prompt" = "Iniciar sessió a {domain}?";
+"other__lnurl_auth_login_title" = "Iniciar sessió";
+"other__lnurl_auth_register_prompt" = "Registrar-se a {domain}?";
+"other__lnurl_auth_register_title" = "Registrar-se";
+"other__lnurl_auth_unknown_domain" = "Domini desconegut";
 "other__lnurl_withdr_error" = "Retirada fallida (LNURL)";
 "other__lnurl_withdr_error_generic" = "Ho sento, s\'ha produït un error.";
 "other__lnurl_withdr_error_no_capacity" = "No hi ha prou capacitat de recepció per completar la sol·licitud de retirada.";
@@ -852,6 +863,7 @@
 "pubky_auth__use_ring" = "Utilitzar Pubky Ring";
 "pubky_auth__use_ring_desc" = "Bitkit no pot llegir la clau d'aquest pubky des de Pubky Ring. Obre Pubky Ring per aprovar aquesta sol·licitud.";
 "pubky_auth__invalid_request" = "Sol·licitud d'autenticació no vàlida";
+"pubky_auth__other_pubky" = "Aquesta sol·licitud és per a {pubky}, no per al pubky d'aquesta cartera.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crea una nova identitat Pubky en aquest homeserver. Continua només si hi confies.";
 "pubky_auth__approval_failed" = "Ha fallat l'autorització";
@@ -958,6 +970,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay només admet pagaments des del teu saldo de despesa.";
 "wallet__send_quickpay__currency_conversion" = "Ha fallat la conversió de moneda";
+"wallet__send_quickpay__already_paid" = "Aquesta factura ja s'ha pagat.";
 "settings__security__title" = "Seguretat i privadesa";
 "settings__security__swipe_balance_to_hide" = "Llisca el saldo per amagar";
 "settings__security__hide_balance_on_open" = "Amaga el saldo en obrir";

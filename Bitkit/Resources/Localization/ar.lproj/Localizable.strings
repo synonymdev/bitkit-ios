@@ -349,6 +349,7 @@
 "lightning__spark_exit__fees" = "رسوم الشبكة";
 "lightning__spark_exit__receive" = "ستستلم (تقديريًا)";
 "lightning__spark_exit__savings_refused" = "لم يكتمل دفعك من المدخرات. ادفع مرة أخرى، أو موّل من محفظة أخرى.";
+"lightning__spark_exit__savings_unresolved" = "لم يتأكد دفعك من المدخرات بعد. انتظره قبل أن تدفع من محفظة أخرى.";
 "lightning__spark_exit__quote_loading" = "جارٍ الحصول على التكاليف…";
 "lightning__spark_exit__quote_settling" = "بانتظار أن ينتهي Spark من نقل رصيدك. قد يستغرق ذلك حتى 5 دقائق.";
 "lightning__spark_exit__quote_error" = "تعذّر الحصول على تكاليف التحويل. حاول مرة أخرى.";
@@ -598,6 +599,16 @@
 "other__lnurl_auth_error_msg" = "حدث خطأ عند محاولة تسجيل الدخول. {raw}";
 "other__lnurl_auth_success_title" = "تم تسجيل الدخول";
 "other__lnurl_auth_success_msg_no_domain" = "لقد سجلت الدخول بنجاح.";
+"other__lnurl_auth_auth_prompt" = "المصادقة لدى {domain}؟";
+"other__lnurl_auth_auth_title" = "مصادقة";
+"other__lnurl_auth_link_prompt" = "ربط الحساب بـ {domain}؟";
+"other__lnurl_auth_link_title" = "ربط";
+"other__lnurl_auth_login_button" = "تسجيل الدخول";
+"other__lnurl_auth_login_prompt" = "تسجيل الدخول إلى {domain}؟";
+"other__lnurl_auth_login_title" = "تسجيل الدخول";
+"other__lnurl_auth_register_prompt" = "التسجيل في {domain}؟";
+"other__lnurl_auth_register_title" = "تسجيل";
+"other__lnurl_auth_unknown_domain" = "نطاق غير معروف";
 "other__lnurl_withdr_error" = "فشل السحب (LNURL)";
 "other__lnurl_withdr_error_no_capacity" = "لا توجد سعة استلام كافية لإكمال طلب السحب.";
 "other__lnurl_withdr_error_minmax" = "معلمات سحب LNURL غير صحيحة، الحد الأدنى/الأقصى غير محدد بشكل صحيح.";
@@ -768,6 +779,7 @@
 "pubky_auth__use_ring" = "استخدام Pubky Ring";
 "pubky_auth__use_ring_desc" = "لا يستطيع Bitkit قراءة مفتاح هذا الـ pubky من Pubky Ring. افتح Pubky Ring للموافقة على هذا الطلب.";
 "pubky_auth__invalid_request" = "طلب مصادقة غير صالح";
+"pubky_auth__other_pubky" = "هذا الطلب موجّه إلى {pubky}، وليس إلى pubky هذه المحفظة.";
 "pubky_auth__homeserver" = "الخادم الرئيسي";
 "pubky_auth__signup_description" = "أنشئ هوية Pubky جديدة على هذا الخادم الرئيسي. تابع فقط إذا كنت تثق به.";
 "pubky_auth__approval_failed" = "فشل التفويض";
@@ -869,6 +881,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* يدعم Bitkit QuickPay حصريًا المدفوعات من رصيد الإنفاق الخاص بك.";
 "wallet__send_quickpay__currency_conversion" = "فشل تحويل العملة";
+"wallet__send_quickpay__already_paid" = "تم دفع هذه الفاتورة بالفعل.";
 "settings__security__swipe_balance_to_hide" = "اسحب الرصيد للإخفاء";
 "settings__security__hide_balance_on_open" = "إخفاء الرصيد عند الفتح";
 "settings__security__clipboard" = "قراءة الحافظة لسهولة الاستخدام";

@@ -722,17 +722,19 @@ actor OnchainSendAttemptService {
         if reviewedMiningFeeSats != nil {
             lightningService.beforeOnchainNodeStops { [weak self, weak dispatchNode] in await self?.nodeStopping(dispatchNode) }
         }
-        let attemptId = try admit(
-            walletId: Self.walletId(index: walletIndex),
-            requestId: requestId,
-            orderId: orderId,
-            address: address,
-            amountSats: amountSats,
-            isMaxAmount: isMaxAmount,
-            followupContext: followupContext,
-            transferContext: transferContext,
-            isSparkFunding: isSparkFunding
-        )
+        let attemptId = try beforeAdmission {
+            try admit(
+                walletId: Self.walletId(index: walletIndex),
+                requestId: requestId,
+                orderId: orderId,
+                address: address,
+                amountSats: amountSats,
+                isMaxAmount: isMaxAmount,
+                followupContext: followupContext,
+                transferContext: transferContext,
+                isSparkFunding: isSparkFunding
+            )
+        }
         nativeDispatchInProgress = attemptId
         defer { nativeDispatchInProgress = nil }
         let prepared: PreparedOnchainSendDispatch
@@ -1009,6 +1011,18 @@ actor OnchainSendAttemptService {
         return .accepted(txid: txid)
     }
 
+    /// A send journal write that failed before the attempt was admitted: nothing went out, so it is a pre-dispatch
+    /// failure, which callers may offer again. The journal's own refusals, and an unreadable journal, keep their meaning.
+    private func beforeAdmission<T>(_ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch let error as OnchainSendAttemptError {
+            throw error
+        } catch {
+            throw OnchainSendAttemptError.preDispatch(error)
+        }
+    }
+
     func admit(
         walletId: String,
         requestId: PaykitPaymentRequest.ID?,
@@ -1085,20 +1099,32 @@ actor OnchainSendAttemptService {
         return attempt.id
     }
 
+    /// The journal's attempt before a new send. One that can't be read stays unresolved: it may hold an earlier send. Once
+    /// read, only clearing an unsigned attempt left from before a restart can fail, a write before anything went out.
     private func currentAdmissionAttempt() throws -> OnchainSendAttempt? {
-        do { return try currentAttempt() }
-        catch { throw OnchainSendAttemptError.unresolved }
+        let attempts: [OnchainSendAttempt]
+        do { attempts = try store.load() } catch { throw OnchainSendAttemptError.unresolved }
+        do { return try currentAttempt(in: attempts) }
+        catch let error as OnchainSendAttemptError { throw error }
+        catch { throw OnchainSendAttemptError.preDispatch(error) }
     }
 
-    /// The address of the send still unresolved (pending, unknown or refused, so retryable or blocking a new send), if any.
-    /// A retry always pays this same address with the same inputs.
-    func unresolvedSendAddress() -> String? {
-        guard let attempt = try? currentAttempt(), attempt.status.blocksNewSend else { return nil }
-        return attempt.address
+    /// One read of the journal: the address of the send still unresolved (pending, unknown or refused, so retryable or
+    /// blocking a new send; a retry always pays this same address with the same inputs), and the send a node accepted,
+    /// kept after its local follow-up.
+    func sendAddresses() -> (unresolved: String?, accepted: (address: String, txid: String?)?) {
+        guard let attempt = try? currentAttempt() else { return (nil, nil) }
+        if attempt.status.blocksNewSend {
+            return (attempt.address, nil)
+        }
+        return (nil, attempt.status == .accepted ? (attempt.address, attempt.txid) : nil)
     }
 
     private func currentAttempt() throws -> OnchainSendAttempt? {
-        let attempts = try store.load()
+        try currentAttempt(in: store.load())
+    }
+
+    private func currentAttempt(in attempts: [OnchainSendAttempt]) throws -> OnchainSendAttempt? {
         guard attempts.count <= 1 else { throw OnchainSendAttemptError.unresolved }
         guard let saved = attempts.first else { return nil }
         if knownAttempt?.id != saved.id, nativeDispatchInProgress == nil,

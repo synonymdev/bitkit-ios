@@ -21,7 +21,21 @@ class ScannerManager: ObservableObject {
     private var wallet: WalletViewModel?
     private weak var hwWalletManager: HwWalletManager?
     private let nfcReader: NfcPaymentReading
-    private var isHandlingScan = false
+    /// The scan holding the scan lock. A main or Send scan holds it only while its scanner visit lasts, so a scan still
+    /// waiting on a lookup (e.g. an LNURL fetch) after the user left the scanner does not block a scan on the next
+    /// visit. An Electrum or Add Contact scan holds it until it finishes.
+    private var scanOwner: ScanOwner?
+
+    private struct ScanOwner {
+        let id: UUID
+        /// True while the scanner visit the scan started in is still shown.
+        let isOnVisit: () -> Bool
+    }
+
+    private var isHandlingScan: Bool {
+        scanOwner?.isOnVisit() == true
+    }
+
     /// Photos the user picked that are still loading or decoding, each with a check that turns false once its scanner
     /// visit ends. A nearby request waits until every photo is handled or its visit ends.
     private var pendingImageScans: [UUID: () -> Bool] = [:]
@@ -38,6 +52,10 @@ class ScannerManager: ObservableObject {
     private var lockGeneration = 0
     /// A sheet replacement a scan started that has not run yet, so a lock can cancel the route it would open.
     private var pendingRouteReplacement: Int?
+
+    typealias ElectrumScanResult = (success: Bool, host: String, port: String, errorMessage: String?)
+    /// Connects to the Electrum server a scan names. Replaceable in tests.
+    var electrumScan: (SettingsViewModel, String) async -> ElectrumScanResult? = { await $0.onElectrumScan($1) }
 
     init(
         nfcReader: NfcPaymentReading? = nil,
@@ -74,13 +92,18 @@ class ScannerManager: ObservableObject {
         self.hwWalletManager = hwWalletManager
     }
 
-    func handleScan(_ uri: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async {
-        guard isCurrent(), beginUserScan() else { return }
-        defer { isHandlingScan = false }
+    func handleScan(_ uri: String, context: ScannerContext, isCurrent: @escaping () -> Bool = { true }) async {
+        // A lookup can outlast the scanner visit or a PIN lock; its result must not route, or choose QuickPay, after
+        // the user left the scanner or unlocked. The origin check covers both.
+        let isCurrentOrigin = originCheck()
+        let isOnVisit = { isCurrent() && isCurrentOrigin() }
+        // Electrum and contact scans act on the screen under the scanner (they update settings and pop the scanner)
+        // whatever visit is shown when they finish, so they keep the lock until they finish.
+        let holdsUntilDone = context != .main && context != .send
+        guard isOnVisit(), let scanID = beginUserScan(isOnVisit: holdsUntilDone ? { true } : isOnVisit) else { return }
+        defer { endUserScan(scanID) }
 
-        // A lookup can outlast a PIN lock; its result must not route, or choose QuickPay, after the unlock.
-        let isBeforeLock = lockCheck()
-        await processScan(uri, context: context, isCurrent: { isCurrent() && isBeforeLock() })
+        await processScan(uri, context: context, isCurrent: { [weak self] in isOnVisit() && self?.owns(scanID) == true })
     }
 
     private func processScan(
@@ -107,7 +130,7 @@ class ScannerManager: ObservableObject {
         }
     }
 
-    func handleScan(_ payload: QRCodePayload, context: ScannerContext, isCurrent: () -> Bool = { true }) async {
+    func handleScan(_ payload: QRCodePayload, context: ScannerContext, isCurrent: @escaping () -> Bool = { true }) async {
         guard let uri = payload.string else {
             showUnsupportedQRCodeError()
             return
@@ -216,14 +239,20 @@ class ScannerManager: ObservableObject {
     func handleSendScan(
         _ uri: String,
         scope: ScanHandlingScope = .unrestricted,
-        isCurrent: () -> Bool = { true },
+        isCurrent: @escaping () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
-        guard isCurrent(), beginUserScan() else { return }
-        defer { isHandlingScan = false }
+        let isCurrentOrigin = originCheck()
+        let isOnVisit = { isCurrent() && isCurrentOrigin() }
+        guard isOnVisit(), let scanID = beginUserScan(isOnVisit: isOnVisit) else { return }
+        defer { endUserScan(scanID) }
 
-        let isBeforeLock = lockCheck()
-        await processSendScan(uri, scope: scope, isCurrent: { isCurrent() && isBeforeLock() }, completion: completion)
+        await processSendScan(
+            uri,
+            scope: scope,
+            isCurrent: { [weak self] in isOnVisit() && self?.owns(scanID) == true },
+            completion: completion
+        )
     }
 
     private func processSendScan(
@@ -301,7 +330,7 @@ class ScannerManager: ObservableObject {
     func handleSendScan(
         _ payload: QRCodePayload,
         scope: ScanHandlingScope = .unrestricted,
-        isCurrent: () -> Bool = { true },
+        isCurrent: @escaping () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
         guard let uri = payload.string else {
@@ -314,13 +343,14 @@ class ScannerManager: ObservableObject {
 
     /// Reads a payment request over NFC and handles it exactly like a scanned QR code.
     /// The read holds the scan lock from the start, so a Bluetooth request can't route while the NFC sheet is up.
-    func handleNfcRead(context: ScannerContext, isCurrent: () -> Bool = { true }) async {
+    func handleNfcRead(context: ScannerContext, isCurrent: @escaping () -> Bool = { true }) async {
         let isCurrentOrigin = originCheck()
+        let isOnVisit = { isCurrent() && isCurrentOrigin() }
+        guard isOnVisit(), let scanID = beginUserScan(isOnVisit: isOnVisit) else { return }
+        defer { endUserScan(scanID) }
         func isStillCurrent() -> Bool {
-            isCurrent() && isCurrentOrigin()
+            isOnVisit() && owns(scanID)
         }
-        guard isStillCurrent(), beginUserScan() else { return }
-        defer { isHandlingScan = false }
         guard let uri = await readNfcPaymentRequest(isCurrent: isStillCurrent), isStillCurrent() else { return }
         await processScan(uri, context: context, isCurrent: isStillCurrent)
     }
@@ -328,18 +358,19 @@ class ScannerManager: ObservableObject {
     /// Reads a payment request over NFC from the Send sheet and resolves it like a scanned QR code.
     func handleSendNfcRead(
         scope: ScanHandlingScope = .unrestricted,
-        isCurrent: () -> Bool = { true },
+        isCurrent: @escaping () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
         let isCurrentOrigin = originCheck()
-        func isStillCurrent() -> Bool {
-            isCurrent() && isCurrentOrigin()
-        }
-        guard isStillCurrent(), beginUserScan() else {
+        let isOnVisit = { isCurrent() && isCurrentOrigin() }
+        guard isOnVisit(), let scanID = beginUserScan(isOnVisit: isOnVisit) else {
             completion(nil)
             return
         }
-        defer { isHandlingScan = false }
+        defer { endUserScan(scanID) }
+        func isStillCurrent() -> Bool {
+            isOnVisit() && owns(scanID)
+        }
         guard let uri = await readNfcPaymentRequest(isCurrent: isStillCurrent), isStillCurrent() else {
             completion(nil)
             return
@@ -375,7 +406,7 @@ class ScannerManager: ObservableObject {
     /// - Returns: false when the request was not taken (refused, or another scan is being handled), so the caller
     ///   can keep listening.
     @discardableResult
-    func handleNearbyRequest(_ request: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async -> Bool {
+    func handleNearbyRequest(_ request: String, context: ScannerContext, isCurrent: @escaping () -> Bool = { true }) async -> Bool {
         guard app != nil, context == .main || context == .send else { return false }
         let uri = ScannedPaymentRequest.normalized(request)
         guard Self.isNearbyPaymentRequest(uri) else {
@@ -387,7 +418,8 @@ class ScannerManager: ObservableObject {
         // A request arrives unprompted, so it must not open anything once the user has left the scanner or started
         // a scan of their own.
         let isCurrentOrigin = originCheck()
-        guard isCurrent(), isCurrentOrigin(), let scanID = beginNearbyScan() else { return false }
+        let isOnVisit = { isCurrent() && isCurrentOrigin() }
+        guard isOnVisit(), let scanID = beginNearbyScan(isOnVisit: isOnVisit) else { return false }
         defer { endNearbyScan(scanID) }
         func isStillCurrent() -> Bool {
             nearbyScanID == scanID && isCurrent() && isCurrentOrigin()
@@ -406,7 +438,7 @@ class ScannerManager: ObservableObject {
     func handleSendNearbyRequest(
         _ request: String,
         scope: ScanHandlingScope = .unrestricted,
-        isCurrent: () -> Bool = { true },
+        isCurrent: @escaping () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async -> Bool {
         let uri = ScannedPaymentRequest.normalized(request)
@@ -418,7 +450,8 @@ class ScannerManager: ObservableObject {
             return false
         }
         let isCurrentOrigin = originCheck()
-        guard isCurrent(), isCurrentOrigin(), let scanID = beginNearbyScan() else { return false }
+        let isOnVisit = { isCurrent() && isCurrentOrigin() }
+        guard isOnVisit(), let scanID = beginNearbyScan(isOnVisit: isOnVisit) else { return false }
         defer { endNearbyScan(scanID) }
         func isStillCurrent() -> Bool {
             nearbyScanID == scanID && isCurrent() && isCurrentOrigin()
@@ -435,21 +468,41 @@ class ScannerManager: ObservableObject {
         return routed
     }
 
-    /// Takes the scan lock for a QR code or NFC read the user started. A Bluetooth request still decoding gives it up.
-    private func beginUserScan() -> Bool {
-        if isHandlingScan {
-            guard let nearbyScanID else { return false }
+    /// Takes the scan lock for a QR code or NFC read the user started, held while `isOnVisit` holds: the scanner visit
+    /// for main and Send scans, always (until the scan ends) for Electrum and Add Contact scans. A Bluetooth request
+    /// still decoding gives the lock up, and so does a scan whose `isOnVisit` no longer holds.
+    /// - Returns: the id that owns the lock, or nil while another user scan whose `isOnVisit` still holds has it.
+    private func beginUserScan(isOnVisit: @escaping () -> Bool) -> UUID? {
+        if let owner = scanOwner, owner.id != nearbyScanID, owner.isOnVisit() {
+            return nil
+        }
+        if let nearbyScanID {
             app?.releaseQuickPaySuppression(nearbyScanID)
             self.nearbyScanID = nil
         }
-        isHandlingScan = true
-        return true
+        let scanID = UUID()
+        scanOwner = ScanOwner(id: scanID, isOnVisit: isOnVisit)
+        return scanID
     }
 
-    private func beginNearbyScan() -> UUID? {
+    /// Releases the lock if this scan still owns it. A scan that lost it to a newer one leaves the newer one's lock.
+    private func endUserScan(_ scanID: UUID) {
+        guard owns(scanID) else { return }
+        scanOwner = nil
+    }
+
+    private func owns(_ scanID: UUID) -> Bool {
+        scanOwner?.id == scanID
+    }
+
+    private func beginNearbyScan(isOnVisit: @escaping () -> Bool) -> UUID? {
         guard !isHandlingScan, !isImageScanPending else { return nil }
+        // A request from an ended visit may still be decoding; its suppression must not outlive the lock it lost.
+        if let nearbyScanID {
+            app?.releaseQuickPaySuppression(nearbyScanID)
+        }
         let scanID = UUID()
-        isHandlingScan = true
+        scanOwner = ScanOwner(id: scanID, isOnVisit: isOnVisit)
         nearbyScanID = scanID
         // A Bluetooth request always opens the normal review. The suppression ends with the request or when a user
         // scan takes over.
@@ -459,10 +512,11 @@ class ScannerManager: ObservableObject {
 
     private func endNearbyScan(_ scanID: UUID) {
         app?.releaseQuickPaySuppression(scanID)
-        // A user scan that took the lock releases it itself.
-        guard nearbyScanID == scanID else { return }
-        nearbyScanID = nil
-        isHandlingScan = false
+        // A scan that took the lock releases it itself.
+        if nearbyScanID == scanID {
+            nearbyScanID = nil
+        }
+        endUserScan(scanID)
     }
 
     /// Reads a payment request over NFC. A failure shows its error only while [isCurrent] holds: a read that ends after
@@ -502,7 +556,7 @@ class ScannerManager: ObservableObject {
         guard let settings else { return }
         let generation = settings.serverConnectionGeneration
         guard settings.isCurrentServerConnection(generation) else { return }
-        let result = await settings.onElectrumScan(uri)
+        let result = await electrumScan(settings, uri)
         guard settings.isCurrentServerConnection(generation) else { return }
 
         if let result {
@@ -621,20 +675,12 @@ class ScannerManager: ObservableObject {
         if let nearbyScanID {
             app?.releaseQuickPaySuppression(nearbyScanID)
             self.nearbyScanID = nil
-            isHandlingScan = false
+            endUserScan(nearbyScanID)
         }
         let id = UUID()
         pendingImageScans[id] = isCurrent
         defer { pendingImageScans[id] = nil }
         return try await decode()
-    }
-
-    /// True until the app locks behind the PIN after this call.
-    private func lockCheck() -> () -> Bool {
-        let lockGeneration = lockGeneration
-        return { [weak self] in
-            self?.lockGeneration == lockGeneration
-        }
     }
 
     /// True while the sheet and navigation path shown when this is called are still shown, without having left them.

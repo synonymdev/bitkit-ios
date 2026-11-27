@@ -418,8 +418,22 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
             bolt11: bolt11,
             sats: sats,
             params: Self.routeParameters(amountSats: request.allowanceAmountSats),
+            // Checked again after the send's last await, so a contact blocked since the executor's check isn't paid.
+            // Any failure here sent nothing, so it ends as a refusal the proof service treats as unsent.
+            recheckBeforeSubmission: { try await Self.recheckBeforeSubmission { try await ensurePaymentAllowed(request) } },
             beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(request.paymentDeadline) }
         )
+    }
+
+    /// Runs `check` as a refusal: an expired request stays expired and any other failure becomes `requestUnavailable`.
+    static func recheckBeforeSubmission(_ check: () async throws -> Void) async throws {
+        do {
+            try await check()
+        } catch PaykitPaymentRequestError.requestExpired {
+            throw PaykitPaymentRequestError.requestExpired
+        } catch {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
     }
 
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {

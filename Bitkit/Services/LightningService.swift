@@ -12,9 +12,15 @@ protocol ChannelFreeLightningRail: AnyObject {
     @MainActor var isReady: Bool { get }
     @MainActor var balanceSats: UInt64 { get }
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String
-    /// Refuses before sending when the prepared fee is above `maxFeeSats`, and runs `beforeSubmission` right before the
-    /// payment goes out, as the node path does.
-    func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash
+    /// Refuses before sending when the prepared fee is above `maxFeeSats`, runs `recheckBeforeSubmission` after its last
+    /// await before the payment goes out, and `beforeSubmission` right before it does, as the node path does.
+    func send(
+        bolt11: String,
+        sats: UInt64?,
+        maxFeeSats: UInt64?,
+        recheckBeforeSubmission: @escaping () async throws -> Void,
+        beforeSubmission: @escaping () throws -> Void
+    ) async throws -> PaymentHash
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64
     /// Throws when the rail could not list its payments, so a duplicate-payment check can tell that from none.
     func lightningPayments() async throws -> [ChannelFreeRailPayment]
@@ -26,6 +32,8 @@ protocol ChannelFreeLightningRail: AnyObject {
     func lightningSendStatus(bolt11: String) async throws -> PaymentStatus?
     /// Whether this app would have paid `bolt11` by a direct Spark transfer, which `lightningSendStatus` can't see.
     func mayPayBySparkTransfer(bolt11: String, sats: UInt64?) async throws -> Bool
+    /// Whether this build sent the invoice with `paymentHash` under a derived key, so a retry under that key can't pay twice.
+    func hasKeyedSend(paymentHash: String) -> Bool
 }
 
 @MainActor
@@ -156,6 +164,10 @@ class LightningService: NodeLifecycleService {
 
     private let restartLock = NSLock()
     private var lastRestart: Task<Void, Error>?
+    /// Counts the stops callers asked for, so a recovery start can tell that one came in after it began.
+    private var requestedStops = 0
+    /// Starts while a stopped node's VSS writes keep the store busy; each build waits up to 60 s for them.
+    static let busyStoreStartAttempts = 5
 
     private let eventLoopLock = NSLock()
     /// The current event loop and the node it serves, so only that node's lifecycle can cancel it.
@@ -211,6 +223,8 @@ class LightningService: NodeLifecycleService {
     private var attemptRails: [String: LightningPaymentRail] = [:]
     /// Payment hashes inside a rail send, which Spark lists only once it returns.
     private var railSendsInFlight: Set<String> = []
+    /// How many rail sends of each invoice started, so a check can tell one started since it read.
+    private var railSendStarts: [String: Int] = [:]
     /// Per payment hash, the latest time Spark dated a failed attempt of it, from its list or its events, so a send's
     /// start is saved after it and that failure never reads as the send's own.
     private var railFailureCreatedAt: [String: UInt64] = [:]
@@ -227,8 +241,8 @@ class LightningService: NodeLifecycleService {
     /// Lightning: an invoice Spark paid or is paying is never paid again over a channel.
     weak var channelFreePaymentHistory: ChannelFreeLightningRail?
     /// Writes the Activity row of a rail send Spark never settled once its invoice expired: from Spark's own attempt of it
-    /// when listed, otherwise by failing the stored pending row. Returns whether the row was saved.
-    var railSendExpired: ((String) async -> Bool)?
+    /// when listed, otherwise by failing the stored pending row. Returns the status saved, nil when the row wasn't.
+    var railSendExpired: ((String) async -> PaymentStatus?)?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
     typealias OnchainActivityCompletion = @MainActor () async -> Void
@@ -431,42 +445,56 @@ class LightningService: NodeLifecycleService {
         // Stop the current node if it exists, ignore errors if already stopped
         if let node {
             do {
-                try await stop()
+                try await stopNode()
             } catch {
                 Logger.debug("Node was already stopped or failed to stop: \(error)")
                 // Clear the node reference anyway
                 await releaseAfterFailedStop(of: node)
             }
         }
+        let stopsBefore = restartLock.withLock { requestedStops }
 
-        // Restart the node with the current configuration
+        try await Self.applyConfigChange(
+            stopRequested: { self.restartLock.withLock { self.requestedStops != stopsBefore } },
+            start: {
+                try await self.setup(walletIndex: self.currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
+                try await self.start()
+            },
+            recover: { try await self.restartWithPreviousConfig(stopsBefore: stopsBefore) }
+        )
+    }
+
+    /// Starts the node with a changed config, retrying while the store is busy with the stopped node's VSS writes, which have
+    /// nothing to do with the new config. Any other failure, or a busy store past every attempt, runs `recover` and rethrows.
+    static func applyConfigChange(
+        stopRequested: () -> Bool,
+        start: () async throws -> Void,
+        recover: () async throws -> Void
+    ) async throws {
         do {
-            try await setup(walletIndex: currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
-            try await start()
-            Logger.info("Node restarted successfully")
+            try await startRetryingBusyStore(stopRequested: stopRequested, start: start)
+            Logger.info("Node restarted successfully", context: "LightningService")
         } catch {
-            Logger.warn("Failed ldk-node config change, attempting recovery…")
-            // Attempt to restart with previous config
+            Logger.warn("Failed ldk-node config change, attempting recovery…", context: "LightningService")
             // If recovery fails, log it but still throw the original error
             do {
-                try await restartWithPreviousConfig()
+                try await recover()
             } catch {
-                Logger.error("Recovery attempt also failed: \(error)")
+                Logger.error("Recovery attempt also failed: \(error)", context: "LightningService")
             }
-            // Always re-throw the original error that caused the restart failure
             throw error
         }
     }
 
     /// Restarts the node with the previous stored configuration (recovery method)
     /// This is called when a config change fails to restore the node to a working state
-    private func restartWithPreviousConfig() async throws {
+    private func restartWithPreviousConfig(stopsBefore: Int) async throws {
         Logger.debug("Stopping node for recovery attempt")
 
         // Stop the current node if it exists
         if let node {
             do {
-                try await stop()
+                try await stopNode()
             } catch {
                 Logger.error("Failed to stop node during recovery: \(error)")
                 await releaseAfterFailedStop(of: node)
@@ -476,14 +504,51 @@ class LightningService: NodeLifecycleService {
         Logger.debug("Starting node with previous config for recovery")
 
         do {
-            // Restart with nil URLs to use stored/default configuration
-            try await setup(walletIndex: currentWalletIndex, electrumServerUrl: nil, rgsServerUrl: nil)
-            try await start()
+            // The stopped node's VSS writes can keep retrying for minutes, past one build's wait for them.
+            try await Self.startRetryingBusyStore(stopRequested: { self.restartLock.withLock { self.requestedStops != stopsBefore } }) {
+                // Restart with nil URLs to use stored/default configuration
+                try await self.setup(walletIndex: self.currentWalletIndex, electrumServerUrl: nil, rgsServerUrl: nil)
+                try await self.start()
+            }
             Logger.debug("Successfully started node with previous config")
         } catch {
             Logger.error("Failed starting node with previous config: \(error)")
             throw error
         }
+    }
+
+    /// Runs `start` again while it fails because the store is still busy with a stopped node's VSS writes, up to
+    /// `busyStoreStartAttempts` times. A stop requested meanwhile wins: no further start runs.
+    static func startRetryingBusyStore(
+        attempts: Int = busyStoreStartAttempts,
+        stopRequested: () -> Bool,
+        start: () async throws -> Void
+    ) async throws {
+        var attempt = 0
+        while true {
+            guard !stopRequested() else {
+                Logger.info("Skipped node start because a stop was requested", context: "LightningService")
+                throw AppError(serviceError: .nodeNotSetup)
+            }
+            attempt += 1
+            if attempt > 1 {
+                Logger.warn("Retrying node start on a busy store '\(attempt)/\(attempts)'", context: "LightningService")
+            }
+            do {
+                try await start()
+                return
+            } catch where isKvStoreSetupFailure(error) && attempt < attempts {
+                continue
+            }
+        }
+    }
+
+    static func isKvStoreSetupFailure(_ error: Error) -> Bool {
+        let underlying = (error as? AppError)?.underlyingError ?? error
+        if case BuildError.KvStoreSetupFailed = underlying {
+            return true
+        }
+        return false
     }
 
     /// Pass onEvent when being used in the background to listen for payments, channels, closes, etc
@@ -546,6 +611,12 @@ class LightningService: NodeLifecycleService {
     }
 
     func stop(clearEventCallback: Bool = false) async throws {
+        restartLock.withLock { requestedStops += 1 }
+        try await stopNode(clearEventCallback: clearEventCallback)
+    }
+
+    /// Stops the node without counting as a requested stop, for the restart and its recovery.
+    private func stopNode(clearEventCallback: Bool = false) async throws {
         guard let node else {
             Logger.warn("Node not started, nothing to stop")
             return
@@ -1229,6 +1300,7 @@ class LightningService: NodeLifecycleService {
         sats: UInt64? = nil,
         params: RouteParametersConfig? = nil,
         channelsOnly: Bool = false,
+        recheckBeforeSubmission: @escaping () async throws -> Void = {},
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
         let invoice = try? Bolt11Invoice.fromStr(invoiceStr: bolt11)
@@ -1263,6 +1335,7 @@ class LightningService: NodeLifecycleService {
                     feeSats = try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: sats)
                 } catch {
                     Logger.warn("Spark fee estimate failed: \(error)", context: "LightningService")
+                    try throwPendingIfInDoubt(paymentHash: paymentHash)
                     throw error as? ChannelFreeRailSendRefused ?? ChannelFreeRailSendRefused(
                         reason: t("wallet__payment_failed_description"),
                         underlying: error
@@ -1270,6 +1343,7 @@ class LightningService: NodeLifecycleService {
                 }
                 guard feeSats * 1000 <= maxFeeMsat else {
                     Logger.info("Spark routing fee of \(feeSats) sats exceeds the limit of \(maxFeeMsat / 1000) sats", context: "LightningService")
+                    try throwPendingIfInDoubt(paymentHash: paymentHash)
                     throw ChannelFreeRailSendRefused(reason: t("wallet__max_possible_fee_rate"))
                 }
             }
@@ -1281,8 +1355,11 @@ class LightningService: NodeLifecycleService {
                     sats: sats,
                     maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
                         ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
+                    recheckBeforeSubmission: recheckBeforeSubmission,
                     beforeSubmission: { [weak self] in
                         try beforeSubmission()
+                        // Spark checks again before it retries the same attempt, which is already admitted.
+                        guard !didRecordAttempt else { return }
                         do {
                             try self?.admitSend(paymentHash: paymentHash, on: .channelFree, since: mark)
                         } catch {
@@ -1307,6 +1384,7 @@ class LightningService: NodeLifecycleService {
                     endRailSendUncertainty(paymentHash: paymentHash)
                     releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
                 }
+                try throwPendingIfInDoubt(paymentHash: paymentHash)
                 throw refusal
             } catch where isRefusedAtAdmission {
                 // Nothing of this send left. Refused for a Spark send recorded since the checks, its caller gets that
@@ -1323,6 +1401,8 @@ class LightningService: NodeLifecycleService {
                 // failed before it recorded its attempt never reached Spark.
                 if let paymentHash, didRecordAttempt {
                     markRailSendUncertain(paymentHash: paymentHash, since: mark)
+                } else {
+                    try throwPendingIfInDoubt(paymentHash: paymentHash)
                 }
                 throw error
             }
@@ -1351,6 +1431,8 @@ class LightningService: NodeLifecycleService {
                 endLdkSend(paymentHash: sendKey)
             }
         }
+        // After this send's last await before the queue, so a refusal since the caller's checks leaves nothing recorded.
+        try await recheckBeforeSubmission()
         do {
             return try await Self.submitPayment(beforeSubmission: { [weak self] in
                 try beforeSubmission()
@@ -1676,7 +1758,8 @@ class LightningService: NodeLifecycleService {
         sats: UInt64?,
         invoiceCreatedAt: UInt64?,
         invoiceExpiresAt: Int?,
-        sendsOverRail: Bool = false
+        sendsOverRail: Bool = false,
+        retriesKeyedSend: Bool = true
     ) async throws -> PaymentHash? {
         guard let paymentHash else { return nil }
         var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
@@ -1711,10 +1794,16 @@ class LightningService: NodeLifecycleService {
             if let payments = await readableRailPayments() {
                 let live = keepRailAttempts(from: payments, since: mark)
                 let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
-                if let payment {
+                // A send in doubt under its derived key goes out again under that key over Spark, which can't pay twice:
+                // the operators return the transfer it committed, if any.
+                let isKeyedRetry = payment?.status != .succeeded
+                    && isKeyedRailSendInDoubt(paymentHash: paymentHash, sendsOverRail: sendsOverRail && retriesKeyedSend)
+                if let payment, !isKeyedRetry {
                     statuses.append(payment.status)
                 }
-                if payment == nil || payment?.status == .failed {
+                if isKeyedRetry {
+                    Logger.info("Retrying '\(paymentHash)' over Spark under its earlier key", context: "LightningService")
+                } else if payment == nil || payment?.status == .failed {
                     if live.contains(paymentHash.lowercased()) || isRailSendInFlight(paymentHash: paymentHash) {
                         statuses.append(.pending)
                     } else if await !railSyncedSinceUncertainSend(paymentHash: paymentHash) {
@@ -1822,6 +1911,16 @@ class LightningService: NodeLifecycleService {
     /// An unknown time counts as before the restore and never expiring.
     static func holdsRestoredInvoice(restoredAt: Int, invoiceCreatedAt: UInt64?, invoiceExpiresAt: Int?, now: Int) -> Bool {
         Int(clamping: invoiceCreatedAt ?? 0) < restoredAt && invoiceExpiresAt.map { now < $0 } ?? true
+    }
+
+    /// Whether a send of `paymentHash` this build made under a derived key is in doubt and none is in flight, so a send
+    /// over Spark may go out again under that key.
+    private func isKeyedRailSendInDoubt(paymentHash: String, sendsOverRail: Bool) -> Bool {
+        guard sendsOverRail, !isRailSendInFlight(paymentHash: paymentHash),
+              channelFreeRail?.hasKeyedSend(paymentHash: paymentHash) == true
+        else { return false }
+        let hash = paymentHash.lowercased()
+        return eventCallbackLock.withLock { uncertainRailSendFailedAt()[hash] != nil }
     }
 
     /// Nil while the rail's payments can't be read: listing them failed, or the rail runs here but isn't connected.
@@ -1937,17 +2036,21 @@ class LightningService: NodeLifecycleService {
 
     /// Ends the send held since `startedAt` only: once it ended, a retry may hold the invoice again, and that retry stays
     /// held.
-    private func endRailSendUncertainty(paymentHash: String, startedAt: Int) {
+    @discardableResult
+    private func endRailSendUncertainty(paymentHash: String, startedAt: Int) -> Bool {
         endRailSendUncertainty(paymentHash: paymentHash) { $0 == startedAt }
     }
 
-    private func endRailSendUncertainty(paymentHash: String, where isEnded: (Int) -> Bool) {
+    /// Returns whether it ended a hold.
+    @discardableResult
+    private func endRailSendUncertainty(paymentHash: String, where isEnded: (Int) -> Bool) -> Bool {
         let hash = paymentHash.lowercased()
-        eventCallbackLock.withLock {
+        return eventCallbackLock.withLock {
             var uncertain = uncertainRailSendFailedAt()
-            guard let startedAt = uncertain[hash], isEnded(startedAt) else { return }
+            guard let startedAt = uncertain[hash], isEnded(startedAt) else { return false }
             uncertain.removeValue(forKey: hash)
             railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
+            return true
         }
     }
 
@@ -1993,12 +2096,26 @@ class LightningService: NodeLifecycleService {
         guard let rail = channelFreeRail ?? channelFreePaymentHistory, await rail.hasSynced(after: UInt64(max(uncertain.startedAt, expiresAt))) else {
             return false
         }
+        // A retry under the send's key, in flight or started since, settles it by its own outcome, or leaves the hold to
+        // a later sync.
+        let starts = eventCallbackLock.withLock { railSendsInFlight.contains(hash) ? nil : railSendStarts[hash] ?? 0 }
+        guard let starts else { return false }
         // Its Activity row is written first, so a stop in between finds the send held and writes it again.
-        if let record = railSendExpired, await !record(hash) {
-            return false
+        var status = PaymentStatus.failed
+        if let record = railSendExpired {
+            guard let recorded = await record(hash) else { return false }
+            status = recorded
         }
-        endRailSendUncertainty(paymentHash: hash, startedAt: uncertain.startedAt)
-        return true
+        let didEnd = endRailSendUncertainty(paymentHash: hash) {
+            $0 == uncertain.startedAt && !railSendsInFlight.contains(hash) && railSendStarts[hash] ?? 0 == starts
+        }
+        // Reported as failed, so a send screen left on Pending resolves; a retry in flight reports its own outcome, and
+        // a send Spark lists paid or pending reports by Spark's own event.
+        if didEnd, status == .failed, !isRailSendInFlight(paymentHash: hash) {
+            deliverChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil))
+        }
+        // A hold kept for a retry, or a retry's own, still holds the invoice.
+        return didEnd || eventCallbackLock.withLock { uncertainRailSendFailedAt()[hash] == nil }
     }
 
     /// Ends the sends Spark never settled whose invoice expired since, once a sync after the grace reached Spark.
@@ -2021,8 +2138,16 @@ class LightningService: NodeLifecycleService {
             sats: sats,
             invoiceCreatedAt: invoice?.secondsSinceEpoch(),
             invoiceExpiresAt: expiresAt,
-            sendsOverRail: true
+            sendsOverRail: true,
+            retriesKeyedSend: false
         ) != nil
+    }
+
+    /// A retry of a send still in doubt that never went out leaves that send pending, not failed, as it may have paid:
+    /// a failure would release its Paykit proof, allowance and QuickPay charge.
+    private func throwPendingIfInDoubt(paymentHash: String?) throws {
+        guard let paymentHash, eventCallbackLock.withLock({ uncertainRailSendFailedAt()[paymentHash.lowercased()] != nil }) else { return }
+        throw Self.pendingDuplicate(paymentHash: paymentHash)
     }
 
     private static func pendingDuplicate(paymentHash: String?) -> NodeError {
@@ -2031,7 +2156,12 @@ class LightningService: NodeLifecycleService {
 
     func beginRailSend(paymentHash: String?) -> Bool {
         guard let paymentHash else { return true }
-        return eventCallbackLock.withLock { railSendsInFlight.insert(paymentHash.lowercased()).inserted }
+        let hash = paymentHash.lowercased()
+        return eventCallbackLock.withLock {
+            guard railSendsInFlight.insert(hash).inserted else { return false }
+            railSendStarts[hash, default: 0] += 1
+            return true
+        }
     }
 
     /// The last check before a send leaves on `rail`, under the same lock that marks the other rail's sends in flight,
@@ -2683,6 +2813,19 @@ extension LightningService {
             Logger.info("Ignored a Spark failure for a payment retried over a channel: \(event)", context: "LightningService")
             return
         }
+        let callback = eventCallbackLock.withLock {
+            if storedEventCallback == nil {
+                pendingChannelFreeRailEvents.append(event)
+            }
+            return storedEventCallback
+        }
+        if let callback {
+            Self.deliverOnMainActor([event], to: callback)
+        }
+    }
+
+    /// Passes `event` to the app without settling any hold, as for a send whose hold already ended.
+    private func deliverChannelFreeRailEvent(_ event: Event) {
         let callback = eventCallbackLock.withLock {
             if storedEventCallback == nil {
                 pendingChannelFreeRailEvents.append(event)

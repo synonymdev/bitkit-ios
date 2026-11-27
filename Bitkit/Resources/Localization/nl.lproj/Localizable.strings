@@ -399,6 +399,7 @@
 "lightning__spark_exit__fees" = "Netwerkkosten";
 "lightning__spark_exit__receive" = "U ontvangt (schatting)";
 "lightning__spark_exit__savings_refused" = "Je betaling uit spaargeld is niet gelukt. Betaal opnieuw of financier vanuit een andere wallet.";
+"lightning__spark_exit__savings_unresolved" = "Je betaling uit spaargeld is nog niet bevestigd. Wacht erop voordat je vanuit een andere wallet betaalt.";
 "lightning__spark_exit__quote_loading" = "Kosten ophalen…";
 "lightning__spark_exit__quote_settling" = "Wachten tot Spark klaar is met het verplaatsen van je saldo. Dit kan tot 5 minuten duren.";
 "lightning__spark_exit__quote_error" = "Kon de kosten van de overboeking niet ophalen. Probeer opnieuw.";
@@ -697,6 +698,16 @@
 "other__lnurl_auth_success_title" = "Ingelogd";
 "other__lnurl_auth_success_msg_domain" = "Du hast dich erfolgreich bei {domain} angemeldet.";
 "other__lnurl_auth_success_msg_no_domain" = "U bent succesvol ingelogd.";
+"other__lnurl_auth_auth_prompt" = "Authenticeren bij {domain}?";
+"other__lnurl_auth_auth_title" = "Authenticeren";
+"other__lnurl_auth_link_prompt" = "Account koppelen aan {domain}?";
+"other__lnurl_auth_link_title" = "Koppelen";
+"other__lnurl_auth_login_button" = "Inloggen";
+"other__lnurl_auth_login_prompt" = "Inloggen bij {domain}?";
+"other__lnurl_auth_login_title" = "Inloggen";
+"other__lnurl_auth_register_prompt" = "Registreren bij {domain}?";
+"other__lnurl_auth_register_title" = "Registreren";
+"other__lnurl_auth_unknown_domain" = "Onbekend domein";
 "other__lnurl_withdr_error" = "Opname Mislukt (LNURL)";
 "other__lnurl_withdr_error_generic" = "Entschuldigung, ein Fehler ist aufgetreten.";
 "other__lnurl_withdr_error_no_capacity" = "Niet genoeg ontvangstcapaciteit om opnameverzoek te voltooien.";
@@ -909,6 +920,7 @@
 "pubky_auth__use_ring" = "Pubky Ring gebruiken";
 "pubky_auth__use_ring_desc" = "Bitkit kan de sleutel voor deze pubky niet uit Pubky Ring lezen. Open Pubky Ring om dit verzoek goed te keuren.";
 "pubky_auth__invalid_request" = "Ongeldig autorisatieverzoek";
+"pubky_auth__other_pubky" = "Dit verzoek is voor {pubky}, niet voor de pubky van deze wallet.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Maak een nieuwe Pubky-identiteit aan op deze homeserver. Ga alleen verder als u deze vertrouwt.";
 "pubky_auth__approval_failed" = "Autorisatie mislukt";
@@ -1015,6 +1027,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay ondersteunt uitsluitend betalingen vanaf uw Bestedingssaldo.";
 "wallet__send_quickpay__currency_conversion" = "Valutaconversie mislukt";
+"wallet__send_quickpay__already_paid" = "Deze factuur is al betaald.";
 "settings__security__title" = "Veiligheid en privacy";
 "settings__security__swipe_balance_to_hide" = "Veeg de balans om te verbergen";
 "settings__security__hide_balance_on_open" = "Saldo verbergen bij open";

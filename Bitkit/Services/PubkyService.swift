@@ -95,6 +95,7 @@ enum PubkyService {
         secretKeyHex: String,
         sdkService: PaykitSdkService = .shared
     ) async throws {
+        try PubkyAuthRequest.requireExpectedSigner(authUrl: authUrl) { try pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex) }
         try await sdkService.republishIdentityBeforeApproval(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
         try await sdkService.approveAuth(
@@ -121,6 +122,7 @@ enum PubkyService {
         secretKeyHex: String,
         sdkService: PaykitSdkService = .shared
     ) async throws {
+        try PubkyAuthRequest.requireExpectedSigner(authUrl: authUrl) { try pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex) }
         try await sdkService.republishIdentityBeforeApproval(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
         let paykitKey = claim.includesPaykitAccess
@@ -185,6 +187,7 @@ enum PubkyService {
         approvedUsdtAddress: String? = nil,
         usdtEndpoint: (() async throws -> PublicPaykitService.Endpoint)? = nil,
         isUsdtEnabled: () -> Bool = { Env.isUsdtEnabled && UsdtPreference.isEnabled() },
+        signerPublicKey: (String) throws -> String = { try pubkyPublicKeyFromSecret(secretKeyHex: $0) },
         ordinaryApproval: @escaping OrdinaryAuthApproval = { authUrl, capabilities, clientID, secretKeyHex in
             try await approveAuth(
                 authUrl: authUrl,
@@ -204,6 +207,7 @@ enum PubkyService {
         }
     ) async throws {
         guard authUrl == request.rawUrl else { throw PubkyServiceError.invalidAuthUrl }
+        try PubkyAuthRequest.requireExpectedSigner(authUrl: authUrl) { try signerPublicKey(secretKeyHex) }
         if request.bitkitClaim?.requiresUsdtAddress == true, !isUsdtEnabled() {
             throw PubkyAuthRequestError.invalidPaymentDetails
         }

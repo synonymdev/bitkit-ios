@@ -401,6 +401,7 @@
 "lightning__spark_exit__fees" = "Taxas de rede";
 "lightning__spark_exit__receive" = "Você recebe (estimativa)";
 "lightning__spark_exit__savings_refused" = "Seu pagamento da poupança não foi concluído. Pague novamente ou financie de outra carteira.";
+"lightning__spark_exit__savings_unresolved" = "Seu pagamento da poupança ainda não foi confirmado. Aguarde antes de pagar de outra carteira.";
 "lightning__spark_exit__quote_loading" = "Obtendo os custos…";
 "lightning__spark_exit__quote_settling" = "Aguardando a Spark terminar de mover seu saldo. Isso pode levar até 5 minutos.";
 "lightning__spark_exit__quote_error" = "Não foi possível obter os custos da transferência. Tente novamente.";
@@ -699,6 +700,16 @@
 "other__lnurl_auth_success_title" = "Entrou com sucesso.";
 "other__lnurl_auth_success_msg_domain" = "Você entrou com sucesso em {domain}";
 "other__lnurl_auth_success_msg_no_domain" = "Você entrou com sucesso.";
+"other__lnurl_auth_auth_prompt" = "Autenticar-se em {domain}?";
+"other__lnurl_auth_auth_title" = "Autenticar";
+"other__lnurl_auth_link_prompt" = "Vincular a conta a {domain}?";
+"other__lnurl_auth_link_title" = "Vincular";
+"other__lnurl_auth_login_button" = "Entrar";
+"other__lnurl_auth_login_prompt" = "Entrar em {domain}?";
+"other__lnurl_auth_login_title" = "Entrar";
+"other__lnurl_auth_register_prompt" = "Cadastrar-se em {domain}?";
+"other__lnurl_auth_register_title" = "Cadastrar";
+"other__lnurl_auth_unknown_domain" = "Domínio desconhecido";
 "other__lnurl_withdr_error" = "O Saque Falhou (LNURL)";
 "other__lnurl_withdr_error_generic" = "Desculpe, ocorreu um erro.";
 "other__lnurl_withdr_error_no_capacity" = "Capacidade de recebimento insuficiente para concluir a solicitação de saque.";
@@ -911,6 +922,7 @@
 "pubky_auth__use_ring" = "Usar Pubky Ring";
 "pubky_auth__use_ring_desc" = "A Bitkit não consegue ler a chave desta pubky no Pubky Ring. Abra o Pubky Ring para aprovar esta solicitação.";
 "pubky_auth__invalid_request" = "Solicitação de autenticação inválida";
+"pubky_auth__other_pubky" = "Esta solicitação é para {pubky}, não para o pubky desta carteira.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crie uma nova identidade Pubky neste homeserver. Só continue se você confiar nele.";
 "pubky_auth__approval_failed" = "Falha na Autorização";
@@ -1017,6 +1029,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* O QuickPay suporta exclusivamente pagamentos a partir do seu saldo de gastos.";
 "wallet__send_quickpay__currency_conversion" = "Falha na conversão de moeda";
+"wallet__send_quickpay__already_paid" = "Esta fatura já foi paga.";
 "settings__security__title" = "Segurança e Privacidade";
 "settings__security__swipe_balance_to_hide" = "Arraste o saldo para ocultar";
 "settings__security__hide_balance_on_open" = "Ocultar saldo ao abrir o app";

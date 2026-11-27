@@ -60,6 +60,12 @@ struct SparkExitRecord: Codable, Equatable {
         var isFeeRateRefused: Bool?
     }
 
+    /// `sats` the user confirmed savings pays to the funding address, refused at a fee of `feeSats`.
+    struct SavingsRefusal: Codable, Equatable {
+        let sats: UInt64
+        let feeSats: UInt64
+    }
+
     /// A leaf an older state of the wallet claimed on-chain first, which this exit cannot recover.
     struct LostLeaf: Codable, Equatable {
         let leafId: String
@@ -200,6 +206,9 @@ struct SparkExitRecord: Codable, Equatable {
     var transferId: String?
     /// The fee funding payment Bitkit broadcast from savings, so the exit shows it as paid instead of asking again.
     var fundingPaymentTxid: String?
+    /// The start's savings payment of the fee funding, refused before it went out because its fee rose above the one
+    /// confirmed: progress offers to pay it from savings at the new fee.
+    var savingsRefusal: SavingsRefusal?
     /// The tip when the exit first looked for that payment, and the tip since which no host knows it. A payment no
     /// host knows for a block, or not adopted within `SparkExitDriver.ownPaymentTimeoutBlocks`, is forgotten, so the
     /// exit asks and reminds again.

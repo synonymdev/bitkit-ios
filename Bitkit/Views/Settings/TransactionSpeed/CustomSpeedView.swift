@@ -6,6 +6,7 @@ struct CustomSpeedView: View {
     @EnvironmentObject var settings: SettingsViewModel
 
     @State private var feeRate: UInt32 = 0
+    @State private var isPresetSelected = false
 
     /// Average transaction size for fee calculation
     private let avgTransactionSize: UInt32 = 256 // vBytes for typical transaction
@@ -31,8 +32,10 @@ struct CustomSpeedView: View {
                 forceUnit: .bitcoin,
                 forceDisplayUnit: .modern,
                 symbol: true,
-                color: feeRate == 0 ? .textSecondary : .textPrimary
+                color: feeRate == 0 ? .textSecondary : .textPrimary,
+                fillsWidth: false
             )
+            .presetSelection(isPresetSelected)
             .padding(.bottom, 16)
 
             // Total fee estimate
@@ -84,32 +87,13 @@ struct CustomSpeedView: View {
             // Initialize from current setting if it's custom
             if case let .custom(currentRate) = settings.defaultTransactionSpeed {
                 feeRate = currentRate
+                isPresetSelected = currentRate > 0
             }
         }
     }
 
     private func handleNumberPadInput(_ key: String) {
-        let current = String(feeRate)
-
-        if key == "delete" {
-            if current.count > 1 {
-                let newString = String(current.dropLast())
-                feeRate = UInt32(newString) ?? 0
-            } else {
-                feeRate = 0
-            }
-        } else {
-            // Handle leading zero
-            let newString: String = if current == "0" {
-                key
-            } else {
-                current + key
-            }
-
-            // Limit to 3 digits (max 999 sat/vB)
-            if newString.count <= 3, let newRate = UInt32(newString) {
-                feeRate = newRate
-            }
-        }
+        feeRate = customFeeRate(after: key, from: feeRate, replacing: isPresetSelected)
+        isPresetSelected = false
     }
 }
