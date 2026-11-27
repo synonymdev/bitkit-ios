@@ -441,6 +441,9 @@ class LightningService: NodeLifecycleService {
 
     private func restartNode(electrumServerUrl: String?, rgsServerUrl: String?) async throws {
         Logger.info("Restarting node with current configuration")
+        // Read before this restart's own stop, which does not count as a requested stop, so a stop requested while the old
+        // node stops wins too.
+        let stopsBefore = restartLock.withLock { requestedStops }
 
         // Stop the current node if it exists, ignore errors if already stopped
         if let node {
@@ -452,13 +455,15 @@ class LightningService: NodeLifecycleService {
                 await releaseAfterFailedStop(of: node)
             }
         }
-        let stopsBefore = restartLock.withLock { requestedStops }
+        let stopRequested = { self.restartLock.withLock { self.requestedStops != stopsBefore } }
 
         try await Self.applyConfigChange(
-            stopRequested: { self.restartLock.withLock { self.requestedStops != stopsBefore } },
+            stopRequested: stopRequested,
             start: {
                 try await self.setup(walletIndex: self.currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
-                try await self.start()
+                try await Self.startUnlessStopRequested(stopRequested: stopRequested, release: { try await self.stopNode() }) {
+                    try await self.start()
+                }
             },
             recover: { try await self.restartWithPreviousConfig(stopsBefore: stopsBefore) }
         )
@@ -505,10 +510,13 @@ class LightningService: NodeLifecycleService {
 
         do {
             // The stopped node's VSS writes can keep retrying for minutes, past one build's wait for them.
-            try await Self.startRetryingBusyStore(stopRequested: { self.restartLock.withLock { self.requestedStops != stopsBefore } }) {
+            let stopRequested = { self.restartLock.withLock { self.requestedStops != stopsBefore } }
+            try await Self.startRetryingBusyStore(stopRequested: stopRequested) {
                 // Restart with nil URLs to use stored/default configuration
                 try await self.setup(walletIndex: self.currentWalletIndex, electrumServerUrl: nil, rgsServerUrl: nil)
-                try await self.start()
+                try await Self.startUnlessStopRequested(stopRequested: stopRequested, release: { try await self.stopNode() }) {
+                    try await self.start()
+                }
             }
             Logger.debug("Successfully started node with previous config")
         } catch {
@@ -541,6 +549,21 @@ class LightningService: NodeLifecycleService {
                 continue
             }
         }
+    }
+
+    /// A stop requested while the node was being built found no node to stop, so it wins here: the built node is released
+    /// instead of started.
+    static func startUnlessStopRequested(
+        stopRequested: () -> Bool,
+        release: () async throws -> Void,
+        start: () async throws -> Void
+    ) async throws {
+        guard !stopRequested() else {
+            try await release()
+            Logger.info("Released the built node because a stop was requested during setup", context: "LightningService")
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        try await start()
     }
 
     static func isKvStoreSetupFailure(_ error: Error) -> Bool {

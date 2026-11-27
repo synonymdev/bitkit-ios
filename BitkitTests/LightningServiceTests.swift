@@ -160,4 +160,31 @@ final class LightningServiceTests: XCTestCase {
         XCTAssertEqual(attempts, 1)
         XCTAssertTrue(recovered)
     }
+
+    func testBuiltNodeIsReleasedInsteadOfStartedAfterAStopDuringSetup() async {
+        var released = false
+        var started = false
+        do {
+            try await Bitkit.LightningService.startUnlessStopRequested(
+                stopRequested: { true },
+                release: { released = true },
+                start: { started = true }
+            )
+            XCTFail("expected the start to yield to the stop")
+        } catch {}
+        XCTAssertTrue(released)
+        XCTAssertFalse(started)
+    }
+
+    func testBuiltNodeStartsWithoutAStopDuringSetup() async throws {
+        var released = false
+        var started = false
+        try await Bitkit.LightningService.startUnlessStopRequested(
+            stopRequested: { false },
+            release: { released = true },
+            start: { started = true }
+        )
+        XCTAssertFalse(released)
+        XCTAssertTrue(started)
+    }
 }
