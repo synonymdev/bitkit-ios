@@ -7,6 +7,7 @@ private let approvalTestXpub =
     "tpubDDWohsp5dx2iMJ9N7iHbgAEDhH4BJB9NWW1fEW3yA3AFNDREmpzteCXNqppMLUmKFY5q5e3" +
     "PXtS5CuqWCQbYcGhpPqYAgQSYdwknW9J6sQv"
 private let approvalTestClientPublicKey = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
+private let approvalTestSignerPublicKey = "8um71us3fyw6h8wbcxb5ar3rwusy1a6u49956ikzojg3gcwd1dty"
 
 private func approvalTestAuthUrl(secret: String = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s") -> String {
     "pubkyauth://signin_grant?caps=\(PubkyAuthClaim.requiredCapabilities)" +
@@ -44,6 +45,176 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
 
         XCTAssertTrue(approved)
         XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request), .authorize)
+    }
+
+    @MainActor
+    func testRequestNamingAnotherPubkyIsNeverSigned() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ExpectedSigner.\(UUID().uuidString)"))
+        let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: ApprovalFakeWatchOnlyAccountNode())
+        let other = approvalTestClientPublicKey
+        for url in [ordinaryApprovalTestAuthUrl(), approvalTestAuthUrl()].map({ "\($0)&spk=\(other)" }) {
+            let request = try PubkyAuthRequest.parse(url: url)
+            XCTAssertEqual(request.expectedSigner, other)
+            do {
+                try await PubkyService.approveAuthRequest(
+                    request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret", accountManager: manager,
+                    signerPublicKey: { _ in approvalTestSignerPublicKey },
+                    ordinaryApproval: { _, _, _, _ in XCTFail("A request for another pubky must not be signed") },
+                    companionApproval: { _, _, _, _, _ in XCTFail("A request for another pubky must not be signed") }
+                )
+                XCTFail("Expected the request to be refused")
+            } catch {
+                XCTAssertEqual(error as? PubkyAuthRequestError, .signerMismatch(expectedSigner: other))
+            }
+        }
+        XCTAssertTrue(manager.accounts.isEmpty)
+    }
+
+    @MainActor
+    func testRequestNamingThisPubkyIsApproved() async throws {
+        let url = "\(ordinaryApprovalTestAuthUrl())&spk=\(approvalTestSignerPublicKey)"
+        var approved = false
+
+        try await PubkyService.approveAuthRequest(
+            request: PubkyAuthRequest.parse(url: url), authUrl: url, accountName: "", secretKeyHex: "secret",
+            signerPublicKey: { _ in "pubky\(approvalTestSignerPublicKey)" },
+            ordinaryApproval: { authUrl, _, _, _ in
+                XCTAssertEqual(authUrl, url)
+                approved = true
+            }
+        )
+
+        XCTAssertTrue(approved)
+    }
+
+    func testSigningEntryPointsRefuseAnotherPubkyBeforeAnythingElse() async throws {
+        let secretKeyHex = String(repeating: "11", count: 32)
+        let own = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        let other = approvalTestClientPublicKey
+        XCTAssertFalse(PubkyAuthRequest.isExpectedSigner(other, publicKey: own))
+        let ordinaryUrl = "\(ordinaryApprovalTestAuthUrl())&spk=\(other)"
+        let companionUrl = "\(approvalTestAuthUrl())&spk=\(other)"
+
+        do {
+            try await PubkyService.approveAuth(
+                authUrl: ordinaryUrl, expectedCapabilities: "/pub/example/:rw", approvedClientID: "paykit.test",
+                secretKeyHex: secretKeyHex
+            )
+            XCTFail("Expected the request to be refused")
+        } catch {
+            XCTAssertEqual(error as? PubkyAuthRequestError, .signerMismatch(expectedSigner: other))
+        }
+        do {
+            try await PubkyService.approveAuthWithCompanionClaim(
+                authUrl: companionUrl, approvedClientID: "paykit.test", claim: .watchOnlyAccountV1, accountPayload: nil,
+                secretKeyHex: secretKeyHex
+            )
+            XCTFail("Expected the request to be refused")
+        } catch {
+            XCTAssertEqual(error as? PubkyAuthRequestError, .signerMismatch(expectedSigner: other))
+        }
+        do {
+            try await PubkyService.approveAuth(
+                authUrl: "\(ordinaryUrl)&spk=\(other)", expectedCapabilities: "/pub/example/:rw",
+                approvedClientID: "paykit.test", secretKeyHex: secretKeyHex
+            )
+            XCTFail("Expected the request to be invalid")
+        } catch {
+            XCTAssertEqual(error as? PubkyAuthRequestError, .invalidUrl)
+        }
+    }
+
+    @MainActor
+    func testRequestNamingAnotherPubkyShowsTheRefusalInsteadOfTheSheet() throws {
+        let other = approvalTestClientPublicKey
+        let request = try PubkyAuthRequest.parse(url: "\(ordinaryApprovalTestAuthUrl())&spk=\(other)")
+        // The refusal comes first even when the key is out of reach, as on Android.
+        for hasSecretKey in [true, false] {
+            let sheets = SheetViewModel()
+            let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+            ToastWindowManager.shared.hideToast()
+            var shownToasts: [Bitkit.Toast] = []
+            let subscription = ToastWindowManager.shared.$currentToast.compactMap { $0 }.sink { shownToasts.append($0) }
+            defer { subscription.cancel() }
+
+            app.presentPubkyAuthApproval(request, signerPublicKey: "pubky\(approvalTestSignerPublicKey)", hasSecretKey: hasSecretKey)
+
+            XCTAssertNil(sheets.pubkyAuthApprovalSheetItem)
+            XCTAssertEqual(shownToasts.map(\.accessibilityIdentifier), ["PubkyAuthOtherPubkyToast"])
+            XCTAssertEqual(shownToasts.first?.description, pubkyAuthOtherPubkyDescription(other))
+        }
+        ToastWindowManager.shared.hideToast()
+    }
+
+    @MainActor
+    func testRequestNamingThisPubkyOpensTheSheet() throws {
+        let request = try PubkyAuthRequest.parse(url: "\(ordinaryApprovalTestAuthUrl())&spk=\(approvalTestSignerPublicKey)")
+        let sheets = SheetViewModel()
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+
+        app.presentPubkyAuthApproval(request, signerPublicKey: approvalTestSignerPublicKey, hasSecretKey: true)
+
+        XCTAssertEqual(sheets.pubkyAuthApprovalSheetItem?.request.rawUrl, request.rawUrl)
+    }
+
+    @MainActor
+    func testGrantSignupWithAnExistingIdentityIgnoresTheExpectedSigner() async throws {
+        for spk in [approvalTestClientPublicKey, "not-a-public-key", "a&spk=b"] {
+            let url = ordinaryApprovalTestAuthUrl().replacingOccurrences(of: "signin_grant", with: "signup_grant") +
+                "&hs=\(approvalTestClientPublicKey)&st=invite&spk=\(spk)"
+            let request = try PubkyAuthRequest.parse(url: url)
+            XCTAssertNil(request.expectedSigner)
+            var approved = false
+
+            try await PubkyService.approveAuthRequest(
+                request: request, authUrl: url, accountName: "", secretKeyHex: "secret",
+                signerPublicKey: { _ in approvalTestSignerPublicKey },
+                ordinaryApproval: { authUrl, _, _, _ in
+                    XCTAssertEqual(authUrl, url)
+                    approved = true
+                }
+            )
+
+            XCTAssertTrue(approved, spk)
+        }
+    }
+
+    @MainActor
+    func testExpectedSignerAndRelayRulesHoldTogether() throws {
+        let relay = "https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2Fo%27connor%3Ftoken%3D%7Babc%7D"
+        let shown = "https://httprelay.pubky.app/inbox/o'connor?token={abc}"
+        let base = "pubkyauth://signin_grant?caps=/pub/example/:rw&relay=\(relay)" +
+            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&cid=paykit.test&cpk=\(approvalTestClientPublicKey)"
+
+        let matching = try PubkyAuthRequest.parse(url: "\(base)&spk=\(approvalTestSignerPublicKey)")
+        XCTAssertEqual(matching.expectedSigner, approvalTestSignerPublicKey)
+        XCTAssertEqual(matching.relayDisplayUrl, shown)
+        let sheets = SheetViewModel()
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+        app.presentPubkyAuthApproval(matching, signerPublicKey: approvalTestSignerPublicKey, hasSecretKey: true)
+        XCTAssertEqual(sheets.pubkyAuthApprovalSheetItem?.request.relayDisplayUrl, shown)
+
+        let other = try PubkyAuthRequest.parse(url: "\(base)&spk=\(approvalTestClientPublicKey)")
+        XCTAssertEqual(other.relayDisplayUrl, shown)
+        let refusedSheets = SheetViewModel()
+        let refusedApp = AppViewModel(sheetViewModel: refusedSheets, navigationViewModel: NavigationViewModel())
+        ToastWindowManager.shared.hideToast()
+        var shownToasts: [Bitkit.Toast] = []
+        let subscription = ToastWindowManager.shared.$currentToast.compactMap { $0 }.sink { shownToasts.append($0) }
+        defer { subscription.cancel() }
+        refusedApp.presentPubkyAuthApproval(other, signerPublicKey: approvalTestSignerPublicKey, hasSecretKey: true)
+        XCTAssertNil(refusedSheets.pubkyAuthApprovalSheetItem)
+        XCTAssertEqual(shownToasts.map(\.accessibilityIdentifier), ["PubkyAuthOtherPubkyToast"])
+        ToastWindowManager.shared.hideToast()
+    }
+
+    func testRefusalNamesThePubkyTheRequestIsFor() {
+        let description = pubkyAuthApprovalFailureDescription(
+            PubkyAuthRequestError.signerMismatch(expectedSigner: approvalTestClientPublicKey)
+        )
+
+        XCTAssertTrue(description.contains("5jsj...tryo"), description)
+        XCTAssertFalse(description.contains("{pubky}"), description)
     }
 
     @MainActor
