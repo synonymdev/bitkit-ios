@@ -1181,11 +1181,13 @@ class WalletViewModel: ObservableObject {
         sats: UInt64? = nil,
         timeoutSeconds: TimeInterval = 10,
         paymentDeadline: PaykitPreciseInstant? = nil,
+        recheckBeforeSubmission: @escaping () async throws -> Void = {},
         afterListening: (@MainActor (String) -> Void)? = nil,
         onTimeout: (@MainActor (String) -> Void)? = nil
     ) async throws -> SettledLightningPayment {
         let hash = try await lightningService.send(
             bolt11: bolt11, sats: sats,
+            recheckBeforeSubmission: recheckBeforeSubmission,
             beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) }
         )
         let paymentHash = String(hash)

@@ -675,13 +675,14 @@ final class SparkManager: ChannelFreeLightningRail {
         return try await requireSdk().receivePayment(request: ReceivePaymentRequest(paymentMethod: method)).paymentRequest
     }
 
-    /// Errors before `sendPayment` are `ChannelFreeRailSendRefused`, since nothing left the wallet; a failure inside it
-    /// stays uncertain, as the payment may have been dispatched, unless it is one raised before dispatch
-    /// (`sendPaymentFailure`).
+    /// Errors before `sendPayment` are `ChannelFreeRailSendRefused`, since nothing left the wallet, apart from a
+    /// `recheckBeforeSubmission` refusal, which is rethrown as it is; a failure inside it stays uncertain, as the payment
+    /// may have been dispatched, unless it is one raised before dispatch (`sendPaymentFailure`).
     nonisolated func send(
         bolt11: String,
         sats: UInt64?,
         maxFeeSats: UInt64?,
+        recheckBeforeSubmission: @escaping () async throws -> Void,
         beforeSubmission: @escaping () throws -> Void
     ) async throws -> PaymentHash {
         let prepared: PrepareSendPaymentResponse
@@ -738,6 +739,8 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         let (sum, overflows) = invoiceDetails.timestamp.addingReportingOverflow(invoiceDetails.expiry)
         let expiresAt = overflows ? UInt64.max : sum
+        // After the quote, balance and failed-attempt awaits, so a payment refused meanwhile never reaches `spends.run`.
+        try await recheckBeforeSubmission()
         // An exit that started while the quote was prepared refuses it here, before its hash is recorded.
         let response: SendPaymentResponse
         do {
@@ -749,7 +752,11 @@ final class SparkManager: ChannelFreeLightningRail {
                     paymentHash: paymentHash, attempt: attempt, amountSats: amountSats, expiresAt: expiresAt, now: Self.nowSecs()
                 )
                 do {
-                    return try await Self.sendRetryingLeafSelection(canRetry: { (try? beforeSubmission()) != nil }) {
+                    // A retry waits first, so it checks the request's authorization again, then the deadline after that
+                    // await; a refused retry ends with the leaf failure, as the first try may have committed a transfer.
+                    return try await Self.sendRetryingLeafSelection(canRetry: {
+                        await Self.canRetrySend(recheckBeforeSubmission: recheckBeforeSubmission, beforeSubmission: beforeSubmission)
+                    }) {
                         try await sdk.sendPayment(request: SendPaymentRequest(
                             prepareResponse: prepared,
                             options: Self.bolt11SendOptions,
@@ -829,7 +836,7 @@ final class SparkManager: ChannelFreeLightningRail {
     /// never left.
     nonisolated static func sendRetryingLeafSelection<T>(
         retryDelay: Duration = .seconds(2),
-        canRetry: () -> Bool,
+        canRetry: () async -> Bool,
         _ send: () async throws -> T
     ) async throws -> T {
         var retries = 0
@@ -846,12 +853,21 @@ final class SparkManager: ChannelFreeLightningRail {
                 retries += 1
                 Logger.info("Retrying a Spark send as Spark could not select its leaves", context: "SparkManager")
                 try? await Task.sleep(for: retryDelay)
-                guard !Task.isCancelled, canRetry() else { throw error }
+                guard !Task.isCancelled, await canRetry() else { throw error }
             }
         }
     }
 
     nonisolated static let leafSelectionRetries = 3
+
+    /// Whether a send may retry: the request's authorization first, then cancellation and the deadline after that await.
+    nonisolated static func canRetrySend(
+        recheckBeforeSubmission: () async throws -> Void,
+        beforeSubmission: () throws -> Void
+    ) async -> Bool {
+        guard await (try? recheckBeforeSubmission()) != nil, !Task.isCancelled else { return false }
+        return (try? beforeSubmission()) != nil
+    }
 
     /// Spark fails a send with this error when it holds the balance but can't select leaves to spend, before anything
     /// reaches the operators (`select_leaves_with_retry` in the 0.28.3 SDK's `spark-wallet/src/wallet.rs`).

@@ -1515,7 +1515,28 @@ extension AppViewModel {
             toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
             return
         }
-        guard PubkyProfileManager.activeSecretKeyHex() != nil else {
+        let secretKeyHex = PubkyProfileManager.activeSecretKeyHex()
+        let signerPublicKey = secretKeyHex.flatMap { try? PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: $0) }
+            ?? AdoptedPubkyReference.current?.pubky
+        presentPubkyAuthApproval(request, signerPublicKey: signerPublicKey, hasSecretKey: secretKeyHex != nil)
+    }
+
+    /// Opens the approval sheet for a sign-in, unless it names a pubky other than this wallet's or the key is out of reach.
+    func presentPubkyAuthApproval(_ request: PubkyAuthRequest, signerPublicKey: String?, hasSecretKey: Bool) {
+        if let expectedSigner = request.expectedSigner, let signerPublicKey,
+           !PubkyAuthRequest.isExpectedSigner(expectedSigner, publicKey: signerPublicKey)
+        {
+            Logger.warn("Refused pubky auth request for another pubky", context: "AppViewModel")
+            sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky auth request names another pubky")
+            toast(
+                type: .error,
+                title: t("pubky_auth__approval_failed"),
+                description: pubkyAuthOtherPubkyDescription(expectedSigner),
+                accessibilityIdentifier: "PubkyAuthOtherPubkyToast"
+            )
+            return
+        }
+        guard hasSecretKey else {
             sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity requires Ring")
             toast(type: .warning, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
             return
