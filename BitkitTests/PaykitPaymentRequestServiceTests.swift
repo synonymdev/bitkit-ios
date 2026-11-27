@@ -9620,6 +9620,18 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(hostKeys.map { UserDefaults.standard.object(forKey: $0) as? Bool }, hostValues)
     }
 
+    func testActivatingAnIdentityAfterTheNoProfileAnswerShowsLoading() {
+        let sdk = PaymentRequestSdkMock(records: [])
+        let manager = paymentRequestManager(sdk: sdk)
+        manager.clear()
+        manager.markNoEligibleTargets()
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loaded)
+
+        manager.activate(identity: "pubky\(String(repeating: "x", count: 52))")
+
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loading)
+    }
+
     func testPickerWithoutProfileShowsNoEligibleTargetsAtOnce() async {
         let sdk = PaymentRequestSdkMock(records: [])
         let manager = paymentRequestManager(sdk: sdk)

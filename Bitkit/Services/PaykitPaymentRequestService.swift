@@ -1569,6 +1569,8 @@ final class PaykitPaymentRequestManager {
               !PubkyPublicKeyFormat.matches(activeIdentity, normalizedIdentity) else { return }
         if activeIdentity != nil {
             clear()
+        } else {
+            clearEligibleTargets()
         }
         do {
             acceptedRequestIds = try acceptanceStore.load(identity: normalizedIdentity)
