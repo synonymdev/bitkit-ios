@@ -26,6 +26,33 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertEqual(MoveToSparkMath.amountAfterFee(limitSats: 1_000_000, feeSats: 30) + feeSats, 1_000_000)
     }
 
+    func testTheCappedFeeLeavesACostlierRouteRoomUnderTheCapAndTheSendLimit() {
+        // RC1 mainnet: an 11-sat estimate on a 10,001-sat limit; the route that worked cost 51 sats.
+        let feeSats = MoveToSparkMath.cappedFeeSats(estimateSats: 11, limitSats: 10001)
+        let amountSats = MoveToSparkMath.amountAfterCappedFee(limitSats: 10001, estimateSats: 11)
+        XCTAssertGreaterThanOrEqual(feeSats, 51)
+        XCTAssertLessThanOrEqual(amountSats + 51, 10001)
+        XCTAssertGreaterThanOrEqual(amountSats, MoveToSparkMath.minMoveSats)
+    }
+
+    func testTheCappedFeeKeepsTheMarginLdksCapAndTheMinimumMoveForAnyEstimateAndLimit() {
+        var generator = SystemRandomNumberGenerator()
+        for _ in 0 ..< 10000 {
+            let limitSats = UInt64.random(in: 0 ..< 2_000_000, using: &generator)
+            let estimateSats = UInt64.random(in: 0 ..< 30000, using: &generator)
+            let feeSats = MoveToSparkMath.cappedFeeSats(estimateSats: estimateSats, limitSats: limitSats)
+            let amountSats = MoveToSparkMath.amountAfterCappedFee(limitSats: limitSats, estimateSats: estimateSats)
+            let quotedSats = MoveToSparkMath.quotedFeeSats(estimateSats: estimateSats)
+            let context = "limit \(limitSats), estimate \(estimateSats), fee \(feeSats)"
+            XCTAssertGreaterThanOrEqual(feeSats, quotedSats, context)
+            XCTAssertLessThanOrEqual(feeSats, max(quotedSats, limitSats / 100 + 50), context)
+            XCTAssertLessThanOrEqual(amountSats + feeSats, max(limitSats, feeSats), context)
+            if limitSats >= MoveToSparkMath.minMoveSats + quotedSats {
+                XCTAssertGreaterThanOrEqual(amountSats, MoveToSparkMath.minMoveSats, context)
+            }
+        }
+    }
+
     func testSmallerAmountHalvesUntilTheMinimum() {
         XCTAssertEqual(MoveToSparkMath.smallerAmount(100_000), 50000)
         XCTAssertNil(MoveToSparkMath.smallerAmount(MoveToSparkMath.minMoveSats))

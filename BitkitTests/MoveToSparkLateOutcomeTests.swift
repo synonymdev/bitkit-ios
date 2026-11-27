@@ -49,6 +49,25 @@ final class MoveToSparkLateOutcomeTests: XCTestCase {
         XCTAssertEqual(manager.wipes, wipe + 1, "Closing the modal or a new move stopped the closes of an earlier move")
     }
 
+    @MainActor
+    func testAStoppedMoveIsKeptForTheNextQuoteUntilANewMoveOrItsOutcome() async {
+        let manager = MoveToSparkManager()
+        let quote = MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 13000, feeSats: 80)
+
+        await manager.quote(afterMove: nil, stoppedAfter: 0) { quote }
+        XCTAssertEqual(manager.state, .confirm(quote, isMoving: false))
+        XCTAssertEqual(manager.lastMovedSats, 0, "The quote after a move that moved nothing did not say so")
+        manager.reset()
+        await manager.quote(afterMove: nil) { quote }
+        XCTAssertEqual(manager.lastMovedSats, 0, "Closing and reopening the modal asked again without the last attempt")
+
+        _ = manager.beginMove()
+        XCTAssertNil(manager.lastMovedSats, "A new move kept the attempt before it")
+
+        await manager.quote(afterMove: (6512, 20), stoppedAfter: 6512) { throw MoveToSparkError.noRoute }
+        XCTAssertNil(manager.lastMovedSats, "A move shown as done kept its stop")
+    }
+
     func testARestThatNoLongerRoutesOrIsGoneShowsTheBalanceUpdated() {
         let done = MoveToSparkState.done(amountSats: 60000, feeSats: 60)
         XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.noRoute, afterMove: (60000, 60)), done)

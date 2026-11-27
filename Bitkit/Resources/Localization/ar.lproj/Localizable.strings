@@ -311,8 +311,10 @@
 "lightning__move_to_spark__failed_title" = "تعذّر\n<accent>النقل</accent>";
 "lightning__move_to_spark__failed_unknown" = "حدث خطأ أثناء التحضير للنقل. حاول مرة أخرى.";
 "lightning__move_to_spark__nav_title" = "النقل إلى Spark";
+"lightning__move_to_spark__retry_moved" = "تم نقل {moved} إلى Spark. لا يزال {left} في اتصالك.";
+"lightning__move_to_spark__retry_none" = "لم تُنقل أي أموال. لا يزال {left} في اتصالك.";
 "lightning__move_to_spark__update" = "تحديث";
-"lightning__move_to_spark__update_fee" = "رسوم التحديث: {fee}";
+"lightning__move_to_spark__update_fee" = "رسوم التحديث: حتى {fee}";
 "lightning__move_to_spark__update_nav_title" = "تحديث رصيد الإنفاق";
 "lightning__move_to_spark__update_text" = "يغيّر Bitkit مزوّد Lightning. حدّث رصيد الإنفاق لمواصلة الدفعات الفورية والرخيصة.";
 "lightning__move_to_spark__update_title" = "تحديث\n<accent>رصيد الإنفاق</accent>";

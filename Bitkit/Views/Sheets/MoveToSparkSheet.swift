@@ -32,9 +32,9 @@ struct MoveToSparkSheet: View {
     private var content: some View {
         switch manager.state {
         case .quoting:
-            update(feeSats: nil, isLoading: true)
+            update(feeSats: nil, isLoading: true, lastMovedSats: manager.lastMovedSats)
         case let .confirm(quote, isMoving):
-            update(feeSats: quote.feeSats, isLoading: isMoving)
+            update(feeSats: quote.feeSats, isLoading: isMoving, lastMovedSats: manager.lastMovedSats)
         case .done:
             modal(
                 navTitle: t("lightning__move_to_spark__updated_nav_title"),
@@ -63,8 +63,21 @@ struct MoveToSparkSheet: View {
         }
     }
 
-    private func update(feeSats: UInt64?, isLoading: Bool) -> some View {
-        let text = t("lightning__move_to_spark__update_text")
+    private func update(feeSats: UInt64?, isLoading: Bool, lastMovedSats: UInt64? = nil) -> some View {
+        // After an Update that stopped with a balance left, the text says what it did in place of the introduction, with
+        // what the channels hold now, which the moved parts' fees lowered too.
+        let leftSats = MoveToSparkMath.heldSats(channels: wallet.channels)
+        let text = switch lastMovedSats {
+        case nil: t("lightning__move_to_spark__update_text")
+        case 0: t("lightning__move_to_spark__retry_none", variables: ["left": currency.primaryAmountText(sats: leftSats)])
+        case let movedSats?: t(
+                "lightning__move_to_spark__retry_moved",
+                variables: [
+                    "moved": currency.primaryAmountText(sats: movedSats),
+                    "left": currency.primaryAmountText(sats: leftSats),
+                ]
+            )
+        }
         let fee = feeSats.map {
             t("lightning__move_to_spark__update_fee", variables: ["fee": currency.primaryAmountText(sats: $0)])
         }
@@ -80,7 +93,7 @@ struct MoveToSparkSheet: View {
             }
             .accessibilityIdentifier("UpdateSpendingBalanceLater")
             CustomButton(
-                title: t("lightning__move_to_spark__update"),
+                title: lastMovedSats == nil ? t("lightning__move_to_spark__update") : t("common__try_again"),
                 isDisabled: isLoading,
                 isLoading: isLoading,
                 shouldExpand: true

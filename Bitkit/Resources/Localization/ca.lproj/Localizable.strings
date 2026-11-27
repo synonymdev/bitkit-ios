@@ -348,8 +348,10 @@
 "lightning__move_to_spark__failed_title" = "No s'ha pogut\n<accent>moure</accent>";
 "lightning__move_to_spark__failed_unknown" = "Alguna cosa ha fallat en preparar el moviment. Torna-ho a provar.";
 "lightning__move_to_spark__nav_title" = "Moure a Spark";
+"lightning__move_to_spark__retry_moved" = "S'han mogut {moved} a Spark. {left} continua a la teva connexió.";
+"lightning__move_to_spark__retry_none" = "No s'han mogut fons. {left} continua a la teva connexió.";
 "lightning__move_to_spark__update" = "Actualitzar";
-"lightning__move_to_spark__update_fee" = "Comissió d'actualització: {fee}";
+"lightning__move_to_spark__update_fee" = "Comissió d’actualització: fins a {fee}";
 "lightning__move_to_spark__update_nav_title" = "Actualitzar el saldo de despesa";
 "lightning__move_to_spark__update_text" = "Bitkit està canviant de proveïdor Lightning. Actualitza el teu saldo de despesa per continuar fent pagaments instantanis i barats.";
 "lightning__move_to_spark__update_title" = "Actualitzar\n<accent>saldo de despesa</accent>";

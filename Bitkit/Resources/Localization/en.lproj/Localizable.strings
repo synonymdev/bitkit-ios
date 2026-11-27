@@ -356,8 +356,10 @@
 "lightning__move_to_spark__failed_title" = "Could not\n<accent>move</accent>";
 "lightning__move_to_spark__failed_unknown" = "Something went wrong while preparing the move. Try again.";
 "lightning__move_to_spark__nav_title" = "Move To Spark";
+"lightning__move_to_spark__retry_moved" = "{moved} moved to Spark. {left} is still in your connection.";
+"lightning__move_to_spark__retry_none" = "No funds moved. {left} is still in your connection.";
 "lightning__move_to_spark__update" = "Update";
-"lightning__move_to_spark__update_fee" = "Update fee: {fee}";
+"lightning__move_to_spark__update_fee" = "Update fee: up to {fee}";
 "lightning__move_to_spark__update_nav_title" = "Update Spending Balance";
 "lightning__move_to_spark__update_text" = "Bitkit is switching Lightning providers. Update your spending balance to continue making instant, cheap payments.";
 "lightning__move_to_spark__update_title" = "Update\n<accent>Spending Balance</accent>";

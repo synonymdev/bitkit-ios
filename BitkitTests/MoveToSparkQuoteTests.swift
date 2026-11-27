@@ -33,11 +33,18 @@ final class MoveToSparkQuoteTests: XCTestCase {
     /// Channels that can send 100,000 sats.
     private let channels = [ChannelDetails.mock(outboundCapacityMsat: 100_000_000)]
 
+    /// The fee a part may pay for the fake 30-sat estimate under `limitSats`.
+    private func cappedFee(_ limitSats: UInt64) -> UInt64 {
+        MoveToSparkMath.cappedFeeSats(estimateSats: 30, limitSats: limitSats)
+    }
+
     func testQuoteGrowsToFitTheRealFee() async throws {
         let services = FakeServices()
         let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
-        XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 99968, feeSats: 32))
-        XCTAssertEqual(services.quotedAmounts, [99498, 99968])
+        let amountSats = MoveToSparkMath.amountAfterCappedFee(limitSats: 100_000, estimateSats: 30)
+        XCTAssertEqual(amountSats, 99890)
+        XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: amountSats, feeSats: cappedFee(100_000)))
+        XCTAssertEqual(services.quotedAmounts, [99498, amountSats])
     }
 
     func testQuoteFallsBackToTheLastFittingAmount() async throws {
@@ -47,7 +54,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
             return 30
         }
         let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
-        XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 99498, feeSats: 32))
+        XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 99498, feeSats: cappedFee(100_000)))
     }
 
     func testABalanceThatDoesNotRouteAtOnceShowsTheFeeOfEveryPart() async throws {
@@ -57,15 +64,18 @@ final class MoveToSparkQuoteTests: XCTestCase {
             return 30
         }
         let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
-        // Halved twice to a part that routes, then parts no larger until less than the minimum is left: four parts.
-        XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 24874, feeSats: 128, firstFeeSats: 32))
+        // Halved twice to a part that routes, then parts no larger until less than the minimum is left: four parts, each
+        // under a limit of at least 25,048 sats, where twice the estimate and 50 is the cap.
+        XCTAssertEqual(cappedFee(25048), 110)
+        XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 24874, feeSats: 4 * 110, firstFeeSats: 110))
     }
 
     func testAPeerHtlcCapSizesThePartsNotTheTotal() async throws {
         let capped = [ChannelDetails.mock(outboundCapacityMsat: 100_000_000, nextOutboundHtlcLimitMsat: 30_032_000)]
         let quote = try await MoveToSparkManager(services: FakeServices()).makeQuote(channels: capped)
-        XCTAssertEqual(quote.amountSats, 30000)
-        XCTAssertEqual(quote.feeSats, 4 * 32, "Every part of the balance the channels hold is priced")
+        XCTAssertEqual(quote.amountSats, MoveToSparkMath.amountAfterCappedFee(limitSats: 30032, estimateSats: 30))
+        // Three parts under the 30,032-sat cap and a fourth under the 6,234 sats the 96,330 the channel holds leave.
+        XCTAssertEqual(quote.feeSats, 3 * cappedFee(30032) + cappedFee(6234), "Every part of the balance the channels hold is priced")
     }
 
     func testAFundedChannelsCommitmentFeeIsNotPricedAsAPart() async throws {
@@ -74,7 +84,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
         let funded = [ChannelDetails.mock(outboundCapacityMsat: capacityMsat, nextOutboundHtlcLimitMsat: limitMsat)]
         XCTAssertTrue(funded[0].isOutbound)
         let quote = try await MoveToSparkManager(services: FakeServices()).makeQuote(channels: funded)
-        XCTAssertEqual(quote.feeSats, 32, "One part: the commitment fee the channel holds back is not balance to move")
+        XCTAssertEqual(quote.feeSats, cappedFee(limitMsat / 1000), "One part: the commitment fee the channel holds back is not balance to move")
     }
 
     func testALegacyFundedChannelPricesTheBelowDustPartItLeaves() async throws {
@@ -86,7 +96,13 @@ final class MoveToSparkQuoteTests: XCTestCase {
             feerateSatPer1000Weight: 4000
         )]
         let quote = try await MoveToSparkManager(services: FakeServices()).makeQuote(channels: funded)
-        XCTAssertEqual(quote.feeSats, 2 * 32, "The below-dust part the legacy reserve leaves is priced too")
+        let restSats = MoveToSparkMath.outboundSats(channels: funded) - limitMsat / 1000
+        XCTAssertEqual(restSats, 1376)
+        XCTAssertEqual(
+            quote.feeSats,
+            cappedFee(limitMsat / 1000) + cappedFee(restSats),
+            "The below-dust part the legacy reserve leaves is priced too"
+        )
     }
 
     func testABelowDustRestUnderThePeersHtlcMinimumIsNotPriced() async throws {
@@ -99,7 +115,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
             nextOutboundHtlcMinimumMsat: 2_000_000
         )]
         let quote = try await MoveToSparkManager(services: FakeServices()).makeQuote(channels: funded)
-        XCTAssertEqual(quote.feeSats, 32, "A rest under the peer's HTLC minimum cannot be sent, so it is no part")
+        XCTAssertEqual(quote.feeSats, cappedFee(limitMsat / 1000), "A rest under the peer's HTLC minimum cannot be sent, so it is no part")
     }
 
     func testALoneRestTooSmallForTheFeeGuessIsNotPriced() {
@@ -152,7 +168,8 @@ final class MoveToSparkQuoteTests: XCTestCase {
     func testAFundedChannelWithAPeerHtlcCapPricesItsLastPart() async throws {
         let capped = [ChannelDetails.mock(outboundCapacityMsat: 65_000_000, nextOutboundHtlcLimitMsat: 30_032_000)]
         let quote = try await MoveToSparkManager(services: FakeServices()).makeQuote(channels: capped)
-        XCTAssertEqual(quote.feeSats, 3 * 32, "The anchor commitment's smaller reserve leaves a third part to price")
+        // Two parts under the 30,032-sat cap, then the 1,266 sats left of the 61,330 the anchor commitment leaves.
+        XCTAssertEqual(quote.feeSats, 2 * cappedFee(30032) + cappedFee(1266), "The anchor commitment's smaller reserve leaves a third part to price")
     }
 
     func testNoPartThatRoutesIsNoRoute() async {
@@ -176,8 +193,8 @@ final class MoveToSparkQuoteTests: XCTestCase {
             return 30
         }
         let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
-        XCTAssertEqual(quote.feeSats, UInt64(MoveToSparkMath.maxParts) * 32, "The fee covers only the parts a swipe pays")
-        XCTAssertEqual(quote.firstFeeSats, 32)
+        XCTAssertEqual(quote.feeSats, UInt64(MoveToSparkMath.maxParts) * cappedFee(100_000), "The fee covers only the parts a swipe pays")
+        XCTAssertEqual(quote.firstFeeSats, cappedFee(100_000))
     }
 
     // MARK: - Paying the parts

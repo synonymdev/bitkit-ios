@@ -358,8 +358,10 @@
 "lightning__move_to_spark__failed_title" = "Impossibile\n<accent>spostare</accent>";
 "lightning__move_to_spark__failed_unknown" = "Qualcosa è andato storto durante la preparazione dello spostamento. Riprova.";
 "lightning__move_to_spark__nav_title" = "Sposta su Spark";
+"lightning__move_to_spark__retry_moved" = "{moved} spostati su Spark. {left} è ancora nella tua connessione.";
+"lightning__move_to_spark__retry_none" = "Nessun fondo è stato spostato. {left} è ancora nella tua connessione.";
 "lightning__move_to_spark__update" = "Aggiorna";
-"lightning__move_to_spark__update_fee" = "Commissione di aggiornamento: {fee}";
+"lightning__move_to_spark__update_fee" = "Commissione di aggiornamento: fino a {fee}";
 "lightning__move_to_spark__update_nav_title" = "Aggiorna saldo di spesa";
 "lightning__move_to_spark__update_text" = "Bitkit sta cambiando fornitore Lightning. Aggiorna il tuo saldo di spesa per continuare a fare pagamenti istantanei ed economici.";
 "lightning__move_to_spark__update_title" = "Aggiorna\n<accent>saldo di spesa</accent>";

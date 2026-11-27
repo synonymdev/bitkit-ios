@@ -15,8 +15,10 @@ final class MoveToSparkUpdateTests: XCTestCase {
             "lnbcrt1move"
         }
 
+        var channelFee: UInt64 = 30
+
         func estimateChannelFee(bolt11 _: String, amountSats _: UInt64) async throws -> UInt64 {
-            30
+            channelFee
         }
 
         func estimateSparkFee(bolt11 _: String, amountSats _: UInt64) async throws -> UInt64 {
@@ -118,6 +120,24 @@ final class MoveToSparkUpdateTests: XCTestCase {
 
         services.sparkFee = { throw SparkCannotPrice() }
         await assertFallsShort { try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 1000) }
+    }
+
+    func testTheMostTheUpdateCanSendMovesTheFeesHeadroomToo() async throws {
+        let services = FakeServices()
+        services.spark = SparkSendState(isReady: true, isExiting: false, balanceSats: 0)
+        services.channelFee = 5
+        let manager = MoveToSparkManager(services: services)
+        let smallChannels = [ChannelDetails.mock(outboundCapacityMsat: 5_000_000)]
+        let quote = try await manager.updateQuote(channels: smallChannels)
+        XCTAssertEqual(quote.feeSats, MoveToSparkMath.cappedFeeSats(estimateSats: 5, limitSats: 5000))
+        let maxSats = MoveToSparkMath.combinedSendableSats(channels: smallChannels, spark: services.spark)
+
+        let paid = try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: maxSats)
+        let kept = try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 1000)
+
+        XCTAssertEqual(paid.amountSats, 5000 - 7)
+        XCTAssertEqual(paid.feeSats, 7)
+        XCTAssertEqual(kept, quote, "A payment the quote covers lost the fee's headroom")
     }
 
     func testAnLnurlBeforeItsInvoiceIsPricedWithSparksServiceFee() async {
