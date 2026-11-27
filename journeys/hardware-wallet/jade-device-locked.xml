@@ -26,10 +26,10 @@
       Tap "Connect" (testTag "HardwareWalletFoundConnect"), run `./scripts/jade-emulator pin 012345` in `bitkit-docker`, verify the "Device Connected" step (testTag "HardwareWalletPairedScreen") appears within 30 seconds and tap "Finish" (testTag "HardwareWalletPairedFinish")
     </action>
     <action>
-      Tap Receive (testTag "Receive"), select the Jade tab, tap "Show Details" if the address is hidden behind it, read the address without tapping "Verify on Device", close the receive sheet and fund it: `./bitcoin-cli sendtoaddress JADE_ADDRESS 0.001; ./bitcoin-cli -generate 1` in `bitkit-docker`
+      Tap Receive (testTag "Receive"), select the Jade tab, tap "Show Details" if the address is hidden behind it, read the address without tapping "Verify on Device", close the receive sheet and fund it: `./bitcoin-cli sendtoaddress JADE_ADDRESS 0.01; ./bitcoin-cli -generate 1` in `bitkit-docker`
     </action>
     <action>
-      Wait up to 60 seconds for a received row of 100 000 sats stamped with the minute of the funding command, or the next one, in the home activity list (testTag "ActivityShort-0" and the rows after it; tap "Show All" if it is not among the rows shown, since the Jade's seed is shared and other runs' rows can be newer). If the "Received Bitcoin" sheet appears, tap its button (testTag "ReceivedTransactionButton") first; it may not appear when the deposit arrives with the app's first view of the Jade's history
+      Wait up to 60 seconds for a received row of 1 000 000 sats stamped with the minute of the funding command, or the next one, in the home activity list (testTag "ActivityShort-0" and the rows after it; tap "Show All" if it is not among the rows shown, since the Jade's seed is shared and other runs' rows can be newer). If the "Received Bitcoin" sheet appears, tap its button (testTag "ReceivedTransactionButton") first; it may not appear when the deposit arrives with the app's first view of the Jade's history
     </action>
     <action>
       Run `./scripts/jade-emulator press front right front` in `bitkit-docker` to choose Session, then Log Out, on the device
