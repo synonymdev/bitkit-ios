@@ -1651,7 +1651,8 @@ final class PaykitPaymentRequestManager {
                     group.cancelAll()
                 }
             } else {
-                try? await contactsManager.loadContacts(for: profilePublicKey)
+                // Not tied to the picker's task, so closing or reopening the picker does not cancel the load.
+                await Task { try? await contactsManager.loadContacts(for: profilePublicKey) }.value
             }
             guard !Task.isCancelled else { return }
             guard contactsManager.hasLoaded else {

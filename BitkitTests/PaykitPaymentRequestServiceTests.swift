@@ -9620,6 +9620,44 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(hostKeys.map { UserDefaults.standard.object(forKey: $0) as? Bool }, hostValues)
     }
 
+    func testReopenedPickerKeepsContactsLoadStartedByCancelledPicker() async throws {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [savedKey: true]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        let record = pickerContactRecord(savedKey)
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        let contactsManager = ContactsManager(
+            contactRecords: {
+                for await _ in gate {}
+                return [record]
+            },
+            fetchRemoteProfile: { _, _ in nil },
+            pruneUnsavedContactState: { _, _ in }
+        )
+
+        let closedPicker = Task {
+            await manager.refreshEligibleTargets(contactsManager: contactsManager, profilePublicKey: Self.pickerProfileKey)
+        }
+        try await waitUntil { contactsManager.isLoading }
+        closedPicker.cancel()
+        let reopenedPicker = Task {
+            await manager.refreshEligibleTargets(contactsManager: contactsManager, profilePublicKey: Self.pickerProfileKey)
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        release.finish()
+        await closedPicker.value
+        await reopenedPicker.value
+
+        XCTAssertTrue(contactsManager.hasLoaded)
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loaded)
+        XCTAssertEqual(manager.eligibleTargets, [PaykitPaymentRequestTarget(publicKey: savedKey)])
+    }
+
     func testActivatingAnIdentityAfterTheNoProfileAnswerShowsLoading() {
         let sdk = PaymentRequestSdkMock(records: [])
         let manager = paymentRequestManager(sdk: sdk)
