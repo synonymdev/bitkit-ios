@@ -1,6 +1,9 @@
 import LDKNode
 import SwiftUI
 
+/// Another invoice with the same payment hash was already paid, so paying this one would send nothing to its payee.
+struct InvoiceAlreadyPaidError: Error {}
+
 func sendFailureMessage(for error: Error) -> String {
     let fallbackMessage = t("wallet__payment_failed_description")
 
@@ -10,6 +13,10 @@ func sendFailureMessage(for error: Error) -> String {
 
     if error is QuickPayConversionError {
         return t("wallet__send_quickpay__currency_conversion")
+    }
+
+    if error is InvoiceAlreadyPaidError {
+        return t("wallet__send_quickpay__already_paid")
     }
 
     if let reason = (error as? AppError)?.paymentFailureReason {

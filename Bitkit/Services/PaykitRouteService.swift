@@ -234,6 +234,8 @@ enum PaykitRouteService {
                 try await authorize()
                 if let attemptId {
                     await markSending(attemptId)
+                    // Marking it sending awaits, so the request is authorized again after it, right before Spark sends.
+                    try await authorize()
                 }
             }
             if let attemptId {

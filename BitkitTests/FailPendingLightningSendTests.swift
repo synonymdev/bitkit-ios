@@ -37,9 +37,15 @@ final class FailPendingLightningSendTests: XCTestCase {
             )))
         }
 
+        var returned: [String: PaymentState?] = [:]
         for row in rows {
-            try await activity.failPendingLightningSend(id: row.id)
+            returned[row.id] = try await activity.failPendingLightningSend(id: row.id)
         }
+        XCTAssertEqual(returned["paid-send"], .succeeded)
+        XCTAssertEqual(returned["pending-send"], .failed)
+        XCTAssertEqual(returned["pending-receive"], .some(nil))
+        let missing = try await activity.failPendingLightningSend(id: "missing")
+        XCTAssertNil(missing)
 
         let expected: [String: PaymentState] = [
             "pending-send": .failed, "paid-send": .succeeded, "failed-send": .failed, "pending-receive": .pending,

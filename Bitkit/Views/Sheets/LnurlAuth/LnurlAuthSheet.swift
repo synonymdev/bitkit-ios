@@ -19,35 +19,58 @@ struct LnurlAuthSheetItem: SheetItem {
     let authData: LnurlAuthData
 }
 
+/// LUD-04 `action` of an LNURL-auth request; bitkit-core reports every LNURL-auth with tag `login`.
+enum LnurlAuthAction {
+    case login, register, link, auth
+
+    init(uri: String) {
+        let action = URLComponents(string: uri)?.queryItems?.first { $0.name == "action" }?.value?.lowercased()
+        switch action {
+        case "login": self = .login
+        case "register": self = .register
+        case "link": self = .link
+        default: self = .auth
+        }
+    }
+
+    var titleKey: String {
+        switch self {
+        case .login: "other__lnurl_auth_login_title"
+        case .register: "other__lnurl_auth_register_title"
+        case .link: "other__lnurl_auth_link_title"
+        case .auth: "other__lnurl_auth_auth_title"
+        }
+    }
+
+    var promptKey: String {
+        switch self {
+        case .login: "other__lnurl_auth_login_prompt"
+        case .register: "other__lnurl_auth_register_prompt"
+        case .link: "other__lnurl_auth_link_prompt"
+        case .auth: "other__lnurl_auth_auth_prompt"
+        }
+    }
+
+    var buttonKey: String {
+        self == .login ? "other__lnurl_auth_login_button" : titleKey
+    }
+}
+
 struct LnurlAuthSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     let config: LnurlAuthSheetItem
 
-    var actionText: String {
-        switch config.authData.tag {
-        case "login":
-            return "Log In"
-        case "register":
-            return "Register"
-        case "link":
-            return "Link"
-        default:
-            return "Authenticate"
-        }
+    private var action: LnurlAuthAction {
+        LnurlAuthAction(uri: config.authData.uri)
     }
 
-    var text: String {
-        switch config.authData.tag {
-        case "login":
-            return "Log in to \(extractedDomain)?"
-        case "register":
-            return "Register at \(extractedDomain)?"
-        case "link":
-            return "Link account to \(extractedDomain)?"
-        default:
-            return "Authenticate at \(extractedDomain)?"
-        }
+    private var actionText: String {
+        t(action.titleKey)
+    }
+
+    private var text: String {
+        t(action.promptKey, variables: ["domain": extractedDomain])
     }
 
     var body: some View {
@@ -82,7 +105,7 @@ struct LnurlAuthSheet: View {
                     }
                     .accessibilityIdentifier("LnurlAuthCancel")
 
-                    CustomButton(title: actionText) {
+                    CustomButton(title: t(action.buttonKey)) {
                         Task {
                             await onContinue()
                         }
@@ -101,7 +124,7 @@ struct LnurlAuthSheet: View {
         guard let url = URL(string: config.authData.uri),
               let host = url.host
         else {
-            return "Unknown Domain"
+            return t("other__lnurl_auth_unknown_domain")
         }
 
         var domain = host.trimmingCharacters(in: .whitespacesAndNewlines)
