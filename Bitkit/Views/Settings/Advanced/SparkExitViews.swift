@@ -930,6 +930,13 @@ struct SparkExitProgressView: View {
                                 .accessibilityIdentifier("SparkExitSavingsRefused")
                         }
 
+                        if exit.isSavingsSendLanding, case .paid = fundingState {
+                            BodySText(t("lightning__spark_exit__savings_unresolved"))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 24)
+                                .accessibilityIdentifier("SparkExitSavingsUnresolved")
+                        }
+
                         if let address = record.funding.first?.address {
                             switch fundingState {
                             case let .ask(sats, receivedSats):

@@ -396,6 +396,7 @@
 "lightning__spark_exit__fees" = "Commissioni di rete";
 "lightning__spark_exit__receive" = "Riceverai (stima)";
 "lightning__spark_exit__savings_refused" = "Il tuo pagamento dai risparmi non è andato a buon fine. Paga di nuovo o finanzia da un altro portafoglio.";
+"lightning__spark_exit__savings_unresolved" = "Il tuo pagamento dai risparmi non è ancora confermato. Attendilo prima di pagare da un altro portafoglio.";
 "lightning__spark_exit__quote_loading" = "Calcolo dei costi…";
 "lightning__spark_exit__quote_settling" = "In attesa che Spark finisca di spostare il tuo saldo. Può richiedere fino a 5 minuti.";
 "lightning__spark_exit__quote_error" = "Impossibile ottenere i costi del trasferimento. Riprova.";

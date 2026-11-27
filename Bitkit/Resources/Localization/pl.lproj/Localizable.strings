@@ -401,6 +401,7 @@
 "lightning__spark_exit__fees" = "Opłaty sieciowe";
 "lightning__spark_exit__receive" = "Otrzymasz (szacunkowo)";
 "lightning__spark_exit__savings_refused" = "Twoja płatność z Oszczędności nie przeszła. Zapłać ponownie lub sfinansuj z innego portfela.";
+"lightning__spark_exit__savings_unresolved" = "Twoja płatność z Oszczędności nie jest jeszcze potwierdzona. Poczekaj na nią, zanim zapłacisz z innego portfela.";
 "lightning__spark_exit__quote_loading" = "Pobieranie kosztów…";
 "lightning__spark_exit__quote_settling" = "Czekamy, aż Spark zakończy przenoszenie Twojego salda. Może to potrwać do 5 minut.";
 "lightning__spark_exit__quote_error" = "Nie udało się pobrać kosztów transferu. Spróbuj ponownie.";

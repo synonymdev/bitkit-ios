@@ -397,6 +397,7 @@
 "lightning__spark_exit__fees" = "Сетевые комиссии";
 "lightning__spark_exit__receive" = "Вы получите (оценка)";
 "lightning__spark_exit__savings_refused" = "Платёж из сбережений не прошёл. Оплатите снова или пополните с другого кошелька.";
+"lightning__spark_exit__savings_unresolved" = "Платёж из сбережений ещё не подтверждён. Дождитесь его, прежде чем платить с другого кошелька.";
 "lightning__spark_exit__quote_loading" = "Получение стоимости…";
 "lightning__spark_exit__quote_settling" = "Ждём, пока Spark завершит перемещение вашего баланса. Это может занять до 5 минут.";
 "lightning__spark_exit__quote_error" = "Не удалось получить стоимость перевода. Попробуйте ещё раз.";
