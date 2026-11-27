@@ -399,6 +399,7 @@
 				751000000000000000000001 /* Generate Plural Localizations */,
 				961058E72C355B5500E1F1D8 /* Embed Foundation Extensions */,
 				96EMBED0012026012000FRAME /* Remove Static Framework Stubs */,
+				96DSYM0012026112700SPMDSYM /* Copy Swift Package dSYMs */,
 				B17C0F1A2EAE000000000003 /* Breez API Key From Keychain */,
 			);
 			buildRules = (
@@ -662,6 +663,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Remove static UniFFI framework stubs from the app bundle.\n# Code is linked into the main executable; empty frameworks break install and App Store validation.\nFRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks\"\nOUTPUT_SENTINEL=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/.static-ffi-stubs-removed\"\n\nfor FRAMEWORK_NAME in LDKNodeFFI.framework vss_rust_client_ffiFFI.framework; do\n    FRAMEWORK_PATH=\"${FRAMEWORKS_DIR}/${FRAMEWORK_NAME}\"\n    if [ ! -d \"$FRAMEWORK_PATH\" ]; then\n        continue\n    fi\n    echo \"Removing ${FRAMEWORK_NAME} static framework stub...\"\n    rm -rf \"$FRAMEWORK_PATH\"\n    if [ -d \"$FRAMEWORK_PATH\" ]; then\n        echo \"error: Failed to remove ${FRAMEWORK_NAME} static framework stub\" >&2\n        exit 1\n    fi\n    echo \"Removed ${FRAMEWORK_NAME}.\"\ndone\n\ntouch \"$OUTPUT_SENTINEL\"\n";
+		};
+		96DSYM0012026112700SPMDSYM /* Copy Swift Package dSYMs */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/breez_sdk_sparkFFI.framework/_CodeSignature",
+			);
+			name = "Copy Swift Package dSYMs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Xcode does not copy the dSYMs that Swift-package binary frameworks ship, so App Store Connect warns that the\n# archive lacks them. Copy each embedded framework's dSYM whose UUIDs match its binary next to the app's own dSYM.\n# Never fails the build: a framework whose package ships no matching dSYM is skipped.\n[ \"$DEBUG_INFORMATION_FORMAT\" = \"dwarf-with-dsym\" ] || exit 0\nARTIFACTS_DIR=\"${BUILD_DIR%/Build/*}/SourcePackages/artifacts\"\nmkdir -p \"${DWARF_DSYM_FOLDER_PATH}\"\nfor FRAMEWORK_PATH in \"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"/*.framework; do\n    [ -d \"$FRAMEWORK_PATH\" ] || continue\n    NAME=$(basename \"$FRAMEWORK_PATH\" .framework)\n    WANT=$(xcrun dwarfdump --uuid \"$FRAMEWORK_PATH/$NAME\" 2>/dev/null | awk '{print $2}' | sort)\n    [ -n \"$WANT\" ] || continue\n    for DSYM_PATH in \"$ARTIFACTS_DIR\"/*/*/*.xcframework/*/dSYMs/\"$NAME.framework.dSYM\"; do\n        [ -d \"$DSYM_PATH\" ] || continue\n        rm -rf \"${DWARF_DSYM_FOLDER_PATH}/$NAME.framework.dSYM\"\n        [ \"$(xcrun dwarfdump --uuid \"$DSYM_PATH\" 2>/dev/null | awk '{print $2}' | sort)\" = \"$WANT\" ] || continue\n        if cp -R \"$DSYM_PATH\" \"${DWARF_DSYM_FOLDER_PATH}/\"; then\n            echo \"Copied $NAME.framework.dSYM ($WANT)\"\n        else\n            echo \"warning: Could not copy $NAME.framework.dSYM\"\n        fi\n        break\n    done\ndone\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
