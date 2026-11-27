@@ -39,7 +39,8 @@ struct SendOptionsView: View {
                 VStack(spacing: 8) {
                     Scanner(
                         onScan: { uri in
-                            await scanner.handleSendScan(uri, scope: scanScope) { route in
+                            // Moving on (e.g. to Enter Manually) keeps the sheet open, so check its own path too.
+                            await scanner.handleSendScan(uri, scope: scanScope, isCurrent: isOnThisScannerVisit()) { route in
                                 if let route {
                                     handleRoute(route)
                                 }
@@ -162,8 +163,9 @@ struct SendOptionsView: View {
 
         let value = uri.trimmingCharacters(in: .whitespacesAndNewlines)
         _ = ClipboardPromptHistory().recordInspection(changeCount: UIPasteboard.general.changeCount, supportedValue: value)
+        let isOnVisit = isOnThisScannerVisit()
         Task {
-            await scanner.handleSendScan(uri, scope: scanScope) { route in
+            await scanner.handleSendScan(uri, scope: scanScope, isCurrent: isOnVisit) { route in
                 if let route {
                     handleRoute(route)
                 }
