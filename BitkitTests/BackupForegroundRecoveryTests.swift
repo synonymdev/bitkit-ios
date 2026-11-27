@@ -32,6 +32,33 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
+    func testAnExitDeferredSparkExitBackupDoesNotRaiseTheFailureAlert() async throws {
+        let fixture = try Fixture(categories: [.sparkExit])
+        defer { fixture.removeDefaults() }
+        let uploads = UploadRecorder()
+        let service = BackupService(
+            defaults: fixture.defaults,
+            backupData: { _ in Data("{}".utf8) },
+            isSparkExitActive: { true },
+            uploadBackup: { key, _ in await uploads.record(key) },
+            waitForBackupDelay: { throw CancellationError() }
+        )
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
+        let falseAlert = expectation(description: "An active exit's deferred SPARK_EXIT must not raise 'Data Backup Failure'")
+        falseAlert.isInverted = true
+        let subscription = service.backupFailurePublisher.sink { _ in falseAlert.fulfill() }
+        defer { subscription.cancel() }
+
+        await service.setAppActive(true)?.value
+        await fulfillment(of: [falseAlert], timeout: 0.5)
+
+        let recorded = await uploads.counts
+        XCTAssertNil(recorded[BackupCategory.sparkExit.rawValue], "an active exit must not upload")
+        XCTAssertTrue(service.getBackupStatus(category: .sparkExit).isRequired, "the deferred backup must stay required")
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
     func testFailedRecoveryWaitsForOtherRetriesAndPreservesAgeAndCooldown() async throws {
         let fixture = try Fixture(categories: [.usdt, .widgets])
         defer { fixture.removeDefaults() }

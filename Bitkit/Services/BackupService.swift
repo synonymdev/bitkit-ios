@@ -164,6 +164,9 @@ class BackupService {
     private let statusUpdateQueue = DispatchQueue(label: "backup-service-status-update", qos: .userInitiated)
     private let stateQueue = DispatchQueue(label: "backup-service-state", qos: .userInitiated)
     private var sparkExitMark = SparkExitBackupMark()
+    /// Set while an active exit defers the SPARK_EXIT upload, so the failure check doesn't count the deferral as a failure.
+    private let sparkExitDeferralLock = NSLock()
+    private var isSparkExitDeferredByExit = false
     private let backupStatusesSubject = PassthroughSubject<[BackupCategory: BackupItemStatus], Never>()
 
     private let backupFailureSubject = PassthroughSubject<Int, Never>()
@@ -549,10 +552,10 @@ class BackupService {
                     break
                 }
                 // An active exit defers the upload and keeps this category required; it never counts as backed up.
-                guard await !isSparkExitActive() else { throw CancellationError() }
+                guard await !isSparkExitDeferred() else { throw CancellationError() }
                 // Nothing to back up until Spark connects, which marks this category required again.
                 if let data = try await sparkExitBackupData() {
-                    guard await !isSparkExitActive() else { throw CancellationError() }
+                    guard await !isSparkExitDeferred() else { throw CancellationError() }
                     try Task.checkCancellation()
                     try requireWipeGeneration(wipeGeneration)
                     if isScheduled, shouldSkipBackup(category: category) {
@@ -1334,7 +1337,11 @@ class BackupService {
     }
 
     private func hasFailedBackups(at currentTime: UInt64) -> Bool {
-        BackupCategory.allCases.contains { category in
+        let isSparkExitDeferred = sparkExitDeferralLock.withLock { isSparkExitDeferredByExit }
+        return BackupCategory.allCases.contains { category in
+            if category == .sparkExit, isSparkExitDeferred {
+                return false
+            }
             let status = getBackupStatus(category: category)
             return BackupFailureNotificationGate.hasFailedBackup(
                 status,
@@ -1720,6 +1727,13 @@ class BackupService {
     static func rejectedSparkExitKey(for data: Data) -> String {
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         return sparkExitRejectedKey + "_" + digest.prefix(16)
+    }
+
+    /// Whether an active exit defers the SPARK_EXIT upload, recorded for the failure check.
+    private func isSparkExitDeferred() async -> Bool {
+        let isActive = await isSparkExitActive()
+        sparkExitDeferralLock.withLock { isSparkExitDeferredByExit = isActive }
+        return isActive
     }
 
     /// Nothing while an exit runs: the operators may stop reporting a leaf once it is being exited, so a fresh export
