@@ -10,4 +10,6 @@ The native-binding tests also cover labels, proof-of-payment aliases and questio
 
 The shared journey verifies the recipient and amount in the payment UI. Metadata preservation, including `bitcoin:donation`, is asserted by the native-binding and app regression tests. Neither platform’s confirmation displays a standalone BIP21 note. Inspect the full recipient through its editable address field when the confirmation summary truncates it.
 
+`contact-reselect-after-back.xml` checks that going back from a contact payment to the contact list lets the same or another contact be picked again without reopening Send. It needs Paykit UI, a Pubky profile and two saved contacts that publish public payment details; the journey opens the review screen once to check the fee and never swipes to pay.
+
 `repay-paid-invoice.xml` pays an amountless invoice twice with two amounts and checks that the second Success shows the amount the first payment sent, with nothing sent twice. Android's journey of the same name does the same.
