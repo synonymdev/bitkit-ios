@@ -69,7 +69,9 @@ final class LightningServiceTests: XCTestCase {
         var attempts = 0
         try await Bitkit.LightningService.startRetryingBusyStore(stopRequested: { false }) {
             attempts += 1
-            if attempts < 3 { throw busy }
+            if attempts < 3 {
+                throw busy
+            }
         }
         XCTAssertEqual(attempts, 3)
     }

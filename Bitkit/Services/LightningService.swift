@@ -526,7 +526,9 @@ class LightningService: NodeLifecycleService {
 
     static func isKvStoreSetupFailure(_ error: Error) -> Bool {
         let underlying = (error as? AppError)?.underlyingError ?? error
-        if case BuildError.KvStoreSetupFailed = underlying { return true }
+        if case BuildError.KvStoreSetupFailed = underlying {
+            return true
+        }
         return false
     }
 
