@@ -590,6 +590,7 @@ struct SubscriptionDetailView: View {
 struct SubscriptionSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var contactsManager: ContactsManager
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Environment(HwWalletManager.self) private var hwWalletManager
@@ -675,7 +676,9 @@ struct SubscriptionSheet: View {
             }
             switch route {
             case .create, .createRecipient:
-                await paymentRequests.refreshEligibleTargets(contactsManager: contactsManager)
+                await paymentRequests.refreshEligibleTargets(contactsManager: contactsManager,
+                                                             profilePublicKey: pubkyProfile.publicKey,
+                                                             isProfileSignInPending: pubkyProfile.isProfileSignInPending)
             default:
                 break
             }

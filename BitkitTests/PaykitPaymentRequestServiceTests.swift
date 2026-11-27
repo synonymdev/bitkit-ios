@@ -9516,7 +9516,19 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(peerReads, 0)
     }
 
-    func testPickerRefreshWaitsForSavedContactsToLoad() async throws {
+    private static let pickerProfileKey = "pubky\(String(repeating: "z", count: 52))"
+
+    private func pickerContactRecord(_ publicKey: String) -> ContactRecord {
+        ContactRecord(
+            publicKey: publicKey, label: "Saved",
+            profile: PaykitProfile(displayName: "Saved", imageUri: nil, extraJson: nil),
+            profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
+            publicContactMarkerStatus: .notPublished,
+            publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
+        )
+    }
+
+    func testPickerRefreshWaitsForRunningContactsLoad() async throws {
         let savedKey = "pubky\(String(repeating: "y", count: 52))"
         let sdk = PaymentRequestSdkMock(records: [])
         await sdk.configureRecipients(
@@ -9525,8 +9537,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
         let manager = paymentRequestManager(sdk: sdk)
         let contactsManager = ContactsManager()
+        contactsManager.isLoading = true
 
-        let pickerRefresh = Task { await manager.refreshEligibleTargets(contactsManager: contactsManager) }
+        let pickerRefresh = Task {
+            await manager.refreshEligibleTargets(contactsManager: contactsManager, profilePublicKey: Self.pickerProfileKey)
+        }
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(manager.eligibleTargetsStatus, .loading)
         var peerReads = await sdk.linkedPeersCalls()
@@ -9534,6 +9549,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         contactsManager.contacts = [PubkyContact(publicKey: savedKey, profile: PubkyProfile.placeholder(publicKey: savedKey))]
         contactsManager.hasLoaded = true
+        contactsManager.isLoading = false
         await pickerRefresh.value
 
         XCTAssertEqual(manager.eligibleTargetsStatus, .loaded)
@@ -9542,28 +9558,79 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(peerReads, 1)
     }
 
-    func testPickerRefreshFailsWhenSavedContactsDoNotLoad() async {
-        let sdk = PaymentRequestSdkMock(records: [])
-        let manager = paymentRequestManager(sdk: sdk)
-
-        await manager.refreshEligibleTargets(contactsManager: ContactsManager(), waitingAtMost: .milliseconds(20))
-
-        XCTAssertEqual(manager.eligibleTargetsStatus, .failed)
-        let peerReads = await sdk.linkedPeersCalls()
-        XCTAssertEqual(peerReads, 0)
-    }
-
-    func testPickerRefreshFailsAsSoonAsSavedContactsLoadFails() async throws {
+    func testPickerRefreshFailsAsSoonAsRunningContactsLoadEndsWithoutContacts() async throws {
         let sdk = PaymentRequestSdkMock(records: [])
         let manager = paymentRequestManager(sdk: sdk)
         let contactsManager = ContactsManager()
-        let pickerRefresh = Task { await manager.refreshEligibleTargets(contactsManager: contactsManager, waitingAtMost: .seconds(60)) }
+        contactsManager.isLoading = true
+        let pickerRefresh = Task {
+            await manager.refreshEligibleTargets(
+                contactsManager: contactsManager, profilePublicKey: Self.pickerProfileKey, waitingAtMost: .seconds(60)
+            )
+        }
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(manager.eligibleTargetsStatus, .loading)
 
-        contactsManager.loadErrorMessage = "offline"
+        contactsManager.isLoading = false
         let start = ContinuousClock.now
         await pickerRefresh.value
+
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(5))
+        XCTAssertEqual(manager.eligibleTargetsStatus, .failed)
+    }
+
+    func testReopeningPickerRetriesFailedContactsLoadAndShowsLoading() async throws {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [savedKey: true]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        manager.markEligibleTargetsUnknown()
+        XCTAssertEqual(manager.eligibleTargetsStatus, .failed)
+        let record = pickerContactRecord(savedKey)
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        let contactsManager = ContactsManager(contactRecords: {
+            for await _ in gate {}
+            return [record]
+        }, fetchRemoteProfile: { _, _ in nil })
+        contactsManager.loadErrorMessage = "offline"
+
+        let reopenedPicker = Task {
+            await manager.refreshEligibleTargets(contactsManager: contactsManager, profilePublicKey: Self.pickerProfileKey)
+        }
+        try await waitUntil { contactsManager.isLoading }
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loading)
+        release.finish()
+        await reopenedPicker.value
+
+        XCTAssertTrue(contactsManager.hasLoaded)
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loaded)
+        XCTAssertEqual(manager.eligibleTargets, [PaykitPaymentRequestTarget(publicKey: savedKey)])
+    }
+
+    func testPickerWithoutProfileShowsNoEligibleTargetsAtOnce() async {
+        let sdk = PaymentRequestSdkMock(records: [])
+        let manager = paymentRequestManager(sdk: sdk)
+        manager.clear()
+
+        await manager.refreshEligibleTargets(contactsManager: ContactsManager(), profilePublicKey: nil, waitingAtMost: .seconds(60))
+
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loaded)
+        XCTAssertTrue(manager.eligibleTargets.isEmpty)
+    }
+
+    func testPickerWhileProfileSignInIsPendingFailsAtOnce() async {
+        let sdk = PaymentRequestSdkMock(records: [])
+        let manager = paymentRequestManager(sdk: sdk)
+        manager.clear()
+        let start = ContinuousClock.now
+
+        await manager.refreshEligibleTargets(
+            contactsManager: ContactsManager(), profilePublicKey: nil, isProfileSignInPending: true, waitingAtMost: .seconds(60)
+        )
 
         XCTAssertLessThan(ContinuousClock.now - start, .seconds(5))
         XCTAssertEqual(manager.eligibleTargetsStatus, .failed)

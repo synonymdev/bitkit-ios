@@ -118,6 +118,12 @@ class PubkyProfileManager: ObservableObject {
     private var initializationTask: Task<Void, Never>?
     private var completedRecoveryVersion = 0
     private var sessionRestorationDeferred = false
+
+    /// A stored profile exists but is not signed in yet: restoration is still starting or was deferred while offline.
+    var isProfileSignInPending: Bool {
+        publicKey == nil && (!isInitialized || sessionRestorationDeferred)
+    }
+
     private var readOnlySignOutRevision: UUID?
     private var savedIdentityLookup: (revision: UUID, exists: Bool)?
     private static var isRingAdoptionInFlight = false

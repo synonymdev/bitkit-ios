@@ -1616,26 +1616,55 @@ final class PaykitPaymentRequestManager {
     }
 
     /// Checks the saved contacts once they have loaded, so an empty list read before the load is not taken as final.
-    /// A contacts load that ends in an error stops the wait at once instead of after `timeout`.
-    func refreshEligibleTargets(contactsManager: ContactsManager, waitingAtMost timeout: Duration = .seconds(30)) async {
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await contactsManager.waitUntilLoaded(timeout: timeout) }
-            group.addTask { @MainActor in
-                for await message in contactsManager.$loadErrorMessage.values
-                    where message != nil && !contactsManager.isLoading
-                {
-                    return
-                }
+    /// Without a profile there are no saved contacts; a profile still signing in cannot be checked yet. When no
+    /// contacts load is running, the picker starts one, which also retries a failed load; it waits at most `timeout`
+    /// for a load another caller started.
+    func refreshEligibleTargets(
+        contactsManager: ContactsManager,
+        profilePublicKey: String?,
+        isProfileSignInPending: Bool = false,
+        waitingAtMost timeout: Duration = .seconds(30)
+    ) async {
+        guard let profilePublicKey else {
+            if isProfileSignInPending {
+                markEligibleTargetsUnknown()
+            } else {
+                markNoEligibleTargets()
             }
-            await group.next()
-            group.cancelAll()
-        }
-        guard !Task.isCancelled else { return }
-        guard contactsManager.hasLoaded else {
-            markEligibleTargetsUnknown()
             return
         }
+        if !contactsManager.hasLoaded {
+            if eligibleTargetsStatus == .failed {
+                eligibleTargetsStatus = .loading
+            }
+            if contactsManager.isLoading {
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask { @MainActor in
+                        for await isLoading in contactsManager.$isLoading.values where !isLoading {
+                            return
+                        }
+                    }
+                    group.addTask { try? await Task.sleep(for: timeout) }
+                    await group.next()
+                    group.cancelAll()
+                }
+            } else {
+                try? await contactsManager.loadContacts(for: profilePublicKey)
+            }
+            guard !Task.isCancelled else { return }
+            guard contactsManager.hasLoaded else {
+                markEligibleTargetsUnknown()
+                return
+            }
+        }
         await refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+    }
+
+    /// Without a profile no saved contact can receive a request, which is a final answer rather than a failure.
+    func markNoEligibleTargets() {
+        guard activeIdentity == nil else { return }
+        eligibleTargets = []
+        eligibleTargetsStatus = .loaded
     }
 
     /// Saved contacts could not be loaded, so a first load cannot tell whether any of them can receive a request.

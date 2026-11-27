@@ -48,6 +48,7 @@ struct ReceiveSheetItem: SheetItem {
 struct ReceiveSheet: View {
     @EnvironmentObject private var tagManager: TagManager
     @EnvironmentObject private var contactsManager: ContactsManager
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(TrezorManager.self) private var trezorManager
@@ -86,7 +87,9 @@ struct ReceiveSheet: View {
         }
         .task(id: paymentRequestPickerOpenCount) {
             guard paymentRequestPickerOpenCount > 0 else { return }
-            await paymentRequests.refreshEligibleTargets(contactsManager: contactsManager)
+            await paymentRequests.refreshEligibleTargets(contactsManager: contactsManager,
+                                                         profilePublicKey: pubkyProfile.publicKey,
+                                                         isProfileSignInPending: pubkyProfile.isProfileSignInPending)
         }
         .onAppear {
             navigationPath = []
