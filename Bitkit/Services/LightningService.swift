@@ -429,9 +429,11 @@ class LightningService: NodeLifecycleService {
     func restart(electrumServerUrl: String? = nil, rgsServerUrl: String? = nil) async throws {
         let restart: Task<Void, Error> = restartLock.withLock {
             let previous = lastRestart
+            // A stop requested from here on wins, also while this restart waits behind the previous one or stops the old node.
+            let stopsBefore = requestedStops
             let restart = Task {
                 _ = await previous?.result
-                try await self.restartNode(electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
+                try await self.restartNode(electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl, stopsBefore: stopsBefore)
             }
             lastRestart = restart
             return restart
@@ -439,11 +441,8 @@ class LightningService: NodeLifecycleService {
         try await restart.value
     }
 
-    private func restartNode(electrumServerUrl: String?, rgsServerUrl: String?) async throws {
+    private func restartNode(electrumServerUrl: String?, rgsServerUrl: String?, stopsBefore: Int) async throws {
         Logger.info("Restarting node with current configuration")
-        // Read before this restart's own stop, which does not count as a requested stop, so a stop requested while the old
-        // node stops wins too.
-        let stopsBefore = restartLock.withLock { requestedStops }
 
         // Stop the current node if it exists, ignore errors if already stopped
         if let node {
@@ -480,6 +479,8 @@ class LightningService: NodeLifecycleService {
             try await startRetryingBusyStore(stopRequested: stopRequested, start: start)
             Logger.info("Node restarted successfully", context: "LightningService")
         } catch {
+            // A stop that ended the change wins over the recovery too.
+            guard !stopRequested() else { throw error }
             Logger.warn("Failed ldk-node config change, attempting recovery…", context: "LightningService")
             // If recovery fails, log it but still throw the original error
             do {

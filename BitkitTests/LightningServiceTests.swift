@@ -187,4 +187,21 @@ final class LightningServiceTests: XCTestCase {
         XCTAssertFalse(released)
         XCTAssertTrue(started)
     }
+
+    func testConfigChangeDoesNotRecoverOverAStopThatEndedIt() async {
+        var stopped = false
+        var recovered = false
+        do {
+            try await Bitkit.LightningService.applyConfigChange(
+                stopRequested: { stopped },
+                start: {
+                    stopped = true
+                    throw Bitkit.AppError(serviceError: .nodeNotSetup)
+                },
+                recover: { recovered = true }
+            )
+            XCTFail("expected the change to fail")
+        } catch {}
+        XCTAssertFalse(recovered)
+    }
 }
