@@ -145,6 +145,9 @@ class WalletViewModel: ObservableObject {
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
         self.rgsConfigService = rgsConfigService
+        lightningService.savedServerUrls = {
+            (electrumConfigService.getCurrentServer().fullUrl, rgsConfigService.getCurrentServerUrl())
+        }
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
         self.feeEstimatesManager = feeEstimatesManager
