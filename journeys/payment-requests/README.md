@@ -227,7 +227,7 @@ the SDK and can push the Pay step well past the budget.
 - Confirmation details: `SendConfirmToggleDetails`.
 - Saved-contact recipient: `ReviewContactRecipient`.
 - Contact Detail pay action: `ContactPay`.
-- Request or Pay sheet: `RequestOrPaySheet` (its Pay and Request buttons carry no identifier; find them by label).
+- Request or Pay sheet: `RequestOrPaySheet`, with its Pay button `RequestOrPayPay` and Request button `RequestOrPayRequest`.
 - Payment Request amount screen: `PaymentRequestAmount`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
 - Minimum-amount feedback: `PaymentRequestAmountTooLowToast`.
