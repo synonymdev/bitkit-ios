@@ -160,8 +160,8 @@ class LightningService: NodeLifecycleService {
     private var lastRestart: Task<Void, Error>?
     /// Counts the stops callers asked for, so a recovery start can tell that one came in after it began.
     private var requestedStops = 0
-    /// Recovery starts while a stopped node's VSS writes keep the store busy; each build waits up to 60 s for them.
-    static let recoveryStartAttempts = 5
+    /// Starts while a stopped node's VSS writes keep the store busy; each build waits up to 60 s for them.
+    static let busyStoreStartAttempts = 5
 
     private let eventLoopLock = NSLock()
     /// The current event loop and the node it serves, so only that node's lifecycle can cancel it.
@@ -448,21 +448,34 @@ class LightningService: NodeLifecycleService {
         }
         let stopsBefore = restartLock.withLock { requestedStops }
 
-        // Restart the node with the current configuration
+        try await Self.applyConfigChange(
+            stopRequested: { self.restartLock.withLock { self.requestedStops != stopsBefore } },
+            start: {
+                try await self.setup(walletIndex: self.currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
+                try await self.start()
+            },
+            recover: { try await self.restartWithPreviousConfig(stopsBefore: stopsBefore) }
+        )
+    }
+
+    /// Starts the node with a changed config, retrying while the store is busy with the stopped node's VSS writes, which have
+    /// nothing to do with the new config. Any other failure, or a busy store past every attempt, runs `recover` and rethrows.
+    static func applyConfigChange(
+        stopRequested: () -> Bool,
+        start: () async throws -> Void,
+        recover: () async throws -> Void
+    ) async throws {
         do {
-            try await setup(walletIndex: currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
-            try await start()
-            Logger.info("Node restarted successfully")
+            try await startRetryingBusyStore(stopRequested: stopRequested, start: start)
+            Logger.info("Node restarted successfully", context: "LightningService")
         } catch {
-            Logger.warn("Failed ldk-node config change, attempting recovery…")
-            // Attempt to restart with previous config
+            Logger.warn("Failed ldk-node config change, attempting recovery…", context: "LightningService")
             // If recovery fails, log it but still throw the original error
             do {
-                try await restartWithPreviousConfig(stopsBefore: stopsBefore)
+                try await recover()
             } catch {
-                Logger.error("Recovery attempt also failed: \(error)")
+                Logger.error("Recovery attempt also failed: \(error)", context: "LightningService")
             }
-            // Always re-throw the original error that caused the restart failure
             throw error
         }
     }
@@ -499,21 +512,21 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Runs `start` again while it fails because the store is still busy with a stopped node's VSS writes, up to
-    /// `recoveryStartAttempts` times. A stop requested meanwhile wins: no further start runs.
+    /// `busyStoreStartAttempts` times. A stop requested meanwhile wins: no further start runs.
     static func startRetryingBusyStore(
-        attempts: Int = recoveryStartAttempts,
+        attempts: Int = busyStoreStartAttempts,
         stopRequested: () -> Bool,
         start: () async throws -> Void
     ) async throws {
         var attempt = 0
         while true {
             guard !stopRequested() else {
-                Logger.info("Skipped recovery start because a stop was requested", context: "LightningService")
+                Logger.info("Skipped node start because a stop was requested", context: "LightningService")
                 throw AppError(serviceError: .nodeNotSetup)
             }
             attempt += 1
             if attempt > 1 {
-                Logger.warn("Retrying recovery start '\(attempt)/\(attempts)'", context: "LightningService")
+                Logger.warn("Retrying node start on a busy store '\(attempt)/\(attempts)'", context: "LightningService")
             }
             do {
                 try await start()

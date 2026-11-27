@@ -85,7 +85,7 @@ final class LightningServiceTests: XCTestCase {
             }
             XCTFail("expected the last failure")
         } catch {}
-        XCTAssertEqual(attempts, Bitkit.LightningService.recoveryStartAttempts)
+        XCTAssertEqual(attempts, Bitkit.LightningService.busyStoreStartAttempts)
     }
 
     func testRecoveryStartDoesNotRetryOtherFailures() async {
@@ -122,5 +122,42 @@ final class LightningServiceTests: XCTestCase {
             XCTFail("expected the skipped start to fail")
         } catch {}
         XCTAssertEqual(attempts, 0)
+    }
+
+    // Regression: a busy store has nothing to do with the requested Electrum or RGS server, so the change retries it
+    // instead of falling back to the previous config.
+    func testConfigChangeRetriesItsOwnStartWhileTheVssStoreIsBusy() async throws {
+        var attempts = 0
+        var recovered = false
+        try await Bitkit.LightningService.applyConfigChange(
+            stopRequested: { false },
+            start: {
+                attempts += 1
+                if attempts < 2 {
+                    throw Bitkit.AppError(error: BuildError.KvStoreSetupFailed(message: "in flight"))
+                }
+            },
+            recover: { recovered = true }
+        )
+        XCTAssertEqual(attempts, 2)
+        XCTAssertFalse(recovered)
+    }
+
+    func testConfigChangeRecoversAfterAnotherFailure() async {
+        var attempts = 0
+        var recovered = false
+        do {
+            try await Bitkit.LightningService.applyConfigChange(
+                stopRequested: { false },
+                start: {
+                    attempts += 1
+                    throw Bitkit.AppError(error: BuildError.WalletSetupFailed(message: ""))
+                },
+                recover: { recovered = true }
+            )
+            XCTFail("expected the change to fail")
+        } catch {}
+        XCTAssertEqual(attempts, 1)
+        XCTAssertTrue(recovered)
     }
 }
