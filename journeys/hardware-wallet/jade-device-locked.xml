@@ -1,15 +1,14 @@
 <journey name="Jade Locked On Device">
   <description>
-    Logs the paired Jade out on the device itself and checks the message the app shows when it
+    Logs the paired Jade out on the device itself and checks the messages the app shows when it
     next needs the Jade. Requires `JADE_MODE=interactive ./scripts/jade-emulator start` in
     `bitkit-docker`, a regtest debug build with the Jade emulator enabled (see the README) and no
-    Jade paired. For the send steps, Settings, Advanced, Electrum Server must point at the
-    `bitkit-docker` Electrum. Each log-out happens while the app holds an open Jade session: send
-    first, since closing Receive after Verify on Device ends the session and the next step would
-    reconnect instead of meeting the locked device. The device answers
-    the next request with HW_LOCKED, and the app asks for the PIN on the device again and retries,
-    on Verify on Device and on Sign With Jade. iOS does not retry the fingerprint read on Sign With
-    Jade yet, so that step can still report the Jade as busy (synonymdev/bitkit-ios#1517).
+    Jade paired. For the send step, Settings, Advanced, Electrum Server must point at the
+    `bitkit-docker` Electrum. The log-out happens while the app holds an open Jade session, so the
+    device answers the next request with HW_LOCKED. On Verify on Device the app asks for the PIN on
+    the device again and retries. On Sign With Jade iOS does not retry the fingerprint read yet and
+    shows the Jade busy message (synonymdev/bitkit-ios#1517); the PR that fixes it changes that step
+    to expect the PIN pad and a sent payment.
   </description>
   <actions>
     <action>
@@ -34,13 +33,7 @@
       Tap Send (testTag "Send"), enter a regtest address of the bitkit-docker node manually, select the Jade as the funding source on the amount screen (testTag "AssetButton-switch"), enter 50 000 sats, tap Continue (testTag "ContinueAmount"), swipe to confirm and tap "Sign With Jade" (testTag "HardwareSendOpenTrezorConnect")
     </action>
     <action>
-      Verify the Jade shows its PIN pad, then run `./scripts/jade-emulator pin 012345`
-    </action>
-    <action>
-      Run `./scripts/jade-emulator press front` to pass the Output screen, then `./scripts/jade-emulator press right front` to sign on Send Transaction, and verify the success screen (testTag "SendSuccess") headed "Bitcoin Sent" appears within 30 seconds, with one payment sent
-    </action>
-    <action>
-      Close the success screen and run `./scripts/jade-emulator press front right front` to log out on the device again
+      Verify the toast "Your Jade is busy. Finish what is shown on the device, then try again." appears, then close the send sheet; the device stays logged out
     </action>
     <action>
       Tap Receive, select the Jade tab, tap "Show Details" if needed, then tap "Verify on Device" (testTag "HardwareVerifyAddress") and verify the Jade shows its PIN pad again

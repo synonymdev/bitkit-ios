@@ -178,8 +178,8 @@ The error journeys start the emulator in another state first: `jade-uninitialize
 (`JADE_MNEMONIC=`), `jade-wrong-pin.xml` (`JADE_MODE=interactive`, where the device shows its
 own PIN pad and `./scripts/jade-emulator pin` types on it) and `jade-network-mismatch.xml`
 (`JADE_NETWORK=mainnet`), and `jade-device-locked.xml` logs the interactive device out after
-pairing, so the next request asks for the PIN on the device again and retries (on iOS, Sign With Jade
-can still report busy until synonymdev/bitkit-ios#1517); `jade-psbt-too-large.xml` needs the app on the bitkit-docker Electrum and about 200 small
+pairing: Sign With Jade shows the Jade busy message until synonymdev/bitkit-ios#1517, then Verify on Device
+asks for the PIN on the device again and retries; `jade-psbt-too-large.xml` needs the app on the bitkit-docker Electrum and about 200 small
 inputs on the Jade. `jade-sign-on-device.xml` declines and then approves a payment on the interactive
 device's own screens. `jade-wallet-mismatch.xml` restarts the emulator with another seed after pairing. `jade-passphrase.xml` starts it with `JADE_PASSPHRASE=always` and pairs the wallet a passphrase typed on the device opens (`./scripts/jade-emulator passphrase`). The bitkit-docker `docs/jade-emulator.md` lists the modes and recipes.
 
