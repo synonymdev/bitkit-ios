@@ -20,6 +20,24 @@ final class SparkExitReviewTests: XCTestCase {
         SparkExitDriver(chain: chain, recovering: withSdk ? sdk : nil, makeSigner: { _ in StubCpfpSigner() }, save: { _ in })
     }
 
+    /// A tick waits for an unsaved savings payment from the tip it first saw, then forgets it 144 blocks later, so the
+    /// ask comes back.
+    func testATickForgetsAnUnsavedSavingsPaymentOnceItsWaitEnds() async throws {
+        var record = SparkExitFixtures.record()
+        record.savingsSendStarted = .init(address: record.funding[0].address, atHeight: nil, earlierAttemptId: nil)
+        chain.tip = 1000
+        let waiting = try await driver().tick(record)
+        XCTAssertEqual(waiting.savingsSendStarted?.atHeight, 1000)
+        XCTAssertEqual(SparkExitMath.fundingState(waiting, utxos: []), .paid(txid: nil))
+
+        chain.tip = 1000 + SparkExitDriver.ownPaymentTimeoutBlocks
+        let forgotten = try await driver().tick(waiting)
+        XCTAssertNil(forgotten.savingsSendStarted)
+        guard case .ask = SparkExitMath.fundingState(forgotten, utxos: []) else {
+            return XCTFail("the ask did not come back")
+        }
+    }
+
     // MARK: Review 518bf31e5
 
     /// Funding sent from another wallet before the user picked savings is not paid twice.
