@@ -911,6 +911,7 @@
 "pubky_auth__identity_unavailable_desc" = "Controlla la connessione e riprova.";
 "profile__auth_error_signup_code_rejected" = "L'homeserver non ha accettato questo codice di registrazione. Riprova o usa un altro link di registrazione.";
 "wallet__onchain_abandon_transfer_note" = "I trasferimenti al saldo di spesa non sono più disponibili. Bitkit controlla prima la rete, poi rimanda le monete di questo trasferimento al tuo wallet, così il trasferimento originale non potrà mai essere confermato. Questo costa una commissione di rete.";
+"wallet__onchain_abandon_exit_note" = "Questo trasferimento forzato non ha più bisogno di questo pagamento. Bitkit controlla prima la rete, poi rimanda le sue monete al tuo wallet, così non potrà mai essere confermato. Questo costa una commissione di rete.";
 "watch_only_accounts__active_section" = "Account attivi";
 "watch_only_accounts__copy_xpub" = "Copia xpub";
 "watch_only_accounts__description" = "Ogni server Paykit approvato riceve un account Bitcoin separato. Disattiva il monitoraggio per scaricare un account senza eliminare lo storico del suo wallet.";

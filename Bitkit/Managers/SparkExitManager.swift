@@ -103,11 +103,14 @@ final class SparkExitManager {
 
     /// The chain a test drives the exit on, in place of the network's hosts.
     @ObservationIgnored private let testChain: SparkExitChain?
+    @ObservationIgnored private let attemptService: OnchainSendAttemptService
 
-    /// The app uses `shared`; tests make their own, on a wallet index no wallet uses, optionally on their own chain.
-    init(walletIndex: Int = 0, chain: SparkExitChain? = nil) {
+    /// The app uses `shared`; tests make their own, on a wallet index no wallet uses, optionally on their own chain and
+    /// send journal.
+    init(walletIndex: Int = 0, chain: SparkExitChain? = nil, attempts: OnchainSendAttemptService = .shared) {
         self.walletIndex = walletIndex
         testChain = chain
+        attemptService = attempts
     }
 
     private func noteBalanceInputs() {
@@ -441,13 +444,16 @@ final class SparkExitManager {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark exit funding address could not be read")
         }
         guard Self.isSavingsPaymentRefused(current, attempt: refused, fundingSeenSats: fundingSeenSats) else { return }
-        let attempts = OnchainSendAttemptService.shared
+        let attempts = attemptService
+        let exit = SparkExitFundingRelease.Exit(record: current, earlier: earlierAddresses)
         let paidAgain: (txid: String, isAccepted: Bool)?
         do {
             paidAgain = try await Self.payRefusedAgain(refused, record: current, fundingSeenSats: fundingSeenSats) { context in
                 try await attempts.retrySamePayment(using: LightningService.shared, context: context) { attempt, _ in
                     guard attempt.id == refused.id, attempt.address == refused.address, attempt.status == .rejected
                     else { throw OnchainSendAttemptError.unresolved }
+                    // Funding from another wallet may have reached the address while the payment was prepared.
+                    try await SparkExitFundingRelease.authorizePayAgain(attempt, exit: exit, chain: chain)
                 }
             }
         } catch {
@@ -638,7 +644,7 @@ final class SparkExitManager {
 
     /// The savings sends in the journal, from one read of it.
     private func refreshSends() async {
-        let sends = await OnchainSendAttemptService.shared.sendAddresses()
+        let sends = await attemptService.sendAddresses()
         unresolvedSendAddress = sends.unresolved
         acceptedSendAddress = sends.accepted?.address
         acceptedSendTxid = sends.accepted?.txid
@@ -658,8 +664,8 @@ final class SparkExitManager {
         return paid
     }
 
-    private func refreshRefusedSavingsPayment() async {
-        let attempt = try? await OnchainSendAttemptService.shared.blockingAttempt()
+    func refreshRefusedSavingsPayment() async {
+        let attempt = try? await attemptService.blockingAttempt()
         refusedSavingsPayment = attempt?.status == .rejected ? attempt : nil
     }
 
@@ -1579,7 +1585,7 @@ final class SparkExitManager {
     @discardableResult
     func payFunding(address: String, sats: UInt64, satsPerVbyte: UInt32, feeSats: UInt64) async throws -> String {
         let lightning = LightningService.shared
-        let attempts = OnchainSendAttemptService.shared
+        let attempts = attemptService
         let result = try await Self.sendFunding(
             using: lightning, attempts: attempts, address: address, sats: sats, satsPerVbyte: satsPerVbyte, feeSats: feeSats
         )

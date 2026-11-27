@@ -366,6 +366,8 @@ actor PaykitPaymentProofService {
     private let hardwareTransactionLookup: any PaykitHardwareTransactionLookingUp
     private let hardwareFollowup: @Sendable (PendingPaykitPaymentProof, TransactionDetail?) async throws -> Void
     private let attemptService: OnchainSendAttemptService
+    /// The Spark exit a savings send may fund, read from its stores; nil when it cannot be read.
+    private let sparkExit: @Sendable (OnchainSendAttempt) async -> SparkExitFundingRelease.Exit?
     private let logInfo: @Sendable (String) -> Void
     private let logWarning: @Sendable (String) -> Void
     private let mutationLock = PaykitProofMutationLock()
@@ -458,6 +460,9 @@ actor PaykitPaymentProofService {
             try await PaykitPaymentProofService.restoreHardwareActivity($0, detail: $1)
         },
         attemptService: OnchainSendAttemptService = .shared,
+        sparkExit: @escaping @Sendable (OnchainSendAttempt) async -> SparkExitFundingRelease.Exit? = {
+            SparkExitFundingRelease.storedExit(for: $0)
+        },
         logInfo: @escaping @Sendable (String) -> Void = {
             Logger.info($0, context: "PaykitPaymentProof")
         },
@@ -471,6 +476,7 @@ actor PaykitPaymentProofService {
         self.hardwareTransactionLookup = hardwareTransactionLookup
         self.hardwareFollowup = hardwareFollowup
         self.attemptService = attemptService
+        self.sparkExit = sparkExit
         self.logInfo = logInfo
         self.logWarning = logWarning
     }
@@ -696,6 +702,9 @@ actor PaykitPaymentProofService {
         if attempt.isBlocktankFunding {
             return attempt.canBeAbandoned
         }
+        if attempt.mayFundSparkExit {
+            return try await sparkExitFundingHasEnded(attempt)
+        }
         guard attempt.canBeAbandoned, let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
         else { return false }
         try await requireRecoveryPayer(payer)
@@ -726,6 +735,28 @@ actor PaykitPaymentProofService {
         default:
             return false
         }
+    }
+
+    /// Whether `attempt` pays a Spark exit's funding address, current or earlier, or the exit cannot be read: Send Pending
+    /// pays it again only while the exit still asks for it, and offers its release once the exit no longer does.
+    func isSparkExitFunding(_ attempt: OnchainSendAttempt) async -> Bool {
+        guard attempt.mayFundSparkExit else { return false }
+        // An approved release is finished from here, even once the exit's record is gone.
+        if attempt.releaseApproved == true {
+            return true
+        }
+        guard let exit = await sparkExit(attempt) else { return true }
+        return SparkExitFundingRelease.isExitFunding(attempt, exit: exit)
+    }
+
+    /// A savings send to a Spark exit's funding address has ended once that exit no longer needs it. One whose
+    /// transaction the exit adopted landed, so it never ends, even after a release was approved.
+    private func sparkExitFundingHasEnded(_ attempt: OnchainSendAttempt) async throws -> Bool {
+        guard attempt.canBeAbandoned, let exit = await sparkExit(attempt) else { return false }
+        if attempt.releaseApproved == true {
+            return !SparkExitFundingRelease.isAdopted(attempt, exit: exit)
+        }
+        return SparkExitFundingRelease.exitNoLongerNeeds(attempt, exit: exit)
     }
 
     private func recurringPeriodHasEnded(
@@ -800,13 +831,13 @@ actor PaykitPaymentProofService {
 
     /// Removes the started proof, then the attempt, so a crash in between leaves an attempt a later cancel finishes.
     private func finishRelease(_ attempt: OnchainSendAttempt, context: OnchainSendPendingContext) async throws {
-        if attempt.isBlocktankFunding {
-            // A Blocktank funding has no Shop proof to remove.
+        if attempt.isBlocktankFunding || attempt.mayFundSparkExit {
+            // A Blocktank or Spark exit funding has no Shop proof to remove.
             try await mutationLock.withLock {
                 guard try await attemptService.pendingAttempt(context: context) == attempt else { throw OnchainSendAttemptError.unresolved }
                 try await attemptService.abandonUnbroadcast(attempt)
             }
-            logInfo("Released Blocktank funding \(attempt.txid ?? "") through \(attempt.releaseTxid ?? "")")
+            logInfo("Released funding \(attempt.txid ?? "") through \(attempt.releaseTxid ?? "")")
             return
         }
         guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {

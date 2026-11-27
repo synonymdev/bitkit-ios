@@ -786,6 +786,7 @@
 "pubky_auth__identity_unavailable_desc" = "تحقق من اتصالك وحاول مرة أخرى.";
 "profile__auth_error_signup_code_rejected" = "لم يقبل الخادم الرئيسي رمز التسجيل هذا. حاول مرة أخرى أو استخدم رابط تسجيل آخر.";
 "wallet__onchain_abandon_transfer_note" = "لم تعد التحويلات إلى رصيد الإنفاق متاحة. يتحقق Bitkit أولًا من الشبكة، ثم يعيد عملات هذا التحويل إلى محفظتك حتى لا يتأكد التحويل الأصلي أبدًا. يكلّف ذلك رسوم شبكة.";
+"wallet__onchain_abandon_exit_note" = "لم يعد هذا التحويل القسري بحاجة إلى هذه الدفعة. يتحقق Bitkit أولًا من الشبكة، ثم يعيد عملاتها إلى محفظتك حتى لا تتأكد أبدًا. يكلّف ذلك رسوم شبكة.";
 "watch_only_accounts__active_section" = "الحسابات النشطة";
 "watch_only_accounts__copy_xpub" = "نسخ xpub";
 "watch_only_accounts__description" = "يحصل كل خادم Paykit معتمد على حساب Bitcoin منفصل. أوقف التتبع لإلغاء تحميل حساب دون حذف سجل محفظته.";

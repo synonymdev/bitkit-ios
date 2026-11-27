@@ -2052,6 +2052,7 @@
 "wallet__onchain_abandon_release" = "Send this payment's coins back to your wallet? Network fee: {fee} sats.";
 "wallet__onchain_abandon_sync" = "Bitkit could not sync with the network. Check your connection and try again.";
 "wallet__onchain_abandon_transfer_note" = "Transfers to spending are no longer available. Bitkit first checks the network, then sends this transfer's coins back to your wallet so the original transfer can never confirm. This costs a network fee.";
+"wallet__onchain_abandon_exit_note" = "This force transfer no longer needs this payment. Bitkit first checks the network, then sends its coins back to your wallet so it can never confirm. This costs a network fee.";
 // USDT
 "usdt__activity" = "Activity";
 "usdt__address" = "Recipient address";

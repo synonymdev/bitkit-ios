@@ -929,6 +929,7 @@
 "pubky_auth__identity_unavailable_desc" = "Verifique sua conexão e tente novamente.";
 "profile__auth_error_signup_code_rejected" = "O homeserver não aceitou este código de cadastro. Tente novamente ou use outro link de cadastro.";
 "wallet__onchain_abandon_transfer_note" = "As transferências para o saldo de gastos não estão mais disponíveis. O Bitkit primeiro verifica a rede e depois devolve as moedas desta transferência para sua carteira, para que a transferência original nunca seja confirmada. Isso tem uma taxa de rede.";
+"wallet__onchain_abandon_exit_note" = "Esta transferência forçada não precisa mais deste pagamento. O Bitkit primeiro verifica a rede e depois devolve as moedas dele para sua carteira, para que nunca seja confirmado. Isso tem uma taxa de rede.";
 "watch_only_accounts__active_section" = "Contas ativas";
 "watch_only_accounts__copy_xpub" = "Copiar xpub";
 "watch_only_accounts__description" = "Cada servidor Paykit aprovado recebe uma conta Bitcoin separada. Desative o acompanhamento para descarregar uma conta sem excluir o histórico da carteira dela.";

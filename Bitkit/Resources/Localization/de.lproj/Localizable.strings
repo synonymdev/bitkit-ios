@@ -927,6 +927,7 @@
 "pubky_auth__identity_unavailable_desc" = "Überprüfe deine Verbindung und versuche es erneut.";
 "profile__auth_error_signup_code_rejected" = "Der Homeserver hat diesen Registrierungscode nicht akzeptiert. Versuche es erneut oder verwende einen anderen Registrierungslink.";
 "wallet__onchain_abandon_transfer_note" = "Überweisungen auf dein Ausgabenguthaben sind nicht mehr verfügbar. Bitkit prüft zuerst das Netzwerk und schickt die Coins dieser Überweisung dann zurück in deine Wallet, damit die ursprüngliche Überweisung nie bestätigt wird. Dafür fällt eine Netzwerkgebühr an.";
+"wallet__onchain_abandon_exit_note" = "Diese forcierte Übertragung braucht diese Zahlung nicht mehr. Bitkit prüft zuerst das Netzwerk und schickt ihre Coins dann zurück in deine Wallet, damit sie nie bestätigt wird. Dafür fällt eine Netzwerkgebühr an.";
 "watch_only_accounts__active_section" = "Aktive Konten";
 "watch_only_accounts__copy_xpub" = "xpub kopieren";
 "watch_only_accounts__description" = "Jeder genehmigte Paykit-Server erhält ein eigenes Bitcoin-Konto. Deaktiviere die Verfolgung, um ein Konto zu entladen, ohne seinen Wallet-Verlauf zu löschen.";

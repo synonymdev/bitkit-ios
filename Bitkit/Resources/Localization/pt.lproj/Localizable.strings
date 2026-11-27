@@ -2,6 +2,7 @@
 "lightning__spending_amount__title" = "Transferir\n<accent>para gastos</accent>";
 "security__cp_text" = "Você pode alterar seu código PIN para uma nova\ncombinação de 4 dígitos. Primeiro, digite seu código PIN atual.";
 "wallet__onchain_abandon_transfer_note" = "As transferências para o saldo de gastos já não estão disponíveis. A Bitkit verifica primeiro a rede e depois devolve as moedas desta transferência à sua carteira, para que a transferência original nunca seja confirmada. Isto tem uma taxa de rede.";
+"wallet__onchain_abandon_exit_note" = "Esta transferência forçada já não precisa deste pagamento. A Bitkit verifica primeiro a rede e depois devolve as suas moedas à sua carteira, para que nunca seja confirmado. Isto tem uma taxa de rede.";
 "wallet__payment_recipient_rejected" = "O destinatário rejeitou este pagamento Lightning. Verifique a fatura e tente novamente.";
 "wallet__payment_abandoned" = "O pagamento Lightning foi interrompido antes de ser concluído.";
 "wallet__payment_expired" = "Este pagamento Lightning expirou. Peça uma nova fatura.";

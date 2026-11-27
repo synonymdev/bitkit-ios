@@ -870,6 +870,7 @@
 "pubky_auth__identity_unavailable_desc" = "Comprova la connexió i torna-ho a provar.";
 "profile__auth_error_signup_code_rejected" = "L'homeserver no ha acceptat aquest codi de registre. Torna-ho a provar o utilitza un altre enllaç de registre.";
 "wallet__onchain_abandon_transfer_note" = "Les transferències al saldo de despesa ja no estan disponibles. Bitkit primer comprova la xarxa i després retorna les monedes d'aquesta transferència a la teva cartera perquè la transferència original no es pugui confirmar mai. Això té una comissió de xarxa.";
+"wallet__onchain_abandon_exit_note" = "Aquesta transferència forçosa ja no necessita aquest pagament. Bitkit primer comprova la xarxa i després retorna les seves monedes a la teva cartera perquè no es pugui confirmar mai. Això té una comissió de xarxa.";
 "watch_only_accounts__active_section" = "Comptes actius";
 "watch_only_accounts__copy_xpub" = "Copiar xpub";
 "watch_only_accounts__description" = "Cada servidor Paykit aprovat obté un compte de Bitcoin independent. Desactiva el seguiment per descarregar un compte sense eliminar l'historial de la seva cartera.";
