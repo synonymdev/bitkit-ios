@@ -467,6 +467,19 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testProfileSignInStaysPendingAfterRestoreFailsOrIsDeferred() async {
+        for result: PubkyProfileManager.SessionInitializationResult in [.restorationFailed, .restorationDeferred] {
+            let manager = PubkyProfileManager()
+            await manager.initialize { result }
+            XCTAssertNil(manager.publicKey)
+            XCTAssertTrue(manager.isProfileSignInPending, "\(result)")
+        }
+        let manager = PubkyProfileManager()
+        await manager.initialize { .noSession }
+        XCTAssertFalse(manager.isProfileSignInPending)
+    }
+
+    @MainActor
     func testFailedRestorationPreservesCachedProfile() async {
         let keys = ["pubky_profile_name", "pubky_profile_image_uri"]
         let defaults = UserDefaults.standard

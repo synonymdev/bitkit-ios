@@ -118,10 +118,11 @@ class PubkyProfileManager: ObservableObject {
     private var initializationTask: Task<Void, Never>?
     private var completedRecoveryVersion = 0
     private var sessionRestorationDeferred = false
+    private var hasUnrestoredSession = false
 
-    /// A stored profile exists but is not signed in yet: restoration is still starting or was deferred while offline.
+    /// A stored profile exists but is not signed in: restoration is still starting, was deferred, or failed.
     var isProfileSignInPending: Bool {
-        publicKey == nil && (!isInitialized || sessionRestorationDeferred)
+        publicKey == nil && (!isInitialized || hasUnrestoredSession)
     }
 
     private var readOnlySignOutRevision: UUID?
@@ -351,6 +352,7 @@ class PubkyProfileManager: ObservableObject {
                 Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
                 authState = .idle
                 sessionRestorationDeferred = false
+                hasUnrestoredSession = true
                 readOnlyProfile = nil
                 if case .userVisible = mode {
                     initializationErrorMessage = error.profileErrorDescription
@@ -369,11 +371,13 @@ class PubkyProfileManager: ObservableObject {
         switch result {
         case .noSession:
             sessionRestorationDeferred = false
+            hasUnrestoredSession = false
             clearAuthenticatedState()
             sessionRestorationFailed = false
             Logger.debug("No saved paykit session found", context: "PubkyProfileManager")
         case let .restored(pk):
             sessionRestorationDeferred = false
+            hasUnrestoredSession = false
             invalidateProfileLoads()
             if !hasReadOnlyProfileIdentity || !PubkyPublicKeyFormat.matches(readOnlyProfile?.publicKey, pk) {
                 readOnlyProfile = nil
@@ -388,6 +392,7 @@ class PubkyProfileManager: ObservableObject {
             Task { await loadProfile() }
         case .restorationFailed, .restorationNeedsUpdate:
             sessionRestorationDeferred = false
+            hasUnrestoredSession = true
             clearAuthenticatedState(clearCachedProfile: false)
             restorationNeedsUpdate = result == .restorationNeedsUpdate
             if restorationNeedsUpdate {
@@ -399,6 +404,7 @@ class PubkyProfileManager: ObservableObject {
                 sessionRestorationFailed = true
             }
         case .restorationDeferred:
+            hasUnrestoredSession = true
             clearAuthenticatedState(clearCachedProfile: false, clearReadOnlyProfile: false)
             sessionRestorationFailed = false
             sessionRestorationDeferred = true
