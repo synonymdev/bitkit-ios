@@ -1178,6 +1178,10 @@ struct SendConfirmationView: View {
             }
         }
 
+        if try await showEarlierSendIfRepeat() {
+            return
+        }
+
         let swipe = sparkUpdateSwipe
         guard await confirmSparkUpdateQuote() else { throw CancellationError() }
         // The quote this swipe approved: the PIN screen reruns `.task`, which can replace `sparkUpdateQuote` meanwhile.
@@ -1352,13 +1356,56 @@ struct SendConfirmationView: View {
         return .uncertain
     }
 
+    private func showEarlierSendIfRepeat() async throws -> Bool {
+        // A contact's payment keeps its request, proof and route steps, so only a plain invoice is decided here.
+        guard app.selectedWalletToPayFrom == .lightning, app.contactPaymentContext == nil, app.paykitSwapRoute == nil,
+              app.paykitRoute?.serviceLeg == nil, let invoice = app.scannedLightningInvoice else { return false }
+        let paymentHash = invoice.paymentHash.hex
+        let swipe = sparkUpdateSwipe
+        let visit = screenVisit
+        let earlierSend: Activity?
+        do {
+            earlierSend = try await CoreService.shared.activity.getActivity(id: paymentHash)
+        } catch {
+            Logger.warn("Failed to read an earlier send of '\(paymentHash)': \(error)", context: "SendConfirmationView")
+            earlierSend = nil
+        }
+        // Leaving Confirm or a changed payment while reading stops this swipe.
+        guard !visit.isLeft, sparkUpdateSwipe == swipe else { throw CancellationError() }
+        do {
+            guard let earlierSentSats = try Self.earlierLightningSendSats(earlierSend, bolt11: invoice.bolt11) else { return false }
+            Logger.info("Showed the earlier send of '\(paymentHash)' for paying it again", context: "SendConfirmationView")
+            wallet.sendAmountSats = earlierSentSats
+            navigationPath.append(.success(paymentId: paymentHash))
+        } catch {
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: invoice.bolt11
+            )))
+        }
+        return true
+    }
+
+    static func earlierLightningSendSats(_ activity: Activity?, bolt11: String) throws -> UInt64? {
+        guard case let .lightning(earlier) = activity, earlier.txType == .sent, earlier.status == .succeeded else { return nil }
+        // A send recorded without its invoice ("No invoice", "migrated:<id>") cannot tell which invoice it paid.
+        guard earlier.invoice.lowercased().hasPrefix("ln") else { return nil }
+        guard earlier.invoice.caseInsensitiveCompare(bolt11) == .orderedSame else {
+            Logger.warn("Refused paying '\(earlier.id)', another invoice with its hash was paid", context: "SendConfirmationView")
+            throw InvoiceAlreadyPaidError()
+        }
+        return earlier.value
+    }
+
     static func sendLightningPayment<Result>(
         invoiceAmountSats: UInt64,
         reviewedAmountSats: UInt64,
         request: PaykitPaymentRequest?,
-        authorize: (PaykitPaymentRequest) async throws -> Void,
-        onAuthorizationFailure: (Error) async -> Void,
-        send: () async throws -> Result
+        authorize: @escaping (PaykitPaymentRequest) async throws -> Void,
+        onAuthorizationFailure: @escaping (Error) async -> Void,
+        send: (_ recheckBeforeSubmission: @escaping () async throws -> Void) async throws -> Result
     ) async throws -> Result {
         do {
             guard invoiceAmountSats == 0 || invoiceAmountSats == reviewedAmountSats else {
@@ -1371,7 +1418,22 @@ struct SendConfirmationView: View {
             await onAuthorizationFailure(error)
             throw error
         }
-        return try await send()
+        // The send runs this again after its last await before submission, so a contact blocked meanwhile isn't paid.
+        do {
+            return try await send {
+                guard let request else { return }
+                do {
+                    try await authorize(request)
+                } catch {
+                    throw SubmissionRecheckRefusal(error: error)
+                }
+            }
+        } catch let refusal as SubmissionRecheckRefusal {
+            // Ended as a refusal only when the refusal comes back: a retry of a send still in doubt comes back pending,
+            // and keeps its proof.
+            await onAuthorizationFailure(refusal.error)
+            throw refusal.error
+        }
     }
 
     static func sendOnchainPayment<Result>(
@@ -1384,14 +1446,21 @@ struct SendConfirmationView: View {
     ) async throws -> Result {
         try await send {
             guard let request else { return }
-            try await prepareBroadcast(request)
-            do {
-                try await authorize(request)
-            } catch {
-                try await onAuthorizationFailure(error)
-                throw error
+            // A refusal fails the started proof before the send's guard is cleared, so a kill between the two can't
+            // leave a started proof without its guard.
+            func authorizeOrRollBack() async throws {
+                do {
+                    try await authorize(request)
+                } catch {
+                    try await onAuthorizationFailure(error)
+                    throw error
+                }
             }
+            try await prepareBroadcast(request)
+            try await authorizeOrRollBack()
             await onAuthorized(request)
+            // `onAuthorized` awaits, so the request is authorized again after it, right before the broadcast.
+            try await authorizeOrRollBack()
         }
     }
 
@@ -2079,9 +2148,11 @@ struct SendConfirmationView: View {
                     request: incomingPaymentRequest,
                     authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
                     onAuthorizationFailure: { _ in
+                        // A refusal at the recheck before submission sent nothing, so it ends as a refusal up front does.
+                        privatePaymentListOutcome = .definitePreBroadcastFailure
                         await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
                     }
-                ) {
+                ) { recheckBeforeSubmission in
                     do {
                         // After the allowance check above, so a refused request moves nothing.
                         try await MoveToSparkManager.shared.updateSpendingBalanceIfNeeded(
@@ -2098,6 +2169,7 @@ struct SendConfirmationView: View {
                             bolt11: invoice.bolt11,
                             sats: paymentSats,
                             paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
+                            recheckBeforeSubmission: recheckBeforeSubmission,
                             afterListening: { _ in lightningPaymentSubmitted = true },
                             onTimeout: { timedOutHash in
                                 app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
@@ -2118,6 +2190,9 @@ struct SendConfirmationView: View {
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
+                        if error is SubmissionRecheckRefusal {
+                            throw error
+                        }
                         if incomingPaymentRequest != nil, !lightningPaymentSubmitted {
                             let proofFailureWasDefinite = await PaykitPaymentProofService.shared.failLightningPayment(
                                 paymentHash: paymentHash,
@@ -2170,9 +2245,19 @@ struct SendConfirmationView: View {
                     authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
                     onAuthorizationFailure: { _ in
                         guard let incomingPaymentRequest else { return }
+                        // A refusal after the manual allowance is marked sending ends it as failed before the proof
+                        // rolls back, so a kill in between can't leave it sending with nothing sent.
+                        // A failed outcome that isn't recorded keeps the proof, so the allowance settles from it later.
+                        if onchainPaymentStarted, let manualAllowanceAttemptId {
+                            guard await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .failed)
+                            else { throw OnchainSendAttemptError.preDispatchCleanupFailed }
+                        }
                         guard await PaykitPaymentProofService.shared.failOnchainPayment(
                             incomingPaymentRequest, paymentIdentity: originalPaymentIdentity
                         ) else { throw OnchainSendAttemptError.preDispatchCleanupFailed }
+                        // Rolled back, so the send ends as one that never started rather than as uncertain.
+                        onchainPaymentStarted = false
+                        privatePaymentListOutcome = .definitePreBroadcastFailure
                     },
                     onAuthorized: { _ in
                         onchainPaymentStarted = true
@@ -3397,4 +3482,10 @@ struct SendUpdateFeeSection: View {
     .environmentObject(TagManager())
     .environment(HwWalletManager())
     .preferredColorScheme(.dark)
+}
+
+/// A payment request refused by the recheck right before submission. It reaches the send's caller only when nothing of the
+/// payment is in doubt.
+struct SubmissionRecheckRefusal: Error {
+    let error: Error
 }
