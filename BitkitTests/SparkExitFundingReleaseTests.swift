@@ -91,6 +91,67 @@ final class SparkExitFundingReleaseTests: XCTestCase {
                       "A send to no exit's address is not refused")
     }
 
+    func testAnEndedExitsAddressStaysListedWhileASavingsSendToItIsUnresolved() throws {
+        let send = attempt()
+        let ended = record(.done, fundingTxid: String(repeating: "f1", count: 32))
+        XCTAssertNil(SparkExitManager.endedExitAddress(stored: ended, unresolvedSendAddress: nil, at: Date()))
+        XCTAssertNil(SparkExitManager.endedExitAddress(stored: ended, unresolvedSendAddress: "bcrt1qordinary", at: Date()))
+        XCTAssertNil(SparkExitManager.endedExitAddress(stored: record(.awaitingFunding(requiredSats: 5000)),
+                                                       unresolvedSendAddress: fundingAddress, at: Date()))
+
+        let kept = try XCTUnwrap(SparkExitManager.endedExitAddress(stored: ended, unresolvedSendAddress: fundingAddress, at: Date()))
+        var next = record(.awaitingFunding(requiredSats: 5000))
+        next.funding = [.init(index: 1, address: "bcrt1qnextexit", pubkey: "02")]
+        let replaced = SparkExitFundingRelease.Exit(record: next, earlier: [kept])
+        XCTAssertTrue(SparkExitFundingRelease.isExitFunding(send, exit: replaced))
+        XCTAssertTrue(SparkExitFundingRelease.exitNoLongerNeeds(send, exit: replaced), "Released, not retried to the old address")
+        XCTAssertFalse(SparkExitFundingRelease.mayPayAgain(send, exit: replaced, utxos: []))
+    }
+
+    /// A start lists the ended exit's address only over an unresolved savings send of its wallet to it, and refuses to
+    /// start while the send journal can't be read.
+    @MainActor func testAStartKeepsAnEndedExitsAddressOnlyOverItsUnresolvedSavingsSend() async throws {
+        let pending = try await listedOnStart(walletIndex: 9980, status: .pending)
+        XCTAssertEqual(pending?.map(\.address), [fundingAddress])
+        XCTAssertEqual(pending?.first?.kind, .cancelledFunding)
+        let accepted = try await listedOnStart(walletIndex: 9981, status: .accepted)
+        XCTAssertEqual(accepted, [], "a payment that went out landed")
+        let none = try await listedOnStart(walletIndex: 9982, status: nil)
+        XCTAssertEqual(none, [])
+        let otherWallet = try await listedOnStart(walletIndex: 9984, status: .pending, journalWallet: 0)
+        XCTAssertEqual(otherWallet, [], "another wallet's send says nothing of this exit")
+        let unreadable = try await listedOnStart(walletIndex: 9983, status: .pending, isJournalUnreadable: true)
+        XCTAssertNil(unreadable, "started over an unread journal")
+    }
+
+    /// The earlier addresses a start over an ended exit leaves listed, nil when it refused.
+    @MainActor private func listedOnStart(
+        walletIndex: Int,
+        status: OnchainSendAttempt.Status?,
+        journalWallet: Int? = nil,
+        isJournalUnreadable: Bool = false
+    ) async throws -> [SparkExitEarlierAddress]? {
+        let store = SparkExitStore(walletIndex: walletIndex)
+        let earlier = SparkExitEarlierAddressStore(walletIndex: walletIndex)
+        defer {
+            try? store.deleteWithCopies()
+            try? earlier.delete()
+        }
+        try store.save(record(.done, fundingTxid: String(repeating: "f1", count: 32)))
+        let journal = MemoryAttemptStore()
+        if let status {
+            try journal.save([attempt(status: status, walletId: OnchainSendAttemptService.walletId(index: journalWallet ?? walletIndex))])
+        }
+        journal.failLoad = isJournalUnreadable
+        let exit = SparkExitManager(walletIndex: walletIndex, attempts: OnchainSendAttemptService(store: journal))
+        do {
+            try await exit.keepEndedExitAddress()
+        } catch {
+            return nil
+        }
+        return try earlier.load()
+    }
+
     func testPayingAgainIsRefusedWhenTheFundingAddressCannotBeRead() async throws {
         let asking = SparkExitFundingRelease.Exit(record: record(.awaitingFunding(requiredSats: 5000)), earlier: [])
         do {
