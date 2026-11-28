@@ -495,8 +495,22 @@ enum Env {
             }
         #endif
         switch network {
-        case .bitcoin: return "https://bitkit.to/lnurl_auth/auth"
+        case .bitcoin: return "https://api.bitkit.to/lnurl_auth/auth"
         default: return "https://bitkit.stag0.blocktank.to/lnurl_auth/auth"
+        }
+    }
+
+    /// Domain the VSS LNURL-auth linking key is derived for. Mainnet keeps `bitkit.to`, where the
+    /// auth server used to live, so wallets keep their VSS identity. `nil` uses the returned LNURL's domain.
+    static var lnurlAuthKeyDomain: String? {
+        #if DEBUG || E2E_BUILD
+            if backupTestEndpoints != nil {
+                return nil
+            }
+        #endif
+        switch network {
+        case .bitcoin: return "bitkit.to"
+        default: return nil
         }
     }
 

@@ -95,7 +95,8 @@ class VssBackupClient {
                     storeId: params.storeId,
                     mnemonic: params.mnemonic,
                     passphrase: params.passphrase,
-                    lnurlAuthServerUrl: params.lnurlAuthServerUrl
+                    lnurlAuthServerUrl: params.lnurlAuthServerUrl,
+                    keyDomain: Env.lnurlAuthKeyDomain
                 )
                 Logger.info("VSS client setup with server: '\(vssUrl)'", context: "VssBackupClient")
             }
@@ -118,7 +119,8 @@ class VssBackupClient {
                     storeId: params.storeId,
                     mnemonic: params.mnemonic,
                     passphrase: params.passphrase,
-                    lnurlAuthServerUrl: params.lnurlAuthServerUrl
+                    lnurlAuthServerUrl: params.lnurlAuthServerUrl,
+                    keyDomain: Env.lnurlAuthKeyDomain
                 )
                 Logger.info("VSS LDK client setup with server: '\(params.vssUrl)'", context: "VssBackupClient")
             }
