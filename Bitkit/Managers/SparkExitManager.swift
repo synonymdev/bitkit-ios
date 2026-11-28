@@ -1358,6 +1358,23 @@ final class SparkExitManager {
 
     // MARK: Start
 
+    /// Keeps the address of the ended exit this start replaces listed while a savings send to it is unresolved, so Send
+    /// Pending releases that send instead of retrying it to an address nothing reads. A record or journal that can't be
+    /// read, or a failed write, refuses the start.
+    func keepEndedExitAddress() async throws {
+        guard let stored = try store.load(), !stored.isActive else { return }
+        let walletId = OnchainSendAttemptService.walletId(index: walletIndex)
+        let unresolvedSendAddress = try await attemptService.unresolvedAttempt(walletId: walletId)
+            .flatMap { $0.status.blocksNewSend && $0.mayFundSparkExit ? $0.address : nil }
+        guard let ended = Self.endedExitAddress(stored: stored, unresolvedSendAddress: unresolvedSendAddress, at: Date()) else { return }
+        earlierAddresses = try earlierAddressStore.add(ended)
+    }
+
+    nonisolated static func endedExitAddress(stored: SparkExitRecord?, unresolvedSendAddress: String?, at date: Date) -> SparkExitEarlierAddress? {
+        guard let stored, !stored.isActive, let unresolvedSendAddress, stored.funding.first?.address == unresolvedSendAddress else { return nil }
+        return SparkExitEarlierAddress.cancelledFunding(stored, network: Env.bitkitCoreNetwork, at: date)
+    }
+
     /// Starts the exit for the current quote: writes its record, moves the Spark balance into transfer to savings
     /// and, with `fundFromSavings`, pays the fee funding from savings at `savingsFeeRate`.
     func start() async throws {
@@ -1367,6 +1384,7 @@ final class SparkExitManager {
             throw AppError(message: t("lightning__spark_exit__quote_error"), debugMessage: "No quote to start from")
         }
         let key = try Self.fundingKey(walletIndex: walletIndex, index: fundingIndex)
+        try await keepEndedExitAddress()
         // A send that passed its exit check before the hold may still spend leaves. One still sending after the wait
         // refuses the start before anything is saved, so the quote stays and the user starts again once it ended.
         // The record holds Spark from its save on.
