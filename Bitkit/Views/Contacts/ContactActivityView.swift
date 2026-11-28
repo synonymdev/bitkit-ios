@@ -111,7 +111,7 @@ struct ContactActivityView: View {
             return contactName
         }
 
-        return publicKey.ellipsis(maxLength: 18)
+        return PubkyPublicKeyFormat.displayTruncated(publicKey)
     }
 
     private var activityContact: PubkyContact {
