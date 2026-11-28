@@ -515,10 +515,10 @@ final class JadeManager {
             Logger.warn("Scan before the Jade reconnect failed: \(error)", context: Self.logContext)
             scanned = []
         }
-        let bluetooth = scanned.filter { $0.transport == .bluetooth }
-        if let exact = bluetooth.first(where: { $0.path == entry.path }) {
+        if let exact = scanned.first(where: { $0.path == entry.path }) {
             return exact
         }
+        let bluetooth = scanned.filter { $0.transport == .bluetooth }
         if let readvertised = bluetooth.first(where: { entry.advertisesAs($0.name) }) {
             return readvertised
         }

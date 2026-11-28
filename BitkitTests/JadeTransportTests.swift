@@ -10,6 +10,8 @@ final class JadeTransportTests: XCTestCase {
 
     private var driver: FakeBLEDriver!
     private var cancellables: Set<AnyCancellable> = []
+    /// Keeps these tests off an emulator the Debug environment may have turned on.
+    private let disabledEmulator = JadeEmulatorLink(address: "127.0.0.1:1", isEnabled: { false })
 
     override func setUp() {
         super.setUp()
@@ -23,7 +25,7 @@ final class JadeTransportTests: XCTestCase {
     }
 
     private func makeTransport(isTrezorBridgeEnabled: Bool = false) -> JadeTransport {
-        JadeTransport(driver: driver, isTrezorBridgeEnabled: { isTrezorBridgeEnabled })
+        JadeTransport(driver: driver, emulator: disabledEmulator, isTrezorBridgeEnabled: { isTrezorBridgeEnabled })
     }
 
     // MARK: - Chunk size
@@ -38,7 +40,7 @@ final class JadeTransportTests: XCTestCase {
     }
 
     func testChunkSizeDefaultsTo20WhenNotOpen() {
-        let transport = JadeTransport(driver: JadeBLEManager(), isTrezorBridgeEnabled: { false })
+        let transport = JadeTransport(driver: JadeBLEManager(), emulator: disabledEmulator, isTrezorBridgeEnabled: { false })
 
         XCTAssertEqual(transport.getChunkSize(path: path), 20)
     }
@@ -52,7 +54,7 @@ final class JadeTransportTests: XCTestCase {
     // MARK: - Unopened paths
 
     func testOperationsOnUnopenedDeviceReportNotConnected() {
-        let transport = JadeTransport(driver: JadeBLEManager(), isTrezorBridgeEnabled: { false })
+        let transport = JadeTransport(driver: JadeBLEManager(), emulator: disabledEmulator, isTrezorBridgeEnabled: { false })
 
         let read = transport.readChunk(path: path, timeoutMs: 50)
         XCTAssertFalse(read.success)
@@ -69,7 +71,7 @@ final class JadeTransportTests: XCTestCase {
 
     func testOpeningAnInvalidPathFailsWithoutStartingBluetooth() {
         let manager = JadeBLEManager()
-        let transport = JadeTransport(driver: manager, isTrezorBridgeEnabled: { false })
+        let transport = JadeTransport(driver: manager, emulator: disabledEmulator, isTrezorBridgeEnabled: { false })
 
         let result = transport.openDevice(path: "usb:jade")
 
@@ -81,7 +83,7 @@ final class JadeTransportTests: XCTestCase {
 
     func testCentralIsOnlyCreatedByScanOrOpen() {
         let manager = JadeBLEManager()
-        let transport = JadeTransport(driver: manager, isTrezorBridgeEnabled: { false })
+        let transport = JadeTransport(driver: manager, emulator: disabledEmulator, isTrezorBridgeEnabled: { false })
 
         manager.setPairedPaths([path])
         manager.releaseAllImmediately()
@@ -128,6 +130,80 @@ final class JadeTransportTests: XCTestCase {
         XCTAssertTrue(result.data.isEmpty)
         XCTAssertEqual(result.errorCode, .disconnected)
         XCTAssertEqual(result.error, "Your Jade disconnected.")
+    }
+
+    func testClosedEmulatorSocketReportsAnExternalDisconnect() throws {
+        let port = try acceptOnceAndClose()
+        let emulatorPath = "tcp:127.0.0.1:\(port)"
+        let emulator = JadeEmulatorLink(address: "127.0.0.1:\(port)", isEnabled: { true })
+        let transport = JadeTransport(driver: driver, emulator: emulator, isTrezorBridgeEnabled: { false })
+        var reported: [String] = []
+        transport.externalDisconnects.sink { reported.append($0) }.store(in: &cancellables)
+        XCTAssertTrue(transport.openDevice(path: emulatorPath).success)
+
+        let result = transport.readChunk(path: emulatorPath, timeoutMs: 1000)
+
+        XCTAssertEqual(result.errorCode, .disconnected)
+        XCTAssertEqual(reported, [emulatorPath])
+        XCTAssertEqual(transport.readChunk(path: emulatorPath, timeoutMs: 10).errorCode, .notConnected)
+    }
+
+    func testEmulatorAddressAcceptsAHostname() throws {
+        let port = try acceptOnceAndClose()
+        let emulator = JadeEmulatorLink(address: "localhost:\(port)", isEnabled: { true })
+
+        XCTAssertEqual(emulator.scanDevices().map(\.path), ["tcp:localhost:\(port)"])
+    }
+
+    func testClosingTheEmulatorDuringAReadReportsNoDisconnect() throws {
+        let port = try acceptOnceAndClose(holding: true)
+        let emulatorPath = "tcp:127.0.0.1:\(port)"
+        let emulator = JadeEmulatorLink(address: "127.0.0.1:\(port)", isEnabled: { true })
+        let transport = JadeTransport(driver: driver, emulator: emulator, isTrezorBridgeEnabled: { false })
+        var reported: [String] = []
+        transport.externalDisconnects.sink { reported.append($0) }.store(in: &cancellables)
+        XCTAssertTrue(transport.openDevice(path: emulatorPath).success)
+        let readDone = expectation(description: "read returns")
+        var result: JadeTransportReadResult?
+
+        DispatchQueue.global().async {
+            result = transport.readChunk(path: emulatorPath, timeoutMs: 1000)
+            readDone.fulfill()
+        }
+        Thread.sleep(forTimeInterval: 0.2)
+        emulator.closeDevice(path: emulatorPath)
+        wait(for: [readDone], timeout: 2)
+
+        XCTAssertEqual(result?.errorCode, .notConnected)
+        XCTAssertTrue(reported.isEmpty)
+    }
+
+    /// A one-shot TCP server on 127.0.0.1 that closes its first connection at once, or holds it
+    /// open until the test ends.
+    private func acceptOnceAndClose(holding: Bool = false) throws -> UInt16 {
+        let server = socket(AF_INET, SOCK_STREAM, 0)
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let bound = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(server, $0, length) == 0 && listen(server, 1) == 0 && getsockname(server, $0, &length) == 0
+            }
+        }
+        guard bound else {
+            close(server)
+            throw XCTSkip("Could not listen on 127.0.0.1")
+        }
+        DispatchQueue.global().async {
+            let connection = accept(server, nil, nil)
+            close(server)
+            if holding {
+                Thread.sleep(forTimeInterval: 3)
+            }
+            close(connection)
+        }
+        return UInt16(bigEndian: address.sin_port)
     }
 
     // MARK: - Writes

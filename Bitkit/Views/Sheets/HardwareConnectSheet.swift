@@ -213,6 +213,10 @@ private struct HardwareConnectFlow: View {
     }
 
     private var isBluetoothUsable: Bool {
+        // The Jade emulator is reached over TCP, so a simulator without Bluetooth can still connect.
+        if Env.jadeEmulatorEnabled {
+            return true
+        }
         switch trezorManager.bluetoothState {
         case .poweredOn, .unknown, .resetting:
             return true
