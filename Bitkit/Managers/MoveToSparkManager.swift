@@ -566,6 +566,8 @@ final class MoveToSparkManager {
     /// Update did. Kept when the modal closes, so reopening it does not ask again without it; a new move or a finished
     /// one clears it.
     private(set) var lastMovedSats: UInt64?
+    /// What the prompt said of the attempt a move tries again, so it keeps saying it while that move pays.
+    private(set) var retriedAttempt: (movedSats: UInt64, leftSats: UInt64)?
     /// Counts quotes, moves and resets; a quote writes its result only while it is still the latest.
     private(set) var generation = 0
     /// Counts wipes only, so work that outlives a quote or a closed modal still stops at a wipe.
@@ -604,6 +606,7 @@ final class MoveToSparkManager {
         isQuoting = false
         keepsOutcome = false
         movedBeforeRest = nil
+        retriedAttempt = nil
         state = .quoting
     }
 
@@ -617,6 +620,7 @@ final class MoveToSparkManager {
         isMoveInFlight = false
         movedBeforeRest = nil
         lastMovedSats = nil
+        retriedAttempt = nil
         state = .quoting
         MoveToSparkPayments.removeAll()
     }
@@ -677,7 +681,7 @@ final class MoveToSparkManager {
         guard case let .confirm(quote, isMoving) = state, !isMoving else { return }
         let channelsBefore = wallet.channels ?? []
         let wipe = wipes
-        let moveGeneration = beginMove()
+        let moveGeneration = beginMove(leftSats: MoveToSparkMath.heldSats(channels: channelsBefore))
         state = .confirm(quote, isMoving: true)
         let paymentsBefore = await LightningService.shared.listPayments()
         // A part still unsettled after the wait keeps the move until its late outcome, so leaving and reopening the
@@ -1264,10 +1268,11 @@ final class MoveToSparkManager {
     }
 
     /// Starts a move: it keeps its outcome and stays in flight until it settles. Returns the move's generation.
-    func beginMove() -> Int {
+    func beginMove(leftSats: UInt64 = 0) -> Int {
         generation += 1
         keepsOutcome = true
         isMoveInFlight = true
+        retriedAttempt = lastMovedSats.map { ($0, leftSats) }
         lastMovedSats = nil
         return generation
     }

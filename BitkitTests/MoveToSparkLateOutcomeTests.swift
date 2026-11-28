@@ -61,11 +61,20 @@ final class MoveToSparkLateOutcomeTests: XCTestCase {
         await manager.quote(afterMove: nil) { quote }
         XCTAssertEqual(manager.lastMovedSats, 0, "Closing and reopening the modal asked again without the last attempt")
 
-        _ = manager.beginMove()
+        _ = manager.beginMove(leftSats: 13080)
         XCTAssertNil(manager.lastMovedSats, "A new move kept the attempt before it")
+        XCTAssertEqual(manager.retriedAttempt?.movedSats, 0, "Try Again dropped the attempt it retries while it paid")
+        XCTAssertEqual(manager.retriedAttempt?.leftSats, 13080, "Try Again did not keep what the prompt said was left")
 
         await manager.quote(afterMove: (6512, 20), stoppedAfter: 6512) { throw MoveToSparkError.noRoute }
         XCTAssertNil(manager.lastMovedSats, "A move shown as done kept its stop")
+        _ = manager.beginMove()
+        XCTAssertNil(manager.retriedAttempt, "A first move said it tried an earlier attempt again")
+
+        await manager.quote(afterMove: nil, stoppedAfter: 0) { quote }
+        _ = manager.beginMove()
+        manager.resetForWipe()
+        XCTAssertNil(manager.retriedAttempt, "A wipe kept the attempt of the wiped wallet")
     }
 
     func testARestThatNoLongerRoutesOrIsGoneShowsTheBalanceUpdated() {
