@@ -59,6 +59,42 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
+    func testAnOverdueSparkExitBackupRaisesTheFailureAlertOnceTheExitEnds() async throws {
+        let fixture = try Fixture(categories: [.sparkExit])
+        defer { fixture.removeDefaults() }
+        let exit = SparkExitState()
+        let service = BackupService(
+            defaults: fixture.defaults,
+            backupData: { _ in Data("{}".utf8) },
+            isSparkExitActive: { exit.isActive },
+            uploadBackup: { _, _ in },
+            waitForBackupDelay: { throw CancellationError() },
+            importStagedSparkExit: { exit.isActive ? .nothingStaged : .rejected },
+            stagedSparkExitState: { throw URLError(.cannotOpenFile) }
+        )
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
+        let deferredAlert = expectation(description: "No alert while the exit defers the upload")
+        deferredAlert.isInverted = true
+        var subscription = service.backupFailurePublisher.sink { _ in deferredAlert.fulfill() }
+        await service.setAppActive(true)?.value
+        await fulfillment(of: [deferredAlert], timeout: 0.5)
+        subscription.cancel()
+        service.setAppActive(false)
+
+        // The exit ends, and the next attempt fails before it reaches the exit check, with no retry scheduled.
+        exit.isActive = false
+        let alert = expectation(description: "An overdue SPARK_EXIT backup raises 'Data Backup Failure' once the exit ends")
+        subscription = service.backupFailurePublisher.sink { _ in alert.fulfill() }
+        defer { subscription.cancel() }
+
+        await service.setAppActive(true)?.value
+        await fulfillment(of: [alert], timeout: 2)
+
+        XCTAssertTrue(service.getBackupStatus(category: .sparkExit).isRequired)
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
     func testFailedRecoveryWaitsForOtherRetriesAndPreservesAgeAndCooldown() async throws {
         let fixture = try Fixture(categories: [.usdt, .widgets])
         defer { fixture.removeDefaults() }
@@ -770,6 +806,16 @@ private final class CancellationRecorder: @unchecked Sendable {
 
     func record() {
         lock.withLock { cancellations += 1 }
+    }
+}
+
+private final class SparkExitState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var active = true
+
+    var isActive: Bool {
+        get { lock.withLock { active } }
+        set { lock.withLock { active = newValue } }
     }
 }
 
