@@ -1318,6 +1318,11 @@
 "profile__edit_changed_error" = "Tu perfil cambió en pubky.app. Bitkit cargó la versión más reciente, así que vuelve a hacer tu cambio.";
 "profile__edit_public_note" = "Este es tu perfil de pubky.app. Es público, y los cambios que hagas aquí también se ven en pubky.app.";
 "profile__edit_tags_error" = "Bitkit no pudo guardar tus etiquetas. Tus otros cambios se guardaron, así que vuelve a intentar con las etiquetas.";
+"profile__edit_link_error" = "Corrige el enlace {label} para guardar tu perfil.";
+"profile__link_error_label_length" = "La etiqueta debe tener 100 caracteres o menos.";
+"profile__link_error_label_stored" = "No se puede guardar la etiqueta de este enlace. Elimina el enlace y vuelve a añadirlo.";
+"profile__link_error_url_invalid" = "Introduce un enlace web válido, como example.com.";
+"profile__link_error_url_length" = "El enlace debe tener 300 caracteres o menos.";
 "profile__delete_title" = "¿Eliminar el perfil?";
 "profile__delete_description" = "Al eliminar su perfil, se elimina de Pubky. Es posible que sus contactos conserven la información de perfil y de pago que compartió con ellos anteriormente.";
 "profile__delete_confirm" = "Sí, eliminar";

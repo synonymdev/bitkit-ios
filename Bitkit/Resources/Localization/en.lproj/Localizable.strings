@@ -1416,6 +1416,11 @@
 "profile__edit_changed_error" = "Your profile changed in pubky.app. Bitkit loaded the latest version, so make your edit again.";
 "profile__edit_public_note" = "This is your pubky.app profile. It is public, and changes you make here also show on pubky.app.";
 "profile__edit_tags_error" = "Bitkit could not save your tags. Your other changes were saved, so try the tags again.";
+"profile__edit_link_error" = "Fix the {label} link to save your profile.";
+"profile__link_error_label_length" = "Label must be 100 characters or fewer.";
+"profile__link_error_label_stored" = "This link's label can't be saved. Remove the link and add it again.";
+"profile__link_error_url_invalid" = "Enter a valid web link, such as example.com.";
+"profile__link_error_url_length" = "Link must be 300 characters or fewer.";
 "profile__delete_title" = "Delete Profile?";
 "profile__delete_description" = "Deleting your profile removes it from Pubky. Contacts may still retain profile and payment information previously shared with them.";
 "profile__delete_confirm" = "Yes, Delete";
