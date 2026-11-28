@@ -906,7 +906,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>VERDIEN BITCOIN</accent>\nMET UW\nCONTENT";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit kon geen geldige account-xpub aanmaken.";
 "pubky_auth__trust_warning" = "Zorg dat u de service, browser en het apparaat vertrouwt voordat u met uw pubky autoriseert.";
-"pubky_auth__authorization_relay" = "AUTORISATIERELAY";
+"pubky_auth__authorization_relay" = "RELAY";
 "pubky_auth__authorizing" = "Autoriseren...";
 "pubky_auth__success_title" = "Autorisatie geslaagd";
 "pubky_auth__success_prefix" = "U hebt geautoriseerd met pubky ";
@@ -927,6 +927,7 @@
 "pubky_auth__identity_unavailable_desc" = "Controleer uw verbinding en probeer het opnieuw.";
 "profile__auth_error_signup_code_rejected" = "De homeserver heeft deze aanmeldcode niet geaccepteerd. Probeer het opnieuw of gebruik een andere aanmeldlink.";
 "wallet__onchain_abandon_transfer_note" = "Overboekingen naar je bestedingssaldo zijn niet meer beschikbaar. Bitkit controleert eerst het netwerk en stuurt de munten van deze overboeking dan terug naar je wallet, zodat de oorspronkelijke overboeking nooit bevestigd wordt. Dit kost netwerkkosten.";
+"wallet__onchain_abandon_exit_note" = "Deze geforceerde overboeking heeft deze betaling niet meer nodig. Bitkit controleert eerst het netwerk en stuurt de munten dan terug naar je wallet, zodat de betaling nooit bevestigd wordt. Dit kost netwerkkosten.";
 "watch_only_accounts__active_section" = "Actieve accounts";
 "watch_only_accounts__copy_xpub" = "xpub kopiëren";
 "watch_only_accounts__description" = "Elke goedgekeurde Paykit-server krijgt een apart Bitcoin-account. Schakel volgen uit om een account te ontladen zonder de walletgeschiedenis te verwijderen.";
@@ -1315,7 +1316,7 @@
 "contacts__import_select_description" = "Selecteer welke vrienden u wilt importeren.";
 "contacts__import_select_all" = "Alles selecteren";
 "contacts__import_select_none" = "Niets selecteren";
-"contacts__import_friends_count" = "{count} vrienden";
+"contacts__import_friends_count" = "{count, plural, one {# vriend} other {# vrienden}}";
 "contacts__import_selected_count" = "{count} geselecteerd";
 "contacts__delete_active_subscription" = "Beëindig actieve abonnementen voordat u dit contact verwijdert.";
 "contacts__delete_title" = "{name} verwijderen?";
@@ -1410,6 +1411,11 @@
 "profile__edit_public_note" = "Dit is je pubky.app-profiel. Het is openbaar, en wijzigingen die je hier maakt, verschijnen ook op pubky.app.";
 "profile__edit_tags_error" = "Bitkit kon je tags niet opslaan. Je andere wijzigingen zijn opgeslagen, dus probeer de tags opnieuw.";
 "profile__delete_active_subscription" = "Actieve abonnementen verhinderen het verwijderen van dit profiel.";
+"profile__edit_link_error" = "Corrigeer de link {label} om je profiel op te slaan.";
+"profile__link_error_label_length" = "Het label mag maximaal 100 tekens bevatten.";
+"profile__link_error_label_stored" = "Het label van deze link kan niet worden opgeslagen. Verwijder de link en voeg hem opnieuw toe.";
+"profile__link_error_url_invalid" = "Voer een geldige weblink in, zoals example.com.";
+"profile__link_error_url_length" = "De link mag maximaal 300 tekens bevatten.";
 "profile__delete_title" = "Profiel verwijderen?";
 "profile__delete_description" = "Als u uw profiel verwijdert, wordt het van Pubky verwijderd. Contacten kunnen eerder gedeelde profiel- en betaalgegevens nog bewaren.";
 "profile__delete_confirm" = "Ja, verwijderen";
@@ -1720,6 +1726,7 @@
 "wallet__payment_request_expiry_month" = "1 maand";
 "wallet__payment_request_choose_recipient" = "Ontvanger kiezen";
 "wallet__payment_request_recipient" = "Ontvanger";
+"wallet__payment_request_recipient_failed" = "Kon niet controleren welke contacten een betaalverzoek kunnen ontvangen. Controleer je verbinding.";
 "wallet__payment_request_recipient_no_match" = "Geen overeenkomend opgeslagen contact met een privéverbinding.";
 "wallet__payment_request_recipient_unavailable" = "Betaalverzoeken kunnen alleen worden verzonden naar een opgeslagen contact met een privéverbinding.";
 "wallet__payment_request_enter_pubky" = "Voer pubky in";

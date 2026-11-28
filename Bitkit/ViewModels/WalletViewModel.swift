@@ -49,6 +49,7 @@ class WalletViewModel: ObservableObject {
     /// True once the send flow gave up loading the fee rate, so the confirmation offers a retry instead of waiting forever.
     @Published private(set) var feeRateLoadFailed = false
     @Published var selectedSpeed: TransactionSpeed = .normal
+    private var feeRateChoice: UUID?
     @Published var selectedUtxos: [SpendableUtxo]?
     @Published var availableUtxos: [SpendableUtxo] = []
     @Published var isMaxAmountSend: Bool = false
@@ -2189,7 +2190,22 @@ class WalletViewModel: ObservableObject {
         sendAmountSats = amountSats
     }
 
+    /// Selects a fee speed and returns the token of this choice. A later choice, of the same speed too, and a reset of
+    /// the send replace it, so a rate fetched for an earlier choice is neither applied nor allowed to navigate.
+    func beginFeeRateChoice(_ speed: TransactionSpeed) -> UUID {
+        selectedSpeed = speed
+        let choice = UUID()
+        feeRateChoice = choice
+        return choice
+    }
+
+    /// The speed is checked too: a screen that sets another speed without a choice, such as the Lightning default, ends it.
+    func isCurrentFeeRateChoice(_ choice: UUID, speed: TransactionSpeed) -> Bool {
+        feeRateChoice == choice && selectedSpeed == speed
+    }
+
     func resetSendState(speed: TransactionSpeed) {
+        feeRateChoice = nil
         sendAmountSats = nil
         selectedFeeRateSatsPerVByte = nil
         feeRateLoadFailed = false

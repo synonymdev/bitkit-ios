@@ -908,7 +908,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>VYDĚLÁVEJTE BITCOIN</accent>\nZE SVÉHO\nOBSAHU";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit nemohl vytvořit platný xpub účtu.";
 "pubky_auth__trust_warning" = "Než se autorizujete pomocí svého pubky, ujistěte se, že službě, prohlížeči a zařízení důvěřujete.";
-"pubky_auth__authorization_relay" = "AUTORIZAČNÍ RELAY";
+"pubky_auth__authorization_relay" = "RELAY";
 "pubky_auth__authorizing" = "Autorizování...";
 "pubky_auth__success_title" = "Autorizace proběhla úspěšně";
 "pubky_auth__success_prefix" = "Autorizovali jste se pomocí pubky ";
@@ -929,6 +929,7 @@
 "pubky_auth__identity_unavailable_desc" = "Zkontrolujte připojení a zkuste to znovu.";
 "profile__auth_error_signup_code_rejected" = "Homeserver tento registrační kód nepřijal. Zkuste to znovu nebo použijte jiný registrační odkaz.";
 "wallet__onchain_abandon_transfer_note" = "Převody na útratový zůstatek už nejsou dostupné. Bitkit nejprve zkontroluje síť a pak vrátí mince tohoto převodu do vaší peněženky, aby se původní převod nikdy nepotvrdil. Stojí to síťový poplatek.";
+"wallet__onchain_abandon_exit_note" = "Tento vynucený převod už tuto platbu nepotřebuje. Bitkit nejprve zkontroluje síť a pak vrátí její mince do vaší peněženky, aby se nikdy nepotvrdila. Stojí to síťový poplatek.";
 "watch_only_accounts__active_section" = "Aktivní účty";
 "watch_only_accounts__copy_xpub" = "Kopírovat xpub";
 "watch_only_accounts__description" = "Každý schválený server Paykit získá samostatný bitcoinový účet. Vypnutím sledování účet uvolníte, aniž byste smazali historii jeho peněženky.";
@@ -1309,7 +1310,7 @@
 "contacts__import_select_description" = "Vyberte prosím, které přátele chcete importovat.";
 "contacts__import_select_all" = "Vybrat vše";
 "contacts__import_select_none" = "Zrušit výběr";
-"contacts__import_friends_count" = "Počet přátel: {count}";
+"contacts__import_friends_count" = "{count, plural, one {# přítel} few {# přátelé} many {# přítele} other {# přátel}}";
 "contacts__import_selected_count" = "Vybráno: {count}";
 "contacts__delete_active_subscription" = "Před smazáním tohoto kontaktu ukončete aktivní předplatná.";
 "contacts__delete_title" = "Smazat {name}?";
@@ -1404,6 +1405,11 @@
 "profile__edit_public_note" = "Toto je tvůj profil na pubky.app. Je veřejný a změny, které zde provedeš, se zobrazí i na pubky.app.";
 "profile__edit_tags_error" = "Bitkit nemohl uložit vaše štítky. Ostatní změny byly uloženy, tak zkuste štítky znovu.";
 "profile__delete_active_subscription" = "Aktivní předplatná brání odstranění tohoto profilu.";
+"profile__edit_link_error" = "Opravte odkaz {label}, abyste mohli uložit profil.";
+"profile__link_error_label_length" = "Popisek může mít nejvýše 100 znaků.";
+"profile__link_error_label_stored" = "Popisek tohoto odkazu nelze uložit. Odkaz odstraňte a přidejte znovu.";
+"profile__link_error_url_invalid" = "Zadejte platný webový odkaz, například example.com.";
+"profile__link_error_url_length" = "Odkaz může mít nejvýše 300 znaků.";
 "profile__delete_title" = "Smazat profil?";
 "profile__delete_description" = "Smazáním profilu ho odstraníte z Pubky. Kontakty si mohou ponechat informace o profilu a platbách, které jste s nimi dříve sdíleli.";
 "profile__delete_confirm" = "Ano, smazat";
@@ -1714,6 +1720,7 @@
 "wallet__payment_request_expiry_month" = "1 měsíc";
 "wallet__payment_request_choose_recipient" = "Vybrat příjemce";
 "wallet__payment_request_recipient" = "Příjemce";
+"wallet__payment_request_recipient_failed" = "Nepodařilo se ověřit, které kontakty mohou přijmout žádost o platbu. Zkontrolujte připojení.";
 "wallet__payment_request_recipient_no_match" = "Žádný odpovídající uložený kontakt se soukromým spojením.";
 "wallet__payment_request_recipient_unavailable" = "Žádosti o platbu lze posílat pouze uloženým kontaktům se soukromým spojením.";
 "wallet__payment_request_enter_pubky" = "Zadejte pubky";

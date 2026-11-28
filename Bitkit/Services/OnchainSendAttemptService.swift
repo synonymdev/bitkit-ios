@@ -347,8 +347,14 @@ struct OnchainSendAttempt: Codable, Equatable {
         requestId == nil && orderId != nil
     }
 
+    /// An ordinary savings send, which may pay a Spark exit's fee funding. It is released only once that exit no longer
+    /// needs it (`SparkExitFundingRelease`).
+    var mayFundSparkExit: Bool {
+        requestId == nil && orderId == nil && sparkFunding != true
+    }
+
     var canBeAbandoned: Bool {
-        (requestId != nil && orderId == nil || isBlocktankFunding) && status != .accepted && txid != nil &&
+        (requestId != nil && orderId == nil || isBlocktankFunding || mayFundSparkExit) && status != .accepted && txid != nil &&
             walletId.hasPrefix("node:") && recoveryContext?.inputs.isEmpty == false
     }
 
@@ -1391,6 +1397,11 @@ actor OnchainSendAttemptService {
             $0.id == context.attemptId && $0.walletId == context.walletId && $0.containsCandidate(context.txid) &&
                 $0.requestId == nil && $0.orderId == nil ? $0 : nil
         }
+    }
+
+    /// The journal's attempt, to any address and in any state.
+    func journalAttempt() throws -> OnchainSendAttempt? {
+        try currentAttempt()
     }
 
     func blockingAttempt() throws -> OnchainSendAttempt? {

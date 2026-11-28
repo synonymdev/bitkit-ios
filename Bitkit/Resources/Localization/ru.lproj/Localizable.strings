@@ -904,7 +904,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>ЗАРАБАТЫВАЙТЕ БИТКОИН</accent>\nНА СВОЁМ\nКОНТЕНТЕ";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit не смог создать действительный xpub аккаунта.";
 "pubky_auth__trust_warning" = "Убедитесь, что вы доверяете сервису, браузеру и устройству, прежде чем авторизоваться с вашим pubky.";
-"pubky_auth__authorization_relay" = "РЕТРАНСЛЯТОР АВТОРИЗАЦИИ";
+"pubky_auth__authorization_relay" = "РЕТРАНСЛЯТОР";
 "pubky_auth__authorizing" = "Авторизация...";
 "pubky_auth__success_title" = "Авторизация Выполнена";
 "pubky_auth__success_prefix" = "Вы авторизовались с pubky ";
@@ -925,6 +925,7 @@
 "pubky_auth__identity_unavailable_desc" = "Проверьте подключение и попробуйте снова.";
 "profile__auth_error_signup_code_rejected" = "Домашний сервер не принял этот код регистрации. Попробуйте снова или используйте другую ссылку для регистрации.";
 "wallet__onchain_abandon_transfer_note" = "Переводы на баланс расходов больше недоступны. Bitkit сначала проверяет сеть, а затем возвращает монеты этого перевода в ваш кошелёк, чтобы исходный перевод никогда не подтвердился. За это взимается сетевая комиссия.";
+"wallet__onchain_abandon_exit_note" = "Этому принудительному переводу этот платёж больше не нужен. Bitkit сначала проверяет сеть, а затем возвращает его монеты в ваш кошелёк, чтобы он никогда не подтвердился. За это взимается сетевая комиссия.";
 "watch_only_accounts__active_section" = "Активные аккаунты";
 "watch_only_accounts__copy_xpub" = "Копировать xpub";
 "watch_only_accounts__description" = "Каждый одобренный сервер Paykit получает отдельный аккаунт Bitcoin. Отключите отслеживание, чтобы выгрузить аккаунт, не удаляя историю его кошелька.";
@@ -1311,7 +1312,7 @@
 "contacts__import_select_description" = "Выберите друзей, которых хотите импортировать.";
 "contacts__import_select_all" = "Выбрать все";
 "contacts__import_select_none" = "Снять выбор";
-"contacts__import_friends_count" = "Друзей: {count}";
+"contacts__import_friends_count" = "{count, plural, one {# друг} few {# друга} many {# друзей} other {# друга}}";
 "contacts__import_selected_count" = "Выбрано: {count}";
 "contacts__delete_active_subscription" = "Завершите активные подписки перед удалением этого контакта.";
 "contacts__delete_title" = "Удалить {name}?";
@@ -1401,6 +1402,11 @@
 "profile__edit_public_note" = "Это ваш профиль pubky.app. Он публичный, и изменения, которые вы вносите здесь, также видны в pubky.app.";
 "profile__edit_tags_error" = "Bitkit не удалось сохранить ваши теги. Остальные изменения сохранены, поэтому попробуйте сохранить теги ещё раз.";
 "profile__delete_active_subscription" = "Активные подписки не позволяют удалить этот профиль.";
+"profile__edit_link_error" = "Исправьте ссылку {label}, чтобы сохранить профиль.";
+"profile__link_error_label_length" = "Метка должна содержать не более 100 символов.";
+"profile__link_error_label_stored" = "Не удаётся сохранить метку этой ссылки. Удалите ссылку и добавьте её снова.";
+"profile__link_error_url_invalid" = "Введите корректную веб-ссылку, например example.com.";
+"profile__link_error_url_length" = "Ссылка должна содержать не более 300 символов.";
 "profile__delete_title" = "Удалить Профиль?";
 "profile__delete_description" = "Удаление профиля удалит его из Pubky. У контактов могут остаться данные профиля и платёжные данные, которыми вы делились ранее.";
 "profile__delete_confirm" = "Да, Удалить";
@@ -1709,6 +1715,7 @@
 "wallet__payment_request_expiry_month" = "1 месяц";
 "wallet__payment_request_choose_recipient" = "Выберите Получателя";
 "wallet__payment_request_recipient" = "Получатель";
+"wallet__payment_request_recipient_failed" = "Не удалось проверить, какие контакты могут получить запрос на оплату. Проверьте подключение.";
 "wallet__payment_request_recipient_no_match" = "Нет подходящего сохранённого контакта с приватным соединением.";
 "wallet__payment_request_recipient_unavailable" = "Запросы на оплату можно отправлять только сохранённому контакту с приватным соединением.";
 "wallet__payment_request_enter_pubky" = "Введите pubky";

@@ -83,6 +83,31 @@ final class LocalizationPluralTests: XCTestCase {
         }
     }
 
+    func testContactImportFriendsCountUsesLocalePluralForms() {
+        let cases: [(String, Int, String)] = [
+            ("en", 0, "0 friends"),
+            ("en", 1, "1 friend"),
+            ("en", 2, "2 friends"),
+            ("de", 1, "1 Freund"),
+            ("de", 3, "3 Freunde"),
+            ("cs", 2, "2 přátelé"),
+            ("cs", 5, "5 přátel"),
+            ("ar", 2, "2 صديقان"),
+            ("ar", 3, "3 أصدقاء"),
+            ("ar", 11, "11 صديقًا"),
+            ("pl", 1, "1 znajomy"),
+            ("pl", 2, "2 znajomych"),
+            ("ru", 1, "1 друг"),
+            ("ru", 2, "2 друга"),
+            ("ru", 5, "5 друзей"),
+            ("ru", 21, "21 друг"),
+        ]
+        for (language, count, expected) in cases {
+            selectLanguage(language)
+            XCTAssertEqual(tPlural("contacts__import_friends_count", arguments: ["count": count]), expected, "\(language) \(count)")
+        }
+    }
+
     func testSelectedAppLanguageOverridesDeviceLocaleAndStandardDefaults() {
         UserDefaults.standard.set("en", forKey: "selectedLanguageCode")
         UserDefaults(suiteName: "group.bitkit")?.set("pl", forKey: "selectedLanguageCode")

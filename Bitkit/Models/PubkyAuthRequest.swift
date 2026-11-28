@@ -189,19 +189,90 @@ struct PubkyAuthRequest {
         isSignup && (!isGrantSignup || !hasIdentity)
     }
 
-    /// The network origin that receives the authorization. This is a delivery destination, not a service identity.
-    var relayOrigin: String? {
-        guard let components = URLComponents(string: relay),
-              let scheme = components.scheme?.lowercased(),
-              ["http", "https"].contains(scheme),
-              let host = components.host?.lowercased(),
-              !host.isEmpty
-        else {
-            return nil
-        }
+    /// The relay URL that receives the authorization, without user info or fragment so the host cannot be disguised.
+    /// This is a delivery destination, not a service identity. Nil only when the request has no relay.
+    var relayDisplayUrl: String? {
+        Self.displayRelay(relay)
+    }
 
-        let port = components.port.map { ":\($0)" } ?? ""
-        return "\(scheme)://\(host)\(port)"
+    /// The relay as shown on the approval sheet: scheme, host, port, path and query, exactly as the Pubky SDK's URL parser
+    /// keeps them. Nil when `relay` is not already in that form apart from letter case, user info, the fragment and a
+    /// missing root path: a space, control or non-ASCII characters, a backslash before the query, characters the parser
+    /// percent-encodes in the path or in the query, a missing, percent-encoded or non-canonical host, a default, padded
+    /// or out-of-range port, or a `.` or `..` path segment.
+    static func displayRelay(_ relay: String) -> String? {
+        // rust-url 2.5.8 (`url/src/parser.rs`): the `PATH` set is percent-encoded in a path and a backslash becomes a
+        // slash; a query of an http(s) URL percent-encodes the `SPECIAL_QUERY` set.
+        let pathRewritten = "\\\"<>`{}"
+        let queryRewritten = "\"<>'"
+        guard relay.unicodeScalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F }),
+              let schemeEnd = relay.range(of: "://"), schemeEnd.lowerBound > relay.startIndex
+        else { return nil }
+        let scheme = relay[..<schemeEnd.lowerBound].lowercased()
+        guard let defaultPort = ["http": 80, "https": 443][scheme] else { return nil }
+        let rest = relay[schemeEnd.upperBound...]
+        let authorityEnd = rest.firstIndex { "/?#".contains($0) } ?? rest.endIndex
+        let authority = rest[..<authorityEnd]
+        let hostPort = authority[(authority.lastIndex(of: "@").map { authority.index(after: $0) } ?? authority.startIndex)...]
+            .lowercased()
+        let pathAndQuery = rest[authorityEnd...].prefix { $0 != "#" }
+        let path = pathAndQuery.prefix { $0 != "?" }
+        let query = pathAndQuery[path.endIndex...].dropFirst()
+        let hasDotSegment = path.split(separator: "/", omittingEmptySubsequences: false)
+            .contains { [".", ".."].contains($0.lowercased().replacingOccurrences(of: "%2e", with: ".")) }
+        let isRewritten = authority.contains("\\") || path.contains { pathRewritten.contains($0) }
+            || query.contains { queryRewritten.contains($0) } || hasDotSegment
+        guard !isRewritten, isUnchangedRelayHostPort(hostPort, defaultPort: defaultPort) else { return nil }
+        return "\(scheme)://\(hostPort)\(pathAndQuery.hasPrefix("/") ? "" : "/")\(pathAndQuery)"
+    }
+
+    private static func isUnchangedRelayHostPort(_ hostPort: String, defaultPort: Int) -> Bool {
+        let matches = { (pattern: String, value: String) in
+            value.range(of: "^(?:\(pattern))$", options: .regularExpression) != nil && !value.contains("\n")
+        }
+        guard matches(#"(\[[0-9a-f:.]+\]|[a-z0-9._~-]+)(:[0-9]{1,5})?"#, hostPort) else { return false }
+        let portStart = hostPort.hasSuffix("]") ? nil : hostPort.lastIndex(of: ":")
+        let host = String(hostPort[..<(portStart ?? hostPort.endIndex)])
+        if let portStart {
+            let portText = String(hostPort[hostPort.index(after: portStart)...])
+            guard let port = Int(portText), String(port) == portText, port <= 65535, port != defaultPort else { return false }
+        }
+        if host.hasPrefix("[") {
+            return isCanonicalIpv6(String(host.dropFirst().dropLast()))
+        }
+        // A last label that reads as a number makes the SDK's URL parser treat the whole host as an IPv4 address.
+        let trimmedHost = host.hasSuffix(".") ? String(host.dropLast()) : host
+        let lastLabel = String(trimmedHost.split(separator: ".", omittingEmptySubsequences: false).last ?? "")
+        let octet = "(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])"
+        return !matches("[0-9]+|0x[0-9a-f]*", lastLabel) || matches("(\(octet)\\.){3}\(octet)", host)
+    }
+
+    private static func isCanonicalIpv6(_ address: String) -> Bool {
+        let halves = address.components(separatedBy: "::")
+        let head = halves[0].split(separator: ":").map(String.init)
+        let tail = halves.count > 1 ? halves[1].split(separator: ":").map(String.init) : []
+        let missing = 8 - head.count - tail.count
+        let isComplete = halves.count == 1 ? missing == 0 : halves.count == 2 && missing >= 1
+        guard isComplete, !address.contains(".") else { return false }
+        let parsed = (head + Array(repeating: "0", count: missing) + tail).map { Int($0, radix: 16) }
+        let groups = parsed.compactMap { $0 }
+        guard groups.count == 8, groups.allSatisfy({ $0 <= 0xFFFF }) else { return false }
+        var runStart = 0
+        var runLength = 0
+        var index = 0
+        while index < groups.count {
+            let end = groups[index...].firstIndex { $0 != 0 } ?? groups.count
+            if end - index > runLength {
+                runStart = index
+                runLength = end - index
+            }
+            index = max(end, index + 1)
+        }
+        let hex = { (part: ArraySlice<Int>) in part.map { String($0, radix: 16) }.joined(separator: ":") }
+        let canonical = runLength < 2
+            ? hex(groups[...])
+            : "\(hex(groups[..<runStart]))::\(hex(groups[(runStart + runLength)...]))"
+        return canonical == address
     }
 
     static func isProtocolURL(_ value: String) -> Bool {
@@ -344,6 +415,9 @@ struct PubkyAuthRequest {
             .compactMap { extractServiceName($0.path) }
             .filter { seenServiceNames.insert($0).inserted }
         let bitkitClaim = try parseBitkitClaim(url: url, capabilities: capabilities, requiresBitkitClaim: requiresBitkitClaim)
+        guard relay.isEmpty || displayRelay(relay) != nil else {
+            throw PubkyAuthRequestError.invalidUrl
+        }
         let expectedSigner = try parseExpectedSigner(url: url)
         return PubkyAuthRequest(
             rawUrl: url,

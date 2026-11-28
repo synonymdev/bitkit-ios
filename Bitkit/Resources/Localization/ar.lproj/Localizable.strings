@@ -765,7 +765,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>اربح BITCOIN</accent>\nمن\nمحتواك";
 "pubky_auth__watch_only_account_xpub_error" = "تعذر على Bitkit إنشاء xpub صالح للحساب.";
 "pubky_auth__trust_warning" = "تأكد من أنك تثق بالخدمة والمتصفح والجهاز قبل التفويض باستخدام pubky الخاص بك.";
-"pubky_auth__authorization_relay" = "مُرحّل التفويض";
+"pubky_auth__authorization_relay" = "المُرحّل";
 "pubky_auth__authorizing" = "جارٍ التفويض...";
 "pubky_auth__success_title" = "تم التفويض بنجاح";
 "pubky_auth__success_prefix" = "لقد فوّضت باستخدام pubky ";
@@ -786,6 +786,7 @@
 "pubky_auth__identity_unavailable_desc" = "تحقق من اتصالك وحاول مرة أخرى.";
 "profile__auth_error_signup_code_rejected" = "لم يقبل الخادم الرئيسي رمز التسجيل هذا. حاول مرة أخرى أو استخدم رابط تسجيل آخر.";
 "wallet__onchain_abandon_transfer_note" = "لم تعد التحويلات إلى رصيد الإنفاق متاحة. يتحقق Bitkit أولًا من الشبكة، ثم يعيد عملات هذا التحويل إلى محفظتك حتى لا يتأكد التحويل الأصلي أبدًا. يكلّف ذلك رسوم شبكة.";
+"wallet__onchain_abandon_exit_note" = "لم يعد هذا التحويل القسري بحاجة إلى هذه الدفعة. يتحقق Bitkit أولًا من الشبكة، ثم يعيد عملاتها إلى محفظتك حتى لا تتأكد أبدًا. يكلّف ذلك رسوم شبكة.";
 "watch_only_accounts__active_section" = "الحسابات النشطة";
 "watch_only_accounts__copy_xpub" = "نسخ xpub";
 "watch_only_accounts__description" = "يحصل كل خادم Paykit معتمد على حساب Bitcoin منفصل. أوقف التتبع لإلغاء تحميل حساب دون حذف سجل محفظته.";
@@ -1119,7 +1120,7 @@
 "contacts__import_select_description" = "يرجى تحديد الأصدقاء الذين تريد استيرادهم.";
 "contacts__import_select_all" = "تحديد الكل";
 "contacts__import_select_none" = "إلغاء تحديد الكل";
-"contacts__import_friends_count" = "{count} أصدقاء";
+"contacts__import_friends_count" = "{count, plural, zero {# أصدقاء} one {# صديق} two {# صديقان} few {# أصدقاء} many {# صديقًا} other {# صديق}}";
 "contacts__import_selected_count" = "{count} محدد";
 "contacts__delete_active_subscription" = "أنهِ الاشتراكات النشطة قبل حذف جهة الاتصال هذه.";
 "contacts__delete_title" = "حذف {name}؟";
@@ -1183,6 +1184,11 @@
 "profile__edit_public_note" = "هذا هو ملفك الشخصي على pubky.app. إنه عام، والتغييرات التي تجريها هنا تظهر أيضًا على pubky.app.";
 "profile__edit_tags_error" = "تعذّر على Bitkit حفظ وسومك. حُفظت تغييراتك الأخرى، لذا حاول حفظ الوسوم مرة أخرى.";
 "profile__delete_active_subscription" = "تمنع الاشتراكات النشطة إزالة هذا الملف الشخصي.";
+"profile__edit_link_error" = "أصلح رابط {label} لحفظ ملفك الشخصي.";
+"profile__link_error_label_length" = "يجب ألا يزيد التصنيف عن 100 حرفًا.";
+"profile__link_error_label_stored" = "لا يمكن حفظ تصنيف هذا الرابط. احذف الرابط وأضفه مرة أخرى.";
+"profile__link_error_url_invalid" = "أدخل رابط ويب صالحًا، مثل example.com.";
+"profile__link_error_url_length" = "يجب ألا يزيد الرابط عن 300 حرفًا.";
 "profile__delete_title" = "حذف الملف الشخصي؟";
 "profile__delete_description" = "يؤدي حذف ملفك الشخصي إلى إزالته من Pubky. قد تحتفظ جهات الاتصال بمعلومات الملف الشخصي والدفع التي شاركتها معهم سابقًا.";
 "profile__delete_confirm" = "نعم، احذف";
@@ -1556,6 +1562,7 @@
 "wallet__payment_request_expiry_month" = "شهر واحد";
 "wallet__payment_request_choose_recipient" = "اختر المستلم";
 "wallet__payment_request_recipient" = "المستلم";
+"wallet__payment_request_recipient_failed" = "تعذّر التحقق من جهات الاتصال التي يمكنها استلام طلب دفع. تحقق من اتصالك.";
 "wallet__payment_request_recipient_no_match" = "لا توجد جهة اتصال محفوظة مطابقة لديها اتصال خاص.";
 "wallet__payment_request_recipient_unavailable" = "لا يمكن إرسال طلبات الدفع إلا إلى جهة اتصال محفوظة لديها اتصال خاص.";
 "wallet__payment_request_enter_pubky" = "أدخل pubky";

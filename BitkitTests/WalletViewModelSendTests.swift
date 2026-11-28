@@ -22,6 +22,57 @@ final class WalletViewModelSendTests: XCTestCase {
         XCTAssertFalse(wallet.feeRateLoadFailed)
     }
 
+    func testFeeRateFromAnEarlierChoiceOfTheSameSpeedIsDropped() async throws {
+        snapshotAppDefaultsDomain()
+        FeeEstimatesManager().devOverrideFeeEstimates = true
+        let wallet = WalletViewModel()
+
+        // Fast is picked while fees load, the send is reset for another contact, and Fast is picked again.
+        let first = wallet.beginFeeRateChoice(.fast)
+        wallet.resetSendState(speed: .normal)
+        XCTAssertFalse(wallet.isCurrentFeeRateChoice(first, speed: .fast))
+        let second = wallet.beginFeeRateChoice(.fast)
+
+        // The selected speed alone cannot tell the two choices apart.
+        XCTAssertEqual(wallet.selectedSpeed, .fast)
+        do {
+            try await wallet.setFeeRate(speed: .fast) { wallet.isCurrentFeeRateChoice(first, speed: .fast) }
+            XCTFail("Expected the earlier choice to be dropped")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertNil(wallet.selectedFeeRateSatsPerVByte)
+
+        try await wallet.setFeeRate(speed: .fast) { wallet.isCurrentFeeRateChoice(second, speed: .fast) }
+        XCTAssertNotNil(wallet.selectedFeeRateSatsPerVByte)
+
+        // Picking the same speed again on the same payment replaces the choice too.
+        let third = wallet.beginFeeRateChoice(.fast)
+        XCTAssertFalse(wallet.isCurrentFeeRateChoice(second, speed: .fast))
+        XCTAssertTrue(wallet.isCurrentFeeRateChoice(third, speed: .fast))
+    }
+
+    func testFeeRateChoiceEndsWhenTheSpeedIsSetWithoutAChoice() async throws {
+        snapshotAppDefaultsDomain()
+        FeeEstimatesManager().devOverrideFeeEstimates = true
+        let wallet = WalletViewModel()
+
+        // Fast is picked while fees load, then the reopened picker selects the Lightning default without a choice.
+        let choice = wallet.beginFeeRateChoice(.fast)
+        XCTAssertTrue(wallet.isCurrentFeeRateChoice(choice, speed: .fast))
+        wallet.selectedSpeed = .instant
+        XCTAssertFalse(wallet.isCurrentFeeRateChoice(choice, speed: .fast))
+
+        do {
+            try await wallet.setFeeRate(speed: .fast) { wallet.isCurrentFeeRateChoice(choice, speed: .fast) }
+            XCTFail("Expected the ended choice to be dropped")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertNil(wallet.selectedFeeRateSatsPerVByte)
+        XCTAssertEqual(wallet.selectedSpeed, .instant)
+    }
+
     func testUtxoSelectionDoesNotOverwriteAnExpiredSendAfterAwait() async throws {
         for isMax in [false, true] {
             let wallet = WalletViewModel()

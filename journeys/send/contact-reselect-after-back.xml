@@ -1,0 +1,23 @@
+<journey name="contact reselect after back">
+  <description>
+    After a contact payment opens from Send, going back to the contact list lets the same or another
+    contact be picked again in the same Send visit, and the new payment starts with an empty amount.
+    Requires an onboarded regtest wallet with funds in Savings, Paykit UI enabled, a Pubky profile and
+    two saved contacts that publish public payment details (staging: "Contact Paykit #1" and
+    "Contact Paykit #2" from bitkit-e2e-tests `STAGING_PAYKIT_CONTACTS`). Contact rows have ids
+    "SendContact-&lt;pubky&gt;". The contacts publish on-chain details, so the review screen needs a fee rate.
+    No payment is sent: never swipe on the review screen.
+  </description>
+  <actions>
+    <action>Tap Send (id "Send") and choose Contact (id "RecipientContact")</action>
+    <action>Tap the first contact's row and verify the send amount screen (id "SendAmount") opens</action>
+    <action>Enter 1 000 on the number pad and verify the amount field (id "SendNumberField") shows it</action>
+    <action>Tap Back (id "NavigationBack") and verify the contact list shows both rows, enabled and without a loading indicator</action>
+    <action>Tap the first contact's row again and verify the send amount screen (id "SendAmount") opens with an empty amount</action>
+    <action>Tap Back (id "NavigationBack"), tap the second contact's row and verify the send amount screen (id "SendAmount") opens with an empty amount and the second contact's avatar in the header</action>
+    <action>Enter 1 000, tap Continue (id "ContinueAmount") and verify the review screen shows a network fee and an enabled swipe to pay, not a loading indicator; do not swipe</action>
+    <action>Tap Back (id "NavigationBack") three times and verify the Send options (id "RecipientContact") are visible</action>
+    <action>Choose Contact, tap the first contact's row and verify the send amount screen (id "SendAmount") opens</action>
+    <action>Close the Send sheet without paying, open Send again and verify the Send options are visible</action>
+  </actions>
+</journey>

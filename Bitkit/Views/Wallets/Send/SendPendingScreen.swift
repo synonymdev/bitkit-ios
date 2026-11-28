@@ -69,6 +69,7 @@ struct SendPendingScreen: View {
     @State private var retryApprovalTitle = t("wallet__onchain_retry_original")
     @State private var retryApprovalContinuation: CheckedContinuation<Bool, Never>?
     @State private var abandonableAttempt: OnchainSendAttempt?
+    @State private var isSparkExitFunding = false
     @State private var showingAbandonConfirmation = false
     @State private var abandoningOnchain = false
     @State private var isAuthenticatingRecovery = false
@@ -153,7 +154,10 @@ struct SendPendingScreen: View {
 
             Spacer()
 
-            if pendingHardwareWalletId == nil, onchainAttempt?.canRetrySamePayment == true, !ordinarySendResolved, !onchainStateUnavailable {
+            if pendingHardwareWalletId == nil,
+               Self.offersRetry(onchainAttempt, isSparkExitFunding: isSparkExitFunding, releaseOffered: abandonableAttempt != nil),
+               !ordinarySendResolved, !onchainStateUnavailable
+            {
                 CustomButton(
                     title: t("wallet__onchain_retry_original"), variant: .secondary, isDisabled: retryingOnchain || abandoningOnchain
                 ) {
@@ -233,7 +237,7 @@ struct SendPendingScreen: View {
                 Task { await abandonExpiredPayment() }
             }
         } message: {
-            Text(t(abandonableAttempt?.isBlocktankFunding == true ? "wallet__onchain_abandon_transfer_note" : "wallet__onchain_abandon_note"))
+            Text(t(Self.abandonNoteKey(abandonableAttempt)))
         }
         .onChange(of: isReviewingRecovery, initial: true) { _, reviewing in
             updatePaymentReview(reviewing)
@@ -291,6 +295,9 @@ struct SendPendingScreen: View {
                             walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex),
                             isOrdinary: paykitPaymentRequestId == nil
                         )
+                        if let attempt = loaded.attempt {
+                            isSparkExitFunding = await proofService.isSparkExitFunding(attempt)
+                        }
                         onchainAttempt = loaded.attempt
                         if onchainAttempt?.requestId != paykitPaymentRequestId {
                             onchainAttempt = nil
@@ -374,6 +381,19 @@ struct SendPendingScreen: View {
         navigationPath.append(route)
     }
 
+    /// Whether "Retry original payment" shows: for a Spark exit's funding only while its release is not offered, so the
+    /// exit no longer needing it shows the release in its place. The retry itself checks the exit again before dispatch.
+    static func offersRetry(_ attempt: OnchainSendAttempt?, isSparkExitFunding: Bool, releaseOffered: Bool) -> Bool {
+        attempt?.canRetrySamePayment == true && !(isSparkExitFunding && (releaseOffered || attempt?.releaseApproved == true))
+    }
+
+    static func abandonNoteKey(_ attempt: OnchainSendAttempt?) -> String {
+        if attempt?.isBlocktankFunding == true {
+            return "wallet__onchain_abandon_transfer_note"
+        }
+        return attempt?.mayFundSparkExit == true ? "wallet__onchain_abandon_exit_note" : "wallet__onchain_abandon_note"
+    }
+
     /// Whether the screen reads the node wallet's on-chain send attempts: never for a Spark withdrawal, which creates
     /// none, so an unrelated unresolved send never shows as this one; its journal settles it instead.
     static func readsNodeOnchainAttempts(sparkWithdrawal: SparkWithdrawalAttempt?) -> Bool {
@@ -441,6 +461,8 @@ struct SendPendingScreen: View {
                             guard await requestPinCheck() else { throw CancellationError() }
                         }
                     }
+                    // Read right before dispatch: a Spark exit's funding is paid again only while the exit still asks for it.
+                    try await SparkExitFundingRelease.authorizePayAgain(attempt)
                     if attempt.requestId != nil {
                         let authorization = try await paymentRequests.ensureOnchainRecoveryAllowed(attempt, proofService: proofService)
                         guard authorization.paymentDeadline == paymentDeadline,

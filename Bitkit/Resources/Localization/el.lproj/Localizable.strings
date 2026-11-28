@@ -796,7 +796,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>ΚΕΡΔΙΣΤΕ BITCOIN</accent>\nΑΠΟ ΤΟ\nΠΕΡΙΕΧΟΜΕΝΟ ΣΑΣ";
 "pubky_auth__watch_only_account_xpub_error" = "Το Bitkit δεν μπόρεσε να δημιουργήσει έγκυρο xpub λογαριασμού.";
 "pubky_auth__trust_warning" = "Βεβαιωθείτε ότι εμπιστεύεστε την υπηρεσία, τον browser και τη συσκευή πριν εξουσιοδοτήσετε με το pubky σας.";
-"pubky_auth__authorization_relay" = "ΑΝΑΜΕΤΑΔΟΤΗΣ ΕΞΟΥΣΙΟΔΟΤΗΣΗΣ";
+"pubky_auth__authorization_relay" = "ΑΝΑΜΕΤΑΔΟΤΗΣ";
 "pubky_auth__authorizing" = "Εξουσιοδότηση...";
 "pubky_auth__success_title" = "Επιτυχής Εξουσιοδότηση";
 "pubky_auth__success_prefix" = "Εξουσιοδοτήσατε με το pubky ";
@@ -817,6 +817,7 @@
 "pubky_auth__identity_unavailable_desc" = "Έλεγξε τη σύνδεσή σου και δοκίμασε ξανά.";
 "profile__auth_error_signup_code_rejected" = "Ο homeserver δεν αποδέχτηκε αυτόν τον κωδικό εγγραφής. Δοκίμασε ξανά ή χρησιμοποίησε άλλο σύνδεσμο εγγραφής.";
 "wallet__onchain_abandon_transfer_note" = "Οι μεταφορές στο υπόλοιπο δαπανών δεν είναι πλέον διαθέσιμες. Το Bitkit ελέγχει πρώτα το δίκτυο και μετά επιστρέφει τα νομίσματα αυτής της μεταφοράς στο πορτοφόλι σας, ώστε η αρχική μεταφορά να μην επιβεβαιωθεί ποτέ. Αυτό έχει χρέωση δικτύου.";
+"wallet__onchain_abandon_exit_note" = "Αυτή η αναγκαστική μεταφορά δεν χρειάζεται πλέον αυτή την πληρωμή. Το Bitkit ελέγχει πρώτα το δίκτυο και μετά επιστρέφει τα νομίσματά της στο πορτοφόλι σας, ώστε να μην επιβεβαιωθεί ποτέ. Αυτό έχει χρέωση δικτύου.";
 "watch_only_accounts__active_section" = "Ενεργοί λογαριασμοί";
 "watch_only_accounts__copy_xpub" = "Αντιγραφή xpub";
 "watch_only_accounts__description" = "Κάθε εγκεκριμένος διακομιστής Paykit λαμβάνει ξεχωριστό λογαριασμό Bitcoin. Απενεργοποίησε την παρακολούθηση για να αποφορτώσεις έναν λογαριασμό χωρίς να διαγράψεις το ιστορικό του πορτοφολιού του.";
@@ -1132,7 +1133,7 @@
 "contacts__import_select_description" = "Επιλέξτε ποιους φίλους θέλετε να εισαγάγετε.";
 "contacts__import_select_all" = "Επιλογή όλων";
 "contacts__import_select_none" = "Καμία επιλογή";
-"contacts__import_friends_count" = "{count} φίλοι";
+"contacts__import_friends_count" = "{count, plural, one {# φίλος} other {# φίλοι}}";
 "contacts__import_selected_count" = "{count} επιλεγμένα";
 "contacts__delete_active_subscription" = "Τερμάτισε τις ενεργές συνδρομές πριν διαγράψεις αυτή την επαφή.";
 "contacts__delete_title" = "Διαγραφή {name};";
@@ -1201,6 +1202,11 @@
 "profile__edit_public_note" = "Αυτό είναι το προφίλ σου στο pubky.app. Είναι δημόσιο, και οι αλλαγές που κάνεις εδώ εμφανίζονται και στο pubky.app.";
 "profile__edit_tags_error" = "Το Bitkit δεν μπόρεσε να αποθηκεύσει τις ετικέτες σου. Οι άλλες αλλαγές σου αποθηκεύτηκαν, οπότε δοκίμασε ξανά τις ετικέτες.";
 "profile__delete_active_subscription" = "Οι ενεργές συνδρομές εμποδίζουν την αφαίρεση αυτού του προφίλ.";
+"profile__edit_link_error" = "Διόρθωσε τον σύνδεσμο {label} για να αποθηκεύσεις το προφίλ σου.";
+"profile__link_error_label_length" = "Η ετικέτα πρέπει να έχει έως 100 χαρακτήρες.";
+"profile__link_error_label_stored" = "Η ετικέτα αυτού του συνδέσμου δεν μπορεί να αποθηκευτεί. Αφαίρεσε τον σύνδεσμο και πρόσθεσέ τον ξανά.";
+"profile__link_error_url_invalid" = "Εισήγαγε έναν έγκυρο σύνδεσμο ιστού, όπως example.com.";
+"profile__link_error_url_length" = "Ο σύνδεσμος πρέπει να έχει έως 300 χαρακτήρες.";
 "profile__delete_title" = "Διαγραφή Προφίλ;";
 "profile__delete_description" = "Η διαγραφή του προφίλ σας το αφαιρεί από το Pubky. Οι επαφές μπορεί να διατηρούν ακόμα πληροφορίες προφίλ και πληρωμών που τους κοινοποιήθηκαν παλαιότερα.";
 "profile__delete_confirm" = "Ναι, Διαγραφή";
@@ -1464,6 +1470,7 @@
 "wallet__payment_request_expiry_month" = "1 μήνας";
 "wallet__payment_request_choose_recipient" = "Επιλογή παραλήπτη";
 "wallet__payment_request_recipient" = "Παραλήπτης";
+"wallet__payment_request_recipient_failed" = "Δεν ήταν δυνατός ο έλεγχος των επαφών που μπορούν να λάβουν αίτημα πληρωμής. Έλεγξε τη σύνδεσή σου.";
 "wallet__payment_request_recipient_no_match" = "Καμία αποθηκευμένη επαφή με ιδιωτική σύνδεση δεν ταιριάζει.";
 "wallet__payment_request_recipient_unavailable" = "Τα αιτήματα πληρωμής μπορούν να σταλούν μόνο σε αποθηκευμένη επαφή με ιδιωτική σύνδεση.";
 "wallet__payment_request_enter_pubky" = "Εισαγωγή pubky";

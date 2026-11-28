@@ -906,7 +906,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>VERDIENE BITCOIN</accent>\nMIT DEINEN\nINHALTEN";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit konnte keinen gültigen Konto-xpub erstellen.";
 "pubky_auth__trust_warning" = "Stelle sicher, dass du dem Dienst, dem Browser und dem Gerät vertraust, bevor du dich mit deinem pubky autorisierst.";
-"pubky_auth__authorization_relay" = "AUTORISIERUNGS-RELAY";
+"pubky_auth__authorization_relay" = "RELAY";
 "pubky_auth__authorizing" = "Autorisiere...";
 "pubky_auth__success_title" = "Autorisierung erfolgreich";
 "pubky_auth__success_prefix" = "Du hast dich mit dem pubky ";
@@ -927,6 +927,7 @@
 "pubky_auth__identity_unavailable_desc" = "Überprüfe deine Verbindung und versuche es erneut.";
 "profile__auth_error_signup_code_rejected" = "Der Homeserver hat diesen Registrierungscode nicht akzeptiert. Versuche es erneut oder verwende einen anderen Registrierungslink.";
 "wallet__onchain_abandon_transfer_note" = "Überweisungen auf dein Ausgabenguthaben sind nicht mehr verfügbar. Bitkit prüft zuerst das Netzwerk und schickt die Coins dieser Überweisung dann zurück in deine Wallet, damit die ursprüngliche Überweisung nie bestätigt wird. Dafür fällt eine Netzwerkgebühr an.";
+"wallet__onchain_abandon_exit_note" = "Diese forcierte Übertragung braucht diese Zahlung nicht mehr. Bitkit prüft zuerst das Netzwerk und schickt ihre Coins dann zurück in deine Wallet, damit sie nie bestätigt wird. Dafür fällt eine Netzwerkgebühr an.";
 "watch_only_accounts__active_section" = "Aktive Konten";
 "watch_only_accounts__copy_xpub" = "xpub kopieren";
 "watch_only_accounts__description" = "Jeder genehmigte Paykit-Server erhält ein eigenes Bitcoin-Konto. Deaktiviere die Verfolgung, um ein Konto zu entladen, ohne seinen Wallet-Verlauf zu löschen.";
@@ -1307,7 +1308,7 @@
 "contacts__import_select_description" = "Bitte wähle aus, welche Freunde du importieren möchtest.";
 "contacts__import_select_all" = "Alle auswählen";
 "contacts__import_select_none" = "Keine auswählen";
-"contacts__import_friends_count" = "{count} Freunde";
+"contacts__import_friends_count" = "{count, plural, one {# Freund} other {# Freunde}}";
 "contacts__import_selected_count" = "{count} ausgewählt";
 "contacts__delete_active_subscription" = "Beende aktive Abonnements, bevor du diesen Kontakt löschst.";
 "contacts__delete_title" = "{name} löschen?";
@@ -1402,6 +1403,11 @@
 "profile__edit_public_note" = "Das ist dein pubky.app-Profil. Es ist öffentlich, und Änderungen, die du hier vornimmst, erscheinen auch auf pubky.app.";
 "profile__edit_tags_error" = "Bitkit konnte deine Tags nicht speichern. Deine anderen Änderungen wurden gespeichert, versuche es mit den Tags erneut.";
 "profile__delete_active_subscription" = "Aktive Abonnements verhindern das Entfernen dieses Profils.";
+"profile__edit_link_error" = "Korrigiere den Link {label}, um dein Profil zu speichern.";
+"profile__link_error_label_length" = "Die Bezeichnung darf höchstens 100 Zeichen lang sein.";
+"profile__link_error_label_stored" = "Die Bezeichnung dieses Links kann nicht gespeichert werden. Entferne den Link und füge ihn erneut hinzu.";
+"profile__link_error_url_invalid" = "Gib einen gültigen Weblink ein, z. B. example.com.";
+"profile__link_error_url_length" = "Der Link darf höchstens 300 Zeichen lang sein.";
 "profile__delete_title" = "Profil löschen?";
 "profile__delete_description" = "Durch das Löschen deines Profils wird es von Pubky entfernt. Kontakte können zuvor mit ihnen geteilte Profil- und Zahlungsinformationen weiterhin behalten.";
 "profile__delete_confirm" = "Ja, löschen";
@@ -1712,6 +1718,7 @@
 "wallet__payment_request_expiry_month" = "1 Monat";
 "wallet__payment_request_choose_recipient" = "Empfänger wählen";
 "wallet__payment_request_recipient" = "Empfänger";
+"wallet__payment_request_recipient_failed" = "Es konnte nicht geprüft werden, welche Kontakte eine Zahlungsanforderung empfangen können. Prüfe deine Verbindung.";
 "wallet__payment_request_recipient_no_match" = "Kein passender gespeicherter Kontakt mit privater Verbindung.";
 "wallet__payment_request_recipient_unavailable" = "Zahlungsanforderungen können nur an einen gespeicherten Kontakt mit privater Verbindung gesendet werden.";
 "wallet__payment_request_enter_pubky" = "pubky eingeben";

@@ -849,7 +849,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>GUANYA BITCOIN</accent>\nAMB EL TEU\nCONTINGUT";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit no ha pogut crear un xpub de compte vàlid.";
 "pubky_auth__trust_warning" = "Assegura't que confies en el servei, el navegador i el dispositiu abans d'autoritzar amb el teu pubky.";
-"pubky_auth__authorization_relay" = "RELÉ D'AUTORITZACIÓ";
+"pubky_auth__authorization_relay" = "RELÉ";
 "pubky_auth__authorizing" = "Autoritzant...";
 "pubky_auth__success_title" = "Autorització correcta";
 "pubky_auth__success_prefix" = "T'has autoritzat amb el pubky ";
@@ -870,6 +870,7 @@
 "pubky_auth__identity_unavailable_desc" = "Comprova la connexió i torna-ho a provar.";
 "profile__auth_error_signup_code_rejected" = "L'homeserver no ha acceptat aquest codi de registre. Torna-ho a provar o utilitza un altre enllaç de registre.";
 "wallet__onchain_abandon_transfer_note" = "Les transferències al saldo de despesa ja no estan disponibles. Bitkit primer comprova la xarxa i després retorna les monedes d'aquesta transferència a la teva cartera perquè la transferència original no es pugui confirmar mai. Això té una comissió de xarxa.";
+"wallet__onchain_abandon_exit_note" = "Aquesta transferència forçosa ja no necessita aquest pagament. Bitkit primer comprova la xarxa i després retorna les seves monedes a la teva cartera perquè no es pugui confirmar mai. Això té una comissió de xarxa.";
 "watch_only_accounts__active_section" = "Comptes actius";
 "watch_only_accounts__copy_xpub" = "Copiar xpub";
 "watch_only_accounts__description" = "Cada servidor Paykit aprovat obté un compte de Bitcoin independent. Desactiva el seguiment per descarregar un compte sense eliminar l'historial de la seva cartera.";
@@ -1213,7 +1214,7 @@
 "contacts__import_select_description" = "Selecciona quins amics vols importar.";
 "contacts__import_select_all" = "Seleccionar-ho tot";
 "contacts__import_select_none" = "No seleccionar-ne cap";
-"contacts__import_friends_count" = "{count} amics";
+"contacts__import_friends_count" = "{count, plural, one {# amic} many {# amics} other {# amics}}";
 "contacts__import_selected_count" = "{count} seleccionats";
 "contacts__delete_active_subscription" = "Finalitza les subscripcions actives abans d'eliminar aquest contacte.";
 "contacts__delete_title" = "Eliminar {name}?";
@@ -1300,6 +1301,11 @@
 "profile__edit_public_note" = "Aquest és el teu perfil de pubky.app. És públic, i els canvis que hi facis aquí també es veuen a pubky.app.";
 "profile__edit_tags_error" = "Bitkit no ha pogut desar les teves etiquetes. Els altres canvis s'han desat, així que torna a provar amb les etiquetes.";
 "profile__delete_active_subscription" = "Les subscripcions actives impedeixen eliminar aquest perfil.";
+"profile__edit_link_error" = "Corregeix l'enllaç {label} per desar el teu perfil.";
+"profile__link_error_label_length" = "L'etiqueta ha de tenir 100 caràcters o menys.";
+"profile__link_error_label_stored" = "No es pot desar l'etiqueta d'aquest enllaç. Elimina l'enllaç i torna'l a afegir.";
+"profile__link_error_url_invalid" = "Introdueix un enllaç web vàlid, com ara example.com.";
+"profile__link_error_url_length" = "L'enllaç ha de tenir 300 caràcters o menys.";
 "profile__delete_title" = "Eliminar el perfil?";
 "profile__delete_description" = "Eliminar el teu perfil l'esborra de Pubky. És possible que els contactes conservin la informació de perfil i de pagament que s'hi hagi compartit abans.";
 "profile__delete_confirm" = "Sí, elimina";
@@ -1592,6 +1598,7 @@
 "wallet__payment_request_expiry_month" = "1 mes";
 "wallet__payment_request_choose_recipient" = "Triar destinatari";
 "wallet__payment_request_recipient" = "Destinatari";
+"wallet__payment_request_recipient_failed" = "No s'ha pogut comprovar quins contactes poden rebre una sol·licitud de pagament. Comprova la connexió.";
 "wallet__payment_request_recipient_no_match" = "Cap contacte desat coincident amb una connexió privada.";
 "wallet__payment_request_recipient_unavailable" = "Les sol·licituds de pagament només es poden enviar a un contacte desat amb una connexió privada.";
 "wallet__payment_request_enter_pubky" = "Introdueix un pubky";

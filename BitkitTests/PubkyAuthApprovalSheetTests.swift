@@ -179,6 +179,35 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testExpectedSignerAndRelayRulesHoldTogether() throws {
+        let relay = "https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2Fo%27connor%3Ftoken%3D%7Babc%7D"
+        let shown = "https://httprelay.pubky.app/inbox/o'connor?token={abc}"
+        let base = "pubkyauth://signin_grant?caps=/pub/example/:rw&relay=\(relay)" +
+            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&cid=paykit.test&cpk=\(approvalTestClientPublicKey)"
+
+        let matching = try PubkyAuthRequest.parse(url: "\(base)&spk=\(approvalTestSignerPublicKey)")
+        XCTAssertEqual(matching.expectedSigner, approvalTestSignerPublicKey)
+        XCTAssertEqual(matching.relayDisplayUrl, shown)
+        let sheets = SheetViewModel()
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+        app.presentPubkyAuthApproval(matching, signerPublicKey: approvalTestSignerPublicKey, hasSecretKey: true)
+        XCTAssertEqual(sheets.pubkyAuthApprovalSheetItem?.request.relayDisplayUrl, shown)
+
+        let other = try PubkyAuthRequest.parse(url: "\(base)&spk=\(approvalTestClientPublicKey)")
+        XCTAssertEqual(other.relayDisplayUrl, shown)
+        let refusedSheets = SheetViewModel()
+        let refusedApp = AppViewModel(sheetViewModel: refusedSheets, navigationViewModel: NavigationViewModel())
+        ToastWindowManager.shared.hideToast()
+        var shownToasts: [Bitkit.Toast] = []
+        let subscription = ToastWindowManager.shared.$currentToast.compactMap { $0 }.sink { shownToasts.append($0) }
+        defer { subscription.cancel() }
+        refusedApp.presentPubkyAuthApproval(other, signerPublicKey: approvalTestSignerPublicKey, hasSecretKey: true)
+        XCTAssertNil(refusedSheets.pubkyAuthApprovalSheetItem)
+        XCTAssertEqual(shownToasts.map(\.accessibilityIdentifier), ["PubkyAuthOtherPubkyToast"])
+        ToastWindowManager.shared.hideToast()
+    }
+
     func testRefusalNamesThePubkyTheRequestIsFor() {
         let description = pubkyAuthApprovalFailureDescription(
             PubkyAuthRequestError.signerMismatch(expectedSigner: approvalTestClientPublicKey)

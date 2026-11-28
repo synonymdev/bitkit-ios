@@ -83,14 +83,143 @@ final class PubkyAuthRequestTests: XCTestCase {
         }
     }
 
-    func testRelayOriginShowsOnlyTheAuthorizationDestination() throws {
+    func testRelayDisplayUrlKeepsThePathAndDropsUserInfoAndFragment() throws {
         let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
             "&relay=https%3A%2F%2FRelay.Example%3A8443%2Finbox%2F&secret=\(secret)" +
             "&cid=paykit.test&cpk=\(publicKey)&x-bitkit-claim=watch-only-account-v1"
 
         let request = try PubkyAuthRequest.parse(url: url)
 
-        XCTAssertEqual(request.relayOrigin, "https://relay.example:8443")
+        XCTAssertEqual(request.relayDisplayUrl, "https://relay.example:8443/inbox/")
+
+        let shown = [
+            "https://httprelay.pubky.app/link": "https://httprelay.pubky.app/link",
+            "https://httprelay.pubky.app": "https://httprelay.pubky.app/",
+            "HTTPS://httprelay.pubky.app/link": "https://httprelay.pubky.app/link",
+            "http://localhost:8080/link": "http://localhost:8080/link",
+            "https://relay.example:0/link": "https://relay.example:0/link",
+            "https://relay.example:80/link": "https://relay.example:80/link",
+            "https://evil.example?@relay.example": "https://evil.example/?@relay.example",
+            "https://relay.example/?x=@evil.example": "https://relay.example/?x=@evil.example",
+            "https://evil.example#@relay.example": "https://evil.example/",
+            "https://relay.example/a/.../b/..c/": "https://relay.example/a/.../b/..c/",
+            "https://relay.example/inbox?next=../x": "https://relay.example/inbox?next=../x",
+            "https://[::1]/link": "https://[::1]/link",
+            "http://[::1]:443/": "http://[::1]:443/",
+            "https://relay.example:65535/link": "https://relay.example:65535/link",
+            "https://[2001:DB8::1]/link": "https://[2001:db8::1]/link",
+            "https://[::ffff:102:304]/link": "https://[::ffff:102:304]/link",
+            "https://relay.example/a/..;x": "https://relay.example/a/..;x",
+            "https://relay.example/a/..%2f": "https://relay.example/a/..%2f",
+            "https://[2001:db8:0:1::]/link": "https://[2001:db8:0:1::]/link",
+            "http://user@10.0.2.2:15412/link?x=1#y": "http://10.0.2.2:15412/link?x=1",
+            "https://trusted.example@relay.example/in%20box/": "https://relay.example/in%20box/",
+            "https://relay.example/a|b?c=[e]": "https://relay.example/a|b?c=[e]",
+            "https://relay.example/o'neil/inbox/": "https://relay.example/o'neil/inbox/",
+            "https://relay.example/a^b/[c]": "https://relay.example/a^b/[c]",
+            "https://relay.example/inbox/?x={y}": "https://relay.example/inbox/?x={y}",
+            "https://relay.example/inbox/?x=a^b|c": "https://relay.example/inbox/?x=a^b|c",
+            "https://relay.example/inbox/?x=a`b": "https://relay.example/inbox/?x=a`b",
+            "https://relay.example/inbox/?x=a\\b": "https://relay.example/inbox/?x=a\\b",
+            "https://relay.example?x={y}": "https://relay.example/?x={y}",
+            "https://us'er:pa{ss}@relay.example/inbox/": "https://relay.example/inbox/",
+            "https://relay.example/inbox/#a\"b<c>'\\": "https://relay.example/inbox/",
+            "https://relay.example?x=1": "https://relay.example/?x=1",
+            "https://relay.example./link": "https://relay.example./link",
+            "https://-re_lay~.1abc/link": "https://-re_lay~.1abc/link",
+            "https://xn--e1aybc.example/link": "https://xn--e1aybc.example/link",
+            "https://[2001:DB8::1]:8443/link": "https://[2001:db8::1]:8443/link",
+            "https://127.0.0.1/link": "https://127.0.0.1/link",
+            "https://evil.example/@httprelay.pubky.app/link": "https://evil.example/@httprelay.pubky.app/link",
+        ]
+        for (relay, expected) in shown {
+            XCTAssertEqual(PubkyAuthRequest.displayRelay(relay), expected, relay)
+        }
+    }
+
+    func testRelayWhoseDestinationCannotBeReadWithCertaintyIsNotShownAsAnotherHost() {
+        let unreadable = [
+            "https://evil.example\\@httprelay.pubky.app/link",
+            "https://httprelay.pubky.app\\.evil.example/link",
+            "https://реле.example/link",
+            "https://%65vil.example/link",
+            "https://0x7f.1/link",
+            "https://2130706433/link",
+            "https://1.2.3/link",
+            "https://127.0.0.1./link",
+            "https://relay.example /link",
+            "https://relay\t.example/link",
+            "https://relay.example\n/link",
+            "https://relay.example:/link",
+            "https://relay.example:443/link",
+            "http://relay.example:80/link",
+            "https://relay.example:65536/link",
+            "https://relay.example:08443/link",
+            "https://relay.example/inbox/../../other/",
+            "https://relay.example/inbox/./x",
+            "https://relay.example/inbox/%2e%2e/other/",
+            "https://relay.example/inbox/%2E./other/",
+            "https://relay.example/inbox/..",
+            "https://relay.example/..?x=1",
+            "https://relay.example/a{b}",
+            "https://relay.example/a?b='c'",
+            "https://relay.example/a\"b",
+            "https://relay.example/a}b",
+            "https://relay.example/a\\b",
+            "https://relay.example/a/\\..\\b",
+            "https://user\\@relay.example/inbox/",
+            "https://relay.example/inbox/?x=\"y\"",
+            "https://relay.example/inbox/?x=<y",
+            "https://relay.example/inbox/?x=y>",
+            "https://relay.example/inbox/?x='y",
+            "https://relay.example/inbox/?x=a b",
+            "https://relay.example/a<b",
+            "https://relay.example/a>b",
+            "https://relay.example/a`b",
+            "https://relay.example/inbox/%2e/x",
+            "https://relay.example/inbox/.%2E/other/",
+            "https://[::1]:443/",
+            "https://[2001:db8:0:0:0:0:0:1]/link",
+            "https://[2001:0db8::1]/link",
+            "https://[1:0:0:2:0:0:0:3]/link",
+            "https://[::ffff:1.2.3.4]/link",
+            "https://[1::2::3]/link",
+            "https://[::12345]/link",
+            "https://[1:2:3:4:5:6:7:8:9]/link",
+            "https:///inbox/",
+            "https:/relay.example/inbox/",
+            "https:relay.example/inbox/",
+            "ftp://relay.example/inbox/",
+            "relay.example/inbox/",
+            "not a url",
+            "",
+        ]
+        for relay in unreadable {
+            XCTAssertNil(PubkyAuthRequest.displayRelay(relay), relay)
+        }
+    }
+
+    func testRequestWithARelayThatCannotBeShownIsInvalid() throws {
+        // The Ring signup path hands the relay over as written, so it is the one the SDK would parse differently.
+        let ringSignup = "pubkyring://signup?hs=\(publicKey)&secret=\(secret)&caps=%2Fpub%2Fexample.app%2F%3Arw&relay="
+        let request = try PubkyAuthRequest.parse(url: ringSignup + "https%3A%2F%2Frelay.example%2Finbox%2F")
+        XCTAssertEqual(request.relayDisplayUrl, "https://relay.example/inbox/")
+
+        for relay in [
+            "https%3A%2F%2Fevil.example%5C%40relay.example%2Finbox%2F",
+            "https%3A%2F%2Frel%C3%A4y.example%2Finbox%2F",
+            "https%3A%2F%2F0x7f.1%2Finbox%2F",
+            "https%3A%2F%2Frelay.example%2Finbox%2F..%2F..%2Fother%2F",
+            "https%3A%2F%2Frelay.example%2Finbox%2F%252e%252e%2Fother%2F",
+        ] {
+            XCTAssertThrowsError(try PubkyAuthRequest.parse(url: ringSignup + relay), relay) {
+                XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidUrl, relay)
+            }
+        }
+
+        let direct = try PubkyAuthRequest.parse(url: directSignupUrl(action: "direct_signup"))
+        XCTAssertEqual(direct.relay, "")
+        XCTAssertNil(direct.relayDisplayUrl)
     }
 
     func testProtocolUrlRejectsBitkitSpecificSetupHandoffWithoutClaimMarker() {

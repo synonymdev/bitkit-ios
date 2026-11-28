@@ -2,6 +2,7 @@
 "lightning__spending_amount__title" = "Transferir\n<accent>para gastos</accent>";
 "security__cp_text" = "Você pode alterar seu código PIN para uma nova\ncombinação de 4 dígitos. Primeiro, digite seu código PIN atual.";
 "wallet__onchain_abandon_transfer_note" = "As transferências para o saldo de gastos já não estão disponíveis. A Bitkit verifica primeiro a rede e depois devolve as moedas desta transferência à sua carteira, para que a transferência original nunca seja confirmada. Isto tem uma taxa de rede.";
+"wallet__onchain_abandon_exit_note" = "Esta transferência forçada já não precisa deste pagamento. A Bitkit verifica primeiro a rede e depois devolve as suas moedas à sua carteira, para que nunca seja confirmado. Isto tem uma taxa de rede.";
 "wallet__payment_recipient_rejected" = "O destinatário rejeitou este pagamento Lightning. Verifique a fatura e tente novamente.";
 "wallet__payment_abandoned" = "O pagamento Lightning foi interrompido antes de ser concluído.";
 "wallet__payment_expired" = "Este pagamento Lightning expirou. Peça uma nova fatura.";
@@ -814,7 +815,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>GANHE BITCOIN</accent>\nCOM O SEU\nCONTEÚDO";
 "pubky_auth__watch_only_account_xpub_error" = "A Bitkit não conseguiu criar uma xpub de conta válida.";
 "pubky_auth__trust_warning" = "Confirme que confia no serviço, no navegador e no dispositivo antes de autorizar com o seu pubky.";
-"pubky_auth__authorization_relay" = "RELAY DE AUTORIZAÇÃO";
+"pubky_auth__authorization_relay" = "RELAY";
 "pubky_auth__authorizing" = "A autorizar...";
 "pubky_auth__success_title" = "Autorização concluída";
 "pubky_auth__success_prefix" = "Autorizou com o pubky ";
@@ -1114,7 +1115,7 @@
 "contacts__import_select_description" = "Selecione os amigos que pretende importar.";
 "contacts__import_select_all" = "Selecionar tudo";
 "contacts__import_select_none" = "Desmarcar tudo";
-"contacts__import_friends_count" = "{count} amigos";
+"contacts__import_friends_count" = "{count, plural, one {# amigo} many {# amigos} other {# amigos}}";
 "contacts__import_selected_count" = "{count} selecionados";
 "contacts__delete_active_subscription" = "Termine as subscrições ativas antes de eliminar este contacto.";
 "contacts__delete_title" = "Eliminar {name}?";
@@ -1177,6 +1178,11 @@
 "profile__edit_public_note" = "Este é o teu perfil do pubky.app. É público, e as alterações que fazes aqui também aparecem no pubky.app.";
 "profile__edit_tags_error" = "O Bitkit não conseguiu guardar as suas etiquetas. As outras alterações foram guardadas, por isso tente as etiquetas novamente.";
 "profile__delete_active_subscription" = "As subscrições ativas impedem a remoção deste perfil.";
+"profile__edit_link_error" = "Corrija a ligação {label} para guardar o seu perfil.";
+"profile__link_error_label_length" = "A etiqueta deve ter no máximo 100 caracteres.";
+"profile__link_error_label_stored" = "Não é possível guardar a etiqueta desta ligação. Remova a ligação e adicione-a novamente.";
+"profile__link_error_url_invalid" = "Introduza uma ligação web válida, como example.com.";
+"profile__link_error_url_length" = "A ligação deve ter no máximo 300 caracteres.";
 "profile__delete_title" = "Eliminar perfil?";
 "profile__delete_description" = "Eliminar o seu perfil remove-o do Pubky. Os contactos podem manter as informações de perfil e pagamento partilhadas anteriormente com eles.";
 "profile__delete_confirm" = "Sim, Excluir";
@@ -1420,6 +1426,7 @@
 "wallet__payment_request_expiry_month" = "1 mês";
 "wallet__payment_request_choose_recipient" = "Escolher destinatário";
 "wallet__payment_request_recipient" = "Destinatário";
+"wallet__payment_request_recipient_failed" = "Não foi possível verificar que contactos podem receber um pedido de pagamento. Verifique a sua ligação.";
 "wallet__payment_request_recipient_no_match" = "Nenhum contacto guardado com ligação privada corresponde.";
 "wallet__payment_request_recipient_unavailable" = "Os pedidos de pagamento só podem ser enviados a um contacto guardado com ligação privada.";
 "wallet__payment_request_enter_pubky" = "Introduza o pubky";

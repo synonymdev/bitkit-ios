@@ -20,6 +20,24 @@ final class SparkExitReviewTests: XCTestCase {
         SparkExitDriver(chain: chain, recovering: withSdk ? sdk : nil, makeSigner: { _ in StubCpfpSigner() }, save: { _ in })
     }
 
+    /// A tick waits for an unsaved savings payment from the tip it first saw, then forgets it 144 blocks later, so the
+    /// ask comes back.
+    func testATickForgetsAnUnsavedSavingsPaymentOnceItsWaitEnds() async throws {
+        var record = SparkExitFixtures.record()
+        record.savingsSendStarted = .init(address: record.funding[0].address, atHeight: nil, earlierAttemptId: nil)
+        chain.tip = 1000
+        let waiting = try await driver().tick(record)
+        XCTAssertEqual(waiting.savingsSendStarted?.atHeight, 1000)
+        XCTAssertEqual(SparkExitMath.fundingState(waiting, utxos: []), .paid(txid: nil))
+
+        chain.tip = 1000 + SparkExitDriver.ownPaymentTimeoutBlocks
+        let forgotten = try await driver().tick(waiting)
+        XCTAssertNil(forgotten.savingsSendStarted)
+        guard case .ask = SparkExitMath.fundingState(forgotten, utxos: []) else {
+            return XCTFail("the ask did not come back")
+        }
+    }
+
     // MARK: Review 518bf31e5
 
     /// Funding sent from another wallet before the user picked savings is not paid twice.
@@ -64,6 +82,40 @@ final class SparkExitReviewTests: XCTestCase {
         let exit = SparkExitManager(walletIndex: 9999)
         let outcome = await exit.cancel()
         XCTAssertEqual(outcome, .notCancellable)
+    }
+
+    /// A refused savings payment is never paid again while the funding address cannot be read: another wallet may have
+    /// funded it since.
+    @MainActor func testARefusedSavingsPaymentIsNotPaidAgainOverAnUnreadFundingAddress() async throws {
+        let record = SparkExitFixtures.record()
+        let store = SparkExitStore(walletIndex: 9999)
+        try? store.deleteWithCopies()
+        try store.save(record)
+        defer { try? store.deleteWithCopies() }
+        let journal = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: journal)
+        let sender = PreparedAttemptNodeMock()
+        sender.result = .rejected(txid: sender.txid, reason: "min relay fee not met")
+        _ = try? await attempts.send(using: sender, address: record.funding[0].address, amountSats: sender.amount, satsPerVbyte: 2,
+                                     utxosToSpend: nil, isMaxAmount: false)
+        let refused = try XCTUnwrap(journal.snapshot().first)
+        XCTAssertEqual(refused.status, .rejected)
+        XCTAssertTrue(refused.canRetrySamePayment)
+        chain.isUtxosUnreadable = true
+        let exit = SparkExitManager(walletIndex: 9999, chain: chain, attempts: attempts)
+        await exit.refreshRefusedSavingsPayment()
+        XCTAssertEqual(exit.refusedSavingsPayment, refused)
+
+        do {
+            try await exit.retrySavingsPayment()
+            XCTFail("Paid again over an unread funding address")
+        } catch {
+            XCTAssertEqual((error as? Bitkit.AppError)?.debugMessage, "Spark exit funding address could not be read", "error=\(error)")
+        }
+
+        XCTAssertEqual(journal.snapshot(), [refused], "A retry was dispatched")
+        XCTAssertNil(exit.record?.fundingPaymentTxid)
+        XCTAssertNil(try store.load()?.fundingPaymentTxid)
     }
 
     /// A forgotten exit gives its funding address back, so a payment that lands there late is seen by the next exit.
@@ -144,18 +196,19 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertNil(SparkExitManager.savingsRefusalToPay(record, utxos: [], hasSavingsSend: accepted, feeSats: 650))
 
         // A tick keeps it as the exit's payment, before a later send can take its place in the journal.
-        let paid = SparkExitManager.keepingAcceptedSend(record, address: address, txid: "accepted")
-        XCTAssertEqual(paid?.fundingPaymentTxid, "accepted")
+        let acceptedSend = refusedPayment(status: .accepted, address: address)
+        let paid = SparkExitManager.keepingSavingsSend(record, attempt: acceptedSend)
+        XCTAssertEqual(paid?.fundingPaymentTxid, "refused")
         XCTAssertNil(paid?.savingsRefusal)
-        XCTAssertNil(SparkExitManager.keepingAcceptedSend(record, address: "bcrt1qelsewhere", txid: "other"))
-        XCTAssertNil(SparkExitManager.keepingAcceptedSend(record, address: address, txid: nil))
+        XCTAssertNil(SparkExitManager.keepingSavingsSend(record, attempt: refusedPayment(status: .accepted, address: "bcrt1qelsewhere")))
+        XCTAssertNil(SparkExitManager.keepingSavingsSend(record, attempt: nil))
         var kept = record
         kept.fundingPaymentTxid = "kept"
-        XCTAssertNil(SparkExitManager.keepingAcceptedSend(kept, address: address, txid: "accepted"))
+        XCTAssertNil(SparkExitManager.keepingSavingsSend(kept, attempt: acceptedSend))
         // Kept once: a payment the exit forgot since (dropped, or short) has no refusal left and is never kept again.
         var forgotten = try XCTUnwrap(paid)
         forgotten.fundingPaymentTxid = nil
-        XCTAssertNil(SparkExitManager.keepingAcceptedSend(forgotten, address: address, txid: "accepted"))
+        XCTAssertNil(SparkExitManager.keepingSavingsSend(forgotten, attempt: acceptedSend))
         XCTAssertTrue(SparkExitManager.canCancel(forgotten, fundingSeenSats: 0), "a forgotten payment kept the exit from cancelling")
     }
 

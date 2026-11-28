@@ -175,6 +175,8 @@ class ContactsManager: ObservableObject {
     private let removeContactRecord: @Sendable (_ publicKey: String) async throws -> Void
     private let removeContactRecords: @Sendable (_ publicKeys: [String]) async throws -> [ContactRecord]
     private let forgetRemovedContacts: @Sendable (_ publicKeys: [String]) async -> Void
+    private let pruneUnsavedContactState: @MainActor (_ savedPublicKeys: [String], _ isSessionCurrent: (@MainActor () -> Bool)?) async
+        -> Void
     private let currentDate: @Sendable () -> Date
 
     init(
@@ -198,6 +200,10 @@ class ContactsManager: ObservableObject {
         forgetRemovedContacts: @escaping @Sendable (_ publicKeys: [String]) async -> Void = {
             await PrivatePaykitService.shared.removeSavedContacts(publicKeys: $0)
         },
+        pruneUnsavedContactState: @escaping @MainActor (_ savedPublicKeys: [String], _ isSessionCurrent: (@MainActor () -> Bool)?) async
+            -> Void = {
+                await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: $0, isSessionCurrent: $1)
+            },
         currentDate: @escaping @Sendable () -> Date = { Date() },
         shopContactImporter: ShopContactImporter? = nil
     ) {
@@ -209,6 +215,7 @@ class ContactsManager: ObservableObject {
         self.removeContactRecord = removeContactRecord
         self.removeContactRecords = removeContactRecords
         self.forgetRemovedContacts = forgetRemovedContacts
+        self.pruneUnsavedContactState = pruneUnsavedContactState
         self.currentDate = currentDate
         self.shopContactImporter = shopContactImporter ?? ShopContactImporter()
     }
@@ -459,9 +466,7 @@ class ContactsManager: ObservableObject {
                     fetchRemoteProfile: fetchRemoteProfile
                 )
                 let snapshot = savedContactsSnapshot()
-                await PrivatePaykitService.shared.pruneUnsavedContactState(
-                    savedPublicKeys: snapshot.publicKeys, isSessionCurrent: snapshot.isCurrent
-                )
+                await pruneUnsavedContactState(snapshot.publicKeys, snapshot.isCurrent)
 
                 Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
                 return
@@ -476,9 +481,7 @@ class ContactsManager: ObservableObject {
                     contacts = []
                     hasLoaded = true
                     loadErrorMessage = nil
-                    await PrivatePaykitService.shared.pruneUnsavedContactState(
-                        savedPublicKeys: [], isSessionCurrent: savedContactsSnapshot().isCurrent
-                    )
+                    await pruneUnsavedContactState([], savedContactsSnapshot().isCurrent)
                     Logger.info("Contacts storage missing, treating list as empty", context: "ContactsManager")
                     return
                 }
@@ -1001,7 +1004,7 @@ class ContactsManager: ObservableObject {
 
         // All remote deletes succeeded, so clear any local-only contacts too.
         Self.clearContactProfileOverrides()
-        await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
+        await pruneUnsavedContactState([], nil)
         contacts.removeAll()
         Logger.info("Deleted all contacts", context: "ContactsManager")
     }
