@@ -299,6 +299,11 @@ protocol PaykitAllowancePaying: Sendable {
     func payLightning(_ request: PaykitPaymentRequest, bolt11: String, sats: UInt64?) async throws
     /// Removes the proof only when the submission error proves nothing reached the node; returns whether it did.
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool
+    /// Whether the submission error proves nothing reached the node.
+    func submissionSentNothing(_ submissionError: Error) async -> Bool
+    /// Removes `requestId`'s Lightning proof for `paymentHash`, for an attempt recovery ends as failed; false when it could
+    /// not be saved.
+    func removeLightningProof(paymentHash: String, requestId: PaykitPaymentRequest.ID, identity: String) async -> Bool
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async
 }
 
@@ -438,6 +443,14 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
 
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
         await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash, submissionError: submissionError)
+    }
+
+    func submissionSentNothing(_ submissionError: Error) -> Bool {
+        PaykitPaymentProofService.submissionSentNothing(submissionError)
+    }
+
+    func removeLightningProof(paymentHash: String, requestId: PaykitPaymentRequest.ID, identity: String) async -> Bool {
+        await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash, requestId: requestId, identity: identity)
     }
 
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async {
@@ -717,6 +730,10 @@ actor PaykitAllowanceExecutor {
                             }
                             continue
                         }
+                        // Left open when the proof could not be removed, so the next recovery tries again.
+                        if outcome == .failed, await !removeUnsentLightningProof(attemptId: attempt.attemptId, identity: identity) {
+                            continue
+                        }
                         try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
                     case .succeeded, .failed:
                         // Reconciliation can settle an attempt the journal still shows as open.
@@ -849,6 +866,15 @@ actor PaykitAllowanceExecutor {
             }
         }
         return entry.transactionId == nil ? nil : .succeeded
+    }
+
+    /// A failed payment has no proof to deliver, and a started proof left in place hides its request from the pending list.
+    /// Removed before the outcome is saved, so a kill in between leaves the attempt open and recovery removes it again.
+    private func removeUnsentLightningProof(attemptId: String, identity: String) async -> Bool {
+        guard let entry = localState(identity: identity).journal.first(where: { $0.attemptId == attemptId }),
+              !entry.stage.isTerminal, let paymentHash = entry.paymentHash
+        else { return true }
+        return await payer.removeLightningProof(paymentHash: paymentHash, requestId: entry.requestId, identity: identity)
     }
 
     private func record(attemptId: String, outcome: Paykit.PaymentOutcome, identity: String) async throws {
@@ -1353,6 +1379,10 @@ actor PaykitAllowanceExecutor {
                 sats: payment.lightningInvoiceHasAmount ? nil : request.allowanceAmountSats
             )
         } catch {
+            if await payer.submissionSentNothing(error) {
+                // Saved before the cleanup, so recovery after a kill in between ends the attempt as unsent.
+                setStage(.submitted, attemptId: attemptId, identity: identity)
+            }
             guard await payer.failLightningPayment(paymentHash: paymentHash, submissionError: error) else {
                 // The node may have started the payment; its settlement event records the outcome.
                 Logger.warn("Automatic Lightning allowance payment outcome is uncertain: \(error)", context: "PaykitAllowance")
@@ -1469,6 +1499,13 @@ actor PaykitAllowanceExecutor {
             state.journal[index].paymentHash = paymentHash.lowercased()
             state.journal[index].stage = .sent
         }
+    }
+
+    /// Called when the recheck before submission refuses a manual Lightning payment, before its proof is cleared, so
+    /// recovery after a kill reads the attempt as unsent once the node has no payment for it.
+    func manualLightningPaymentRefused(attemptId: String) {
+        guard let identity = activeIdentity else { return }
+        setStage(.submitted, attemptId: attemptId, identity: identity)
     }
 
     /// Called right before a manual on-chain broadcast, so recovery after a kill reads the attempt as unknown, not failed.

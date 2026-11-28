@@ -1406,13 +1406,31 @@ actor PaykitPaymentProofService {
         }
     }
 
-    func failLightningPayment(paymentHash: String) async {
+    /// Returns false when the proofs could not be saved without it.
+    @discardableResult
+    func failLightningPayment(paymentHash: String) async -> Bool {
         await removeProofs {
             $0.kind == .lightning && $0.paymentIdentifier?.caseInsensitiveCompare(paymentHash) == .orderedSame
         }
     }
 
+    /// Removes only `requestId`'s proof for `paymentHash`, so another request paying the same invoice keeps its own.
+    /// Returns false when the proofs could not be saved without it.
+    func failLightningPayment(paymentHash: String, requestId: PaykitPaymentRequest.ID, identity: String) async -> Bool {
+        await removeProofs {
+            $0.kind == .lightning && $0.requestId == requestId && PubkyPublicKeyFormat.matches($0.identity, identity) &&
+                $0.paymentIdentifier?.caseInsensitiveCompare(paymentHash) == .orderedSame
+        }
+    }
+
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
+        guard Self.submissionSentNothing(submissionError) else { return false }
+        await failLightningPayment(paymentHash: paymentHash)
+        return true
+    }
+
+    /// Whether the submission error proves nothing reached the node.
+    static func submissionSentNothing(_ submissionError: Error) -> Bool {
         let underlyingError = (submissionError as? AppError)?.underlyingError ?? submissionError
         if underlyingError as? PaykitPaymentRequestError == .requestExpired {
             // The local deadline gate runs before submitting to the node.
@@ -1434,7 +1452,6 @@ actor PaykitPaymentProofService {
         } else {
             return false
         }
-        await failLightningPayment(paymentHash: paymentHash)
         return true
     }
 
@@ -2051,20 +2068,24 @@ actor PaykitPaymentProofService {
         }
     }
 
-    private func removeProofs(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async {
+    @discardableResult
+    private func removeProofs(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async -> Bool {
         await mutationLock.withLock {
             await removeProofsLocked(where: shouldRemove)
         }
     }
 
-    private func removeProofsLocked(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async {
+    @discardableResult
+    private func removeProofsLocked(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async -> Bool {
         do {
             let pendingProofs = try await loadProofs()
             let remainingProofs = pendingProofs.filter { !shouldRemove($0) }
-            guard remainingProofs != pendingProofs else { return }
+            guard remainingProofs != pendingProofs else { return true }
             try await persist(remainingProofs)
+            return true
         } catch {
             logWarning("Failed to clear a pending Paykit payment proof: \(error)")
+            return false
         }
     }
 

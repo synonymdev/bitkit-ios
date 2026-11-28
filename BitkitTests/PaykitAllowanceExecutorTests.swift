@@ -1580,14 +1580,28 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(harness.log.entries.contains("failLightningPayment"))
     }
 
+    func testRefusedLightningPaymentIsJournaledUnsentBeforeItsProofIsCleared() async throws {
+        let harness = AllowanceHarness()
+        await harness.payer.setLightningError(PaykitPaymentRequestError.requestUnavailable)
+        await harness.payer.readJournalOnNodeRejection(harness.store, identity: Fixtures.identityKey)
+
+        _ = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        let stages = await harness.payer.journalStagesOnNodeRejection
+        XCTAssertEqual(stages, [.submitted], "Recovery after a kill here finds an unsent attempt and fails it")
+    }
+
     func testUncertainLightningSubmissionErrorKeepsTheReservation() async throws {
         let harness = AllowanceHarness()
         await harness.payer.setLightningError(AllowanceMockError.unsupported)
         await harness.payer.setLightningErrorIsDefinite(false)
+        await harness.payer.readJournalOnNodeRejection(harness.store, identity: Fixtures.identityKey)
 
         let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
 
         XCTAssertEqual(result, .started)
+        let stages = await harness.payer.journalStagesOnNodeRejection
+        XCTAssertEqual(stages, [.sending], "A send that may have reached the node stays sending")
         let listOutcomes = await harness.payer.paymentListOutcomes
         XCTAssertEqual(listOutcomes, [.uncertain])
         let outcomes = await harness.sdk.recordedOutcomes
@@ -2254,6 +2268,87 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertNil(attemptId)
         XCTAssertFalse(harness.log.entries.contains("reconcileAllowanceAccounting"))
         XCTAssertFalse(harness.log.entries.contains("reserveManualPayment"))
+    }
+
+    func testRecoveryFailsARefusedManualLightningPaymentWhoseOutcomeWasNotRecorded() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let paymentHash = String(repeating: "3", count: 64)
+        let attemptId = try await harness.executor.beginManualPayment(
+            Fixtures.paymentRequest(),
+            paymentEndpointIdentifier: Fixtures.lightningIdentifier,
+            paymentHash: paymentHash
+        )
+        let manualAttemptId = try XCTUnwrap(attemptId)
+        await harness.executor.manualLightningPaymentSent(attemptId: manualAttemptId, paymentHash: paymentHash)
+
+        // Killed after the refusal cleared the proof, before the failure reached the ledger.
+        await harness.executor.manualLightningPaymentRefused(attemptId: manualAttemptId)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(
+                requestId: "req-a",
+                attempts: [Fixtures.attemptRecord(id: manualAttemptId, mode: .manual, allowanceId: nil, status: .submitted)]
+            ),
+        ]))
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes.last, Paykit.PaymentOutcomeReport(attemptId: manualAttemptId, outcome: .failed))
+        let entries = harness.log.entries
+        let removal = try XCTUnwrap(entries.firstIndex(of: "removeLightningProof:\(paymentHash)"), "The started proof is removed")
+        XCTAssertLessThan(removal, try XCTUnwrap(entries.lastIndex(of: "recordPaymentOutcome")))
+        let owners = await harness.payer.removedProofOwners
+        XCTAssertEqual(owners, try ["\(Fixtures.paymentRequest().id.paymentRequestId)@\(Fixtures.identityKey)"], "Only its own request's proof")
+    }
+
+    func testRecoveryRemovesTheStartedProofOfARefusedAutomaticPayment() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-a", attempts: [Fixtures.attemptRecord(id: "a", status: .submitted)]),
+        ]))
+        // Killed after the refusal was journaled as unsent, before its started proof was removed.
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(
+                attemptId: "a", request: request, stage: .submitted, paymentHash: AllowanceHarness.paymentHash, paymentListVersion: 5
+            )]),
+            identity: Fixtures.identityKey
+        )
+        await harness.lookup.setStatuses([AllowanceHarness.paymentHash: .unknown])
+        await harness.executor.activate(identity: Fixtures.identityKey)
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: "a", outcome: .failed)])
+        let entries = harness.log.entries
+        let removal = try XCTUnwrap(entries.firstIndex(of: "removeLightningProof:\(AllowanceHarness.paymentHash)"))
+        XCTAssertLessThan(removal, try XCTUnwrap(entries.firstIndex(of: "recordPaymentOutcome")), "Removed before the outcome is saved")
+        let owners = await harness.payer.removedProofOwners
+        XCTAssertEqual(owners, ["\(request.id.paymentRequestId)@\(Fixtures.identityKey)"], "Only its own request's proof")
+    }
+
+    func testRecoveryLeavesARefusedPaymentOpenWhenItsProofCannotBeRemoved() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-a", attempts: [Fixtures.attemptRecord(id: "a", status: .submitted)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(
+                attemptId: "a", request: request, stage: .submitted, paymentHash: AllowanceHarness.paymentHash, paymentListVersion: 5
+            )]),
+            identity: Fixtures.identityKey
+        )
+        await harness.payer.failProofRemoval()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [], "The next recovery removes the proof and fails the attempt")
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.submitted])
     }
 
     func testManualPaymentIsJournaledAndSubmittedWhenReady() async throws {
@@ -3572,10 +3667,40 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         storeFailingOnNodeRejection = store
     }
 
+    private var journalReadOnNodeRejection: (store: AllowanceMemoryStore, identity: String)?
+    private(set) var journalStagesOnNodeRejection: [PaykitAllowanceLocalState.Stage] = []
+
+    /// Reads the journal when the proof is cleared, so a test sees what recovery would find after a kill at that point.
+    func readJournalOnNodeRejection(_ store: AllowanceMemoryStore, identity: String) {
+        journalReadOnNodeRejection = (store, identity)
+    }
+
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
         called("failLightningPayment")
+        if let journalReadOnNodeRejection {
+            journalStagesOnNodeRejection = (try? journalReadOnNodeRejection.store.load(identity: journalReadOnNodeRejection.identity))?
+                .journal.map(\.stage) ?? []
+        }
         storeFailingOnNodeRejection?.failSaves()
         return lightningErrorIsDefinite
+    }
+
+    func submissionSentNothing(_ submissionError: Error) async -> Bool {
+        lightningErrorIsDefinite
+    }
+
+    private(set) var proofRemovalFails = false
+
+    func failProofRemoval() {
+        proofRemovalFails = true
+    }
+
+    private(set) var removedProofOwners: [String] = []
+
+    func removeLightningProof(paymentHash: String, requestId: PaykitPaymentRequest.ID, identity: String) async -> Bool {
+        called("removeLightningProof:\(paymentHash)")
+        removedProofOwners.append("\(requestId.paymentRequestId)@\(identity)")
+        return !proofRemovalFails
     }
 
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async {

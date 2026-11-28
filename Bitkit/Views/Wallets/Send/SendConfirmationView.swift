@@ -2150,6 +2150,9 @@ struct SendConfirmationView: View {
                     onAuthorizationFailure: { _ in
                         // A refusal at the recheck before submission sent nothing, so it ends as a refusal up front does.
                         privatePaymentListOutcome = .definitePreBroadcastFailure
+                        if let manualAllowanceAttemptId {
+                            await PaykitAllowanceExecutor.shared.manualLightningPaymentRefused(attemptId: manualAllowanceAttemptId)
+                        }
                         await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
                     }
                 ) { recheckBeforeSubmission in

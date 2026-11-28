@@ -1687,6 +1687,39 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(submissionCount, 0)
     }
 
+    func testFailedLightningPaymentOfOneRequestKeepsAnotherRequestsProofOfTheSameInvoice() async throws {
+        let record = try paymentRequestRecord()
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let otherRequestId = PaykitPaymentRequest.ID(paymentRequestId: "other-request", counterparty: request.id.counterparty)
+        let store = PaymentProofMemoryStore()
+        let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
+        let otherProof = PendingPaykitPaymentProof(
+            identity: identity, requestId: otherRequestId,
+            paymentAppId: "bitkit", paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning, paymentStarted: true, paymentIdentifier: paymentHash, proofData: nil
+        )
+        let otherIdentityProof = PendingPaykitPaymentProof(
+            identity: "pubky" + String(repeating: "y", count: 52), requestId: request.id,
+            paymentAppId: "bitkit", paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning, paymentStarted: true, paymentIdentifier: paymentHash, proofData: nil
+        )
+        await store.seed([
+            otherIdentityProof,
+            PendingPaykitPaymentProof(
+                identity: identity, requestId: request.id,
+                paymentAppId: "bitkit", paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                kind: .lightning, paymentStarted: true, paymentIdentifier: paymentHash, proofData: nil
+            ),
+            otherProof,
+        ])
+
+        let removed = await service.failLightningPayment(paymentHash: paymentHash, requestId: request.id, identity: identity)
+
+        XCTAssertTrue(removed)
+        let remainingProofs = await store.snapshot()
+        XCTAssertEqual(remainingProofs, [otherIdentityProof, otherProof])
+    }
+
     func testCanceledLightningWaitPreservesCorrelationForLaterSettlement() async throws {
         let record = try paymentRequestRecord()
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
