@@ -1196,6 +1196,9 @@ struct AppScene: View {
             // Open the swap updates stream so any pending LN -> onchain swaps resume
             // and auto-claim once their lockup confirms. Retries until the stream starts.
             wallet.ensureSwapUpdatesRunning()
+            if PubkySwapsRouteService.isEnabled {
+                await PubkySwapsRouteService.resumeUnfinishedSwaps()
+            }
 
             // Schedule full backup after wallet create/restore to prevent epoch dates in backup status
             await BackupService.shared.scheduleFullBackup()

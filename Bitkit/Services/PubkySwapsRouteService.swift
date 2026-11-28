@@ -8,10 +8,11 @@ struct PaykitSwapRoute: Equatable {
     var providerName: String?
 }
 
-/// How a swap's claim wait ended without a claim: bitkit-core failed the swap, or the wait ran out with the outcome
-/// still open, when the provider may yet settle the hold invoice.
+/// How a swap's claim wait ended without a claim: bitkit-core failed the swap, its hold payment failed so the provider
+/// never funds it, or the wait ran out with the outcome still open, when the provider may yet settle the hold invoice.
 enum PubkySwapClaimError: Error {
     case failed(String)
+    case holdFailed
     case timedOut(Error)
 }
 
@@ -20,12 +21,7 @@ enum PubkySwapClaimError: Error {
 /// the hold invoice from spending and bitkit-core claims the provider's lockup straight to the contact's address.
 enum PubkySwapsRouteService {
     private static let claimFeeRateSatVb: UInt64 = 2
-    private static let pollInterval: Duration = .seconds(2)
     private static let claimTimeout: TimeInterval = 10 * 60
-    /// How often a broadcast claim is advanced, so bitkit-core rebroadcasts it until it confirms.
-    private static let confirmationPollInterval: Duration = .seconds(30)
-    /// How long a swap is advanced in the background, after its claim broadcast or claim wait, before polling stops.
-    private static let confirmationTimeout: TimeInterval = 60 * 60
 
     static var isEnabled: Bool {
         Env.isPubkySwapsRouteEnabled
@@ -91,7 +87,7 @@ enum PubkySwapsRouteService {
         if !report.incompleteProviders.isEmpty {
             Logger.warn("Swap lists incomplete from \(report.incompleteProviders)", context: "PubkySwapsRoute")
         }
-        return (report.restored, report.known)
+        return await PubkySwapsTracker.shared.adoptRestored(restored: report.restored, known: report.known)
     }
 
     /// Providers come from the user's own graph: every contact is asked for its swap offer. bitkit-core caps the
@@ -120,84 +116,82 @@ enum PubkySwapsRouteService {
         }
     }
 
+    /// Commits the quote and keeps its swap until its claim confirms or it fails, so a later start resumes it.
     static func commit(quoteId: String) async throws -> PubkySwapRoutePayment {
         let (mnemonic, passphrase) = try secrets()
-        return try await pubkySwapsCommitRoute(
+        let payment = try await pubkySwapsCommitRoute(
             quoteId: quoteId,
             electrumUrl: Env.electrumServerUrl,
             mnemonic: mnemonic,
             bip39Passphrase: passphrase
         )
+        await PubkySwapsTracker.shared.didCommit(payment.swapId)
+        return payment
+    }
+
+    /// Records the hold payment of a committed swap, so its failure stops the swap, also after a restart.
+    static func watchHold(swapId: String, paymentHash: String, invoice: String) async {
+        await PubkySwapsTracker.shared.watchHold(PubkySwapHoldPayment(paymentHash: paymentHash, invoice: invoice), swapId: swapId)
+    }
+
+    /// Stops a swap whose hold payment failed or never went out: the provider never funds it.
+    static func dropFailedSwap(swapId: String) async {
+        Logger.info("Stopping Pubky Swaps route \(swapId) after its hold payment failed", context: "PubkySwapsRoute")
+        await PubkySwapsTracker.shared.drop(swapId)
+    }
+
+    /// Advances each swap a closed app left unfinished until its claim confirms or it fails: the provider settles the
+    /// hold invoice once it sees the claim, so a claim that never confirms could leave the contact unpaid.
+    static func resumeUnfinishedSwaps() async {
+        await PubkySwapsTracker.shared.resume()
+    }
+
+    static func resetForWipe() async {
+        await PubkySwapsTracker.shared.resetForWipe()
     }
 
     /// Advance the swap until bitkit-core broadcasts the claim to the contact, returning the claim txid. The provider
     /// settles the hold invoice once it sees the claim, so the payment is done; the claim is still advanced in the
-    /// background so bitkit-core rebroadcasts it until it confirms.
+    /// background until it confirms, so bitkit-core rebroadcasts it if it drops out of the mempool.
     /// A wait that runs out keeps advancing the swap in the background too, so it can still claim and settle the hold
     /// payment, and throws `PubkySwapClaimError.timedOut`.
     static func awaitClaim(swapId: String) async throws -> String {
+        try await PubkySwapsTracker.shared.awaitClaim(swapId: swapId, timeout: claimTimeout)
+    }
+
+    static func advance(swapId: String) async throws -> PubkySwapRouteState {
+        let (mnemonic, passphrase) = try secrets()
+        return try await pubkySwapsAdvance(swapId: swapId, mnemonic: mnemonic, bip39Passphrase: passphrase).state
+    }
+
+    static func isUnknownSwap(_ error: Error) -> Bool {
+        guard case .NotFound? = error as? PubkySwapError else { return false }
+        return true
+    }
+
+    /// Whether the hold payment failed. It goes out over the node or the channel-free rail, which shares its hash, and
+    /// the rail decides a send the node failed. While the rail can't be asked, it counts as not failed.
+    static func isHoldPaymentFailed(_ hold: PubkySwapHoldPayment) async -> Bool {
+        let lightning = LightningService.shared
+        let nodeStatus = await lightning.listPayments()?.first { payment in
+            guard case let .bolt11(hash, _, _, _, _) = payment.kind else { return false }
+            return hash.caseInsensitiveCompare(hold.paymentHash) == .orderedSame
+        }?.status
+        if let nodeStatus, nodeStatus != .failed {
+            return false
+        }
+        guard let rail = lightning.channelFreeRail ?? lightning.channelFreePaymentHistory else {
+            return await lightning.channelFreeRailSupported() ? false : nodeStatus == .failed
+        }
         do {
-            let txid = try await pollClaim(swapId: swapId, interval: pollInterval, timeout: claimTimeout, untilConfirmed: false)
-            advanceInBackground(swapId: swapId)
-            return txid
-        } catch let PubkySwapClaimError.timedOut(lastFailure) {
-            advanceInBackground(swapId: swapId)
-            throw PubkySwapClaimError.timedOut(lastFailure)
+            guard let railStatus = try await rail.lightningSendStatus(bolt11: hold.invoice) else { return nodeStatus == .failed }
+            return railStatus == .failed
+        } catch {
+            return false
         }
     }
 
-    private static func advanceInBackground(swapId: String) {
-        Task.detached {
-            do {
-                let confirmed = try await pollClaim(
-                    swapId: swapId, interval: confirmationPollInterval, timeout: confirmationTimeout, untilConfirmed: true
-                )
-                Logger.info("Confirmed Pubky Swaps claim \(confirmed) for \(swapId)", context: "PubkySwapsRoute")
-            } catch {
-                Logger.warn("Failed to confirm Pubky Swaps claim for \(swapId): \(error)", context: "PubkySwapsRoute")
-            }
-        }
-    }
-
-    private static func pollClaim(
-        swapId: String,
-        interval: Duration,
-        timeout: TimeInterval,
-        untilConfirmed: Bool
-    ) async throws -> String {
-        let deadline = Date().addingTimeInterval(timeout)
-        var lastFailure: Error = AppError(message: "Swap \(swapId) not claimed yet", debugMessage: nil)
-        while true {
-            try Task.checkCancellation()
-            let (mnemonic, passphrase) = try secrets()
-            let state: PubkySwapRouteState?
-            do {
-                state = try await pubkySwapsAdvance(swapId: swapId, mnemonic: mnemonic, bip39Passphrase: passphrase).state
-            } catch {
-                // A failed advance, such as a transient Electrum error, is retried: the swap is already funded.
-                Logger.warn("Failed to advance Pubky Swaps route \(swapId): \(error)", context: "PubkySwapsRoute")
-                lastFailure = error
-                state = nil
-            }
-            switch state {
-            case let .claimed(txid)?:
-                return txid
-            case let .claimBroadcast(txid)? where !untilConfirmed:
-                return txid
-            case let .failed(reason)?:
-                throw PubkySwapClaimError.failed(reason)
-            case let state?:
-                Logger.debug("Pubky Swaps route \(swapId): \(state)", context: "PubkySwapsRoute")
-                lastFailure = AppError(message: "Swap \(swapId) not claimed yet", debugMessage: "\(state)")
-            case nil:
-                break
-            }
-            guard Date() < deadline else { throw PubkySwapClaimError.timedOut(lastFailure) }
-            try await Task.sleep(for: interval)
-        }
-    }
-
-    private static func secrets() throws -> (String, String?) {
+    static func secrets() throws -> (String, String?) {
         guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else {
             throw AppError(message: "Mnemonic not found", debugMessage: nil)
         }
