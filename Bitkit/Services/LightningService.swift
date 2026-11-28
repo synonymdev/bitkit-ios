@@ -514,6 +514,10 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// The saved servers recovery restarts with, as a normal start uses them; nil means the network defaults. The app sets it
+    /// (`WalletViewModel`); the notification extension has no server settings and keeps the defaults.
+    var savedServerUrls: () -> (electrum: String?, rgs: String?) = { (nil, nil) }
+
     /// Restarts the node with the previous stored configuration (recovery method)
     /// This is called when a config change fails to restore the node to a working state
     private func restartWithPreviousConfig(stopsBefore: Int) async throws {
@@ -526,8 +530,12 @@ class LightningService: NodeLifecycleService {
         do {
             // The stopped node's VSS writes can keep retrying for minutes, past one build's wait for them.
             try await Self.startRetryingBusyStore(stopRequested: stopRequested) {
-                // Restart with nil URLs to use stored/default configuration
-                let built = try await self.setupNode(walletIndex: self.currentWalletIndex, electrumServerUrl: nil, rgsServerUrl: nil)
+                let servers = self.savedServerUrls()
+                let built = try await self.setupNode(
+                    walletIndex: self.currentWalletIndex,
+                    electrumServerUrl: servers.electrum,
+                    rgsServerUrl: servers.rgs
+                )
                 try await Self.startUnlessStopRequested(stopRequested: stopRequested, release: { try await self.releaseNode(builtBy: built) }) {
                     try await self.start()
                 }
