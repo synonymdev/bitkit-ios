@@ -363,8 +363,10 @@
 "lightning__move_to_spark__failed_title" = "Přesun se\n<accent>nezdařil</accent>";
 "lightning__move_to_spark__failed_unknown" = "Při přípravě přesunu se něco pokazilo. Zkuste to znovu.";
 "lightning__move_to_spark__nav_title" = "Přesun na Spark";
+"lightning__move_to_spark__retry_moved" = "Do Spark bylo přesunuto {moved}. {left} zůstává ve vašem spojení.";
+"lightning__move_to_spark__retry_none" = "Žádné prostředky nebyly přesunuty. {left} zůstává ve vašem spojení.";
 "lightning__move_to_spark__update" = "Aktualizovat";
-"lightning__move_to_spark__update_fee" = "Poplatek za aktualizaci: {fee}";
+"lightning__move_to_spark__update_fee" = "Poplatek za aktualizaci: až {fee}";
 "lightning__move_to_spark__update_nav_title" = "Aktualizovat disponibilní zůstatek";
 "lightning__move_to_spark__update_text" = "Bitkit mění poskytovatele Lightning. Aktualizujte svůj disponibilní zůstatek, abyste mohli dál platit okamžitě a levně.";
 "lightning__move_to_spark__update_title" = "Aktualizovat\n<accent>disponibilní zůstatek</accent>";

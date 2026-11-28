@@ -359,8 +359,10 @@
 "lightning__move_to_spark__failed_title" = "Не удалось\n<accent>перенести</accent>";
 "lightning__move_to_spark__failed_unknown" = "Что-то пошло не так при подготовке переноса. Попробуйте снова.";
 "lightning__move_to_spark__nav_title" = "Перенос в Spark";
+"lightning__move_to_spark__retry_moved" = "{moved} перемещено в Spark. {left} остаётся в вашем соединении.";
+"lightning__move_to_spark__retry_none" = "Средства не перемещены. {left} остаётся в вашем соединении.";
 "lightning__move_to_spark__update" = "Обновить";
-"lightning__move_to_spark__update_fee" = "Комиссия за обновление: {fee}";
+"lightning__move_to_spark__update_fee" = "Комиссия за обновление: до {fee}";
 "lightning__move_to_spark__update_nav_title" = "Обновить баланс расходов";
 "lightning__move_to_spark__update_text" = "Bitkit меняет Lightning-провайдера. Обновите баланс расходов, чтобы и дальше платить мгновенно и дёшево.";
 "lightning__move_to_spark__update_title" = "Обновить\n<accent>баланс расходов</accent>";

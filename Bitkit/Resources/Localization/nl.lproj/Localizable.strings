@@ -361,8 +361,10 @@
 "lightning__move_to_spark__failed_title" = "Verplaatsen\n<accent>mislukt</accent>";
 "lightning__move_to_spark__failed_unknown" = "Er ging iets mis bij het voorbereiden van de verplaatsing. Probeer het opnieuw.";
 "lightning__move_to_spark__nav_title" = "Verplaatsen Naar Spark";
+"lightning__move_to_spark__retry_moved" = "{moved} is naar Spark verplaatst. {left} staat nog in je verbinding.";
+"lightning__move_to_spark__retry_none" = "Er is geen saldo verplaatst. {left} staat nog in je verbinding.";
 "lightning__move_to_spark__update" = "Bijwerken";
-"lightning__move_to_spark__update_fee" = "Kosten bijwerking: {fee}";
+"lightning__move_to_spark__update_fee" = "Kosten bijwerking: tot {fee}";
 "lightning__move_to_spark__update_nav_title" = "Bestedingssaldo Bijwerken";
 "lightning__move_to_spark__update_text" = "Bitkit stapt over op een andere Lightning-provider. Werk je bestedingssaldo bij om snelle, goedkope betalingen te blijven doen.";
 "lightning__move_to_spark__update_title" = "Bestedingssaldo\n<accent>bijwerken</accent>";

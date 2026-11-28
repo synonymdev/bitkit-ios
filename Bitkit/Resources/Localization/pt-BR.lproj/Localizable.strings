@@ -363,8 +363,10 @@
 "lightning__move_to_spark__failed_title" = "Não foi possível\n<accent>mover</accent>";
 "lightning__move_to_spark__failed_unknown" = "Algo deu errado ao preparar a movimentação. Tente novamente.";
 "lightning__move_to_spark__nav_title" = "Mover Para a Spark";
+"lightning__move_to_spark__retry_moved" = "{moved} movidos para a Spark. {left} continua na sua conexão.";
+"lightning__move_to_spark__retry_none" = "Nenhum valor foi movido. {left} continua na sua conexão.";
 "lightning__move_to_spark__update" = "Atualizar";
-"lightning__move_to_spark__update_fee" = "Taxa de atualização: {fee}";
+"lightning__move_to_spark__update_fee" = "Taxa de atualização: até {fee}";
 "lightning__move_to_spark__update_nav_title" = "Atualizar Saldo de Gastos";
 "lightning__move_to_spark__update_text" = "A Bitkit está mudando de provedor Lightning. Atualize seu saldo de gastos para continuar fazendo pagamentos instantâneos e baratos.";
 "lightning__move_to_spark__update_title" = "Atualizar\n<accent>saldo de gastos</accent>";

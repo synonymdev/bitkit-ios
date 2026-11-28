@@ -361,8 +361,10 @@
 "lightning__move_to_spark__failed_title" = "Verschieben\n<accent>fehlgeschlagen</accent>";
 "lightning__move_to_spark__failed_unknown" = "Beim Vorbereiten der Verschiebung ist etwas schiefgelaufen. Versuche es erneut.";
 "lightning__move_to_spark__nav_title" = "Verschiebung zu Spark";
+"lightning__move_to_spark__retry_moved" = "{moved} wurden zu Spark verschoben. {left} ist noch in deiner Verbindung.";
+"lightning__move_to_spark__retry_none" = "Es wurde kein Guthaben verschoben. {left} ist noch in deiner Verbindung.";
 "lightning__move_to_spark__update" = "Aktualisieren";
-"lightning__move_to_spark__update_fee" = "Aktualisierungsgebühr: {fee}";
+"lightning__move_to_spark__update_fee" = "Aktualisierungsgebühr: bis zu {fee}";
 "lightning__move_to_spark__update_nav_title" = "Ausgabenguthaben aktualisieren";
 "lightning__move_to_spark__update_text" = "Bitkit wechselt den Lightning-Anbieter. Aktualisiere dein Ausgabenguthaben, um weiterhin sofort und günstig zu bezahlen.";
 "lightning__move_to_spark__update_title" = "Ausgabenguthaben\n<accent>aktualisieren</accent>";

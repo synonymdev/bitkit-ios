@@ -335,8 +335,10 @@
 "lightning__move_to_spark__failed_title" = "Η μετακίνηση\n<accent>απέτυχε</accent>";
 "lightning__move_to_spark__failed_unknown" = "Κάτι πήγε στραβά κατά την προετοιμασία της μετακίνησης. Δοκιμάστε ξανά.";
 "lightning__move_to_spark__nav_title" = "Μετακίνηση στο Spark";
+"lightning__move_to_spark__retry_moved" = "Μεταφέρθηκαν {moved} στο Spark. Το ποσό {left} παραμένει στη σύνδεσή σου.";
+"lightning__move_to_spark__retry_none" = "Δεν μεταφέρθηκαν κεφάλαια. Το ποσό {left} παραμένει στη σύνδεσή σου.";
 "lightning__move_to_spark__update" = "Ενημέρωση";
-"lightning__move_to_spark__update_fee" = "Χρέωση ενημέρωσης: {fee}";
+"lightning__move_to_spark__update_fee" = "Χρέωση ενημέρωσης: έως {fee}";
 "lightning__move_to_spark__update_nav_title" = "Ενημέρωση υπολοίπου δαπανών";
 "lightning__move_to_spark__update_text" = "Το Bitkit αλλάζει πάροχο Lightning. Ενημερώστε το υπόλοιπο δαπανών σας για να συνεχίσετε να κάνετε άμεσες, φθηνές πληρωμές.";
 "lightning__move_to_spark__update_title" = "Ενημέρωση\n<accent>υπολοίπου δαπανών</accent>";
