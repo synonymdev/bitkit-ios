@@ -1414,6 +1414,7 @@
 "profile__edit_changed_error" = "Twój profil zmienił się w pubky.app. Bitkit wczytał najnowszą wersję, więc wprowadź zmianę ponownie.";
 "profile__edit_public_note" = "To jest Twój profil pubky.app. Jest publiczny, a zmiany wprowadzone tutaj pojawią się też w pubky.app.";
 "profile__edit_tags_error" = "Bitkit nie mógł zapisać Twoich tagów. Pozostałe zmiany zostały zapisane, więc spróbuj ponownie z tagami.";
+"profile__delete_active_subscription" = "Aktywne subskrypcje uniemożliwiają usunięcie tego profilu.";
 "profile__edit_link_error" = "Popraw link {label}, aby zapisać profil.";
 "profile__link_error_label_length" = "Etykieta może mieć maksymalnie 100 znaków.";
 "profile__link_error_label_stored" = "Nie można zapisać etykiety tego linku. Usuń link i dodaj go ponownie.";
@@ -2159,6 +2160,8 @@
 "subscriptions__allowance_limit_description" = "Żądanie {amount} od {name} przekracza Twój przydział. Przejrzyj je, aby zapłacić.";
 "subscriptions__allowance_auto_paid" = "Opłacono automatycznie";
 
+"onboarding__connection_settings" = "Ustawienia połączenia";
+"onboarding__connection_saved" = "Zapisano. Spróbuj ponownie, aby kontynuować przywracanie.";
 "wallet__balance_updating" = "Aktualizowanie salda…";
 "lightning__move_to_spark__in_flight_text" = "Płatność jest w drodze i pojawi się w Spark po rozliczeniu. Jeśli się nie powiedzie, kwota pozostanie w Twoim połączeniu.";
 "lightning__move_to_spark__in_flight_title" = "Przenoszenie do\n<accent>Spark</accent>";

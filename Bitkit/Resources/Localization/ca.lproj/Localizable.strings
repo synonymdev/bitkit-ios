@@ -1300,6 +1300,7 @@
 "profile__edit_changed_error" = "El teu perfil ha canviat a pubky.app. Bitkit ha carregat la versió més recent, així que torna a fer la teva edició.";
 "profile__edit_public_note" = "Aquest és el teu perfil de pubky.app. És públic, i els canvis que hi facis aquí també es veuen a pubky.app.";
 "profile__edit_tags_error" = "Bitkit no ha pogut desar les teves etiquetes. Els altres canvis s'han desat, així que torna a provar amb les etiquetes.";
+"profile__delete_active_subscription" = "Les subscripcions actives impedeixen eliminar aquest perfil.";
 "profile__edit_link_error" = "Corregeix l'enllaç {label} per desar el teu perfil.";
 "profile__link_error_label_length" = "L'etiqueta ha de tenir 100 caràcters o menys.";
 "profile__link_error_label_stored" = "No es pot desar l'etiqueta d'aquest enllaç. Elimina l'enllaç i torna'l a afegir.";
@@ -2011,6 +2012,8 @@
 "subscriptions__allowance_limit_description" = "Una sol·licitud de {amount} de {name} supera la teva assignació. Revisa-la per pagar.";
 "subscriptions__allowance_auto_paid" = "Pagat automàticament";
 
+"onboarding__connection_settings" = "Configuració de connexió";
+"onboarding__connection_saved" = "Desat. Torna-ho a provar per continuar restaurant.";
 "wallet__balance_updating" = "S’està actualitzant el saldo…";
 "lightning__move_to_spark__in_flight_text" = "El pagament està en camí i apareixerà a Spark quan es liquidi. Si falla, l'import es queda a la teva connexió.";
 "lightning__move_to_spark__in_flight_title" = "Movent a\n<accent>Spark</accent>";

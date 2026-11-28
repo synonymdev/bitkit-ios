@@ -1416,6 +1416,7 @@
 "profile__edit_changed_error" = "Your profile changed in pubky.app. Bitkit loaded the latest version, so make your edit again.";
 "profile__edit_public_note" = "This is your pubky.app profile. It is public, and changes you make here also show on pubky.app.";
 "profile__edit_tags_error" = "Bitkit could not save your tags. Your other changes were saved, so try the tags again.";
+"profile__delete_active_subscription" = "Active subscriptions prevent removing this profile.";
 "profile__edit_link_error" = "Fix the {label} link to save your profile.";
 "profile__link_error_label_length" = "Label must be 100 characters or fewer.";
 "profile__link_error_label_stored" = "This link's label can't be saved. Remove the link and add it again.";
@@ -2238,6 +2239,8 @@
 "usdt__error_bridge_liquidity" = "This route cannot complete the transfer right now. Try another network or try again later.";
 "usdt__receive_copied" = "Address copied to clipboard.\nMake sure USDT is only sent on the selected network.";
 
+"onboarding__connection_settings" = "Connection settings";
+"onboarding__connection_saved" = "Saved. Retry to continue restoring.";
 "wallet__balance_updating" = "Updating balance…";
 "lightning__move_to_spark__in_flight_text" = "The payment is on its way and shows in Spark once it settles. If it fails, the amount stays in your connection.";
 "lightning__move_to_spark__in_flight_title" = "Moving to\n<accent>Spark</accent>";

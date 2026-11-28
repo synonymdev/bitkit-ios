@@ -1201,6 +1201,7 @@
 "profile__edit_changed_error" = "Το προφίλ σου άλλαξε στο pubky.app. Το Bitkit φόρτωσε την πιο πρόσφατη έκδοση, οπότε κάνε ξανά την αλλαγή σου.";
 "profile__edit_public_note" = "Αυτό είναι το προφίλ σου στο pubky.app. Είναι δημόσιο, και οι αλλαγές που κάνεις εδώ εμφανίζονται και στο pubky.app.";
 "profile__edit_tags_error" = "Το Bitkit δεν μπόρεσε να αποθηκεύσει τις ετικέτες σου. Οι άλλες αλλαγές σου αποθηκεύτηκαν, οπότε δοκίμασε ξανά τις ετικέτες.";
+"profile__delete_active_subscription" = "Οι ενεργές συνδρομές εμποδίζουν την αφαίρεση αυτού του προφίλ.";
 "profile__edit_link_error" = "Διόρθωσε τον σύνδεσμο {label} για να αποθηκεύσεις το προφίλ σου.";
 "profile__link_error_label_length" = "Η ετικέτα πρέπει να έχει έως 100 χαρακτήρες.";
 "profile__link_error_label_stored" = "Η ετικέτα αυτού του συνδέσμου δεν μπορεί να αποθηκευτεί. Αφαίρεσε τον σύνδεσμο και πρόσθεσέ τον ξανά.";
@@ -1882,6 +1883,8 @@
 "subscriptions__allowance_limit_description" = "Ένα αίτημα {amount} από {name} υπερβαίνει την προέγκρισή σου. Έλεγξέ το για να πληρώσεις.";
 "subscriptions__allowance_auto_paid" = "Πληρώθηκε αυτόματα";
 
+"onboarding__connection_settings" = "Ρυθμίσεις σύνδεσης";
+"onboarding__connection_saved" = "Αποθηκεύτηκε. Δοκιμάστε ξανά για να συνεχίσετε την επαναφορά.";
 "wallet__balance_updating" = "Ενημέρωση υπολοίπου…";
 "lightning__move_to_spark__in_flight_text" = "Η πληρωμή βρίσκεται καθ' οδόν και εμφανίζεται στο Spark μόλις διακανονιστεί. Αν αποτύχει, το ποσό παραμένει στη σύνδεσή σας.";
 "lightning__move_to_spark__in_flight_title" = "Μετακινείται στο\n<accent>Spark</accent>";

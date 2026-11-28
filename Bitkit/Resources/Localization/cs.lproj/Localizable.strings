@@ -1404,6 +1404,7 @@
 "profile__edit_changed_error" = "Tvůj profil se v pubky.app změnil. Bitkit načetl nejnovější verzi, proveď proto úpravu znovu.";
 "profile__edit_public_note" = "Toto je tvůj profil na pubky.app. Je veřejný a změny, které zde provedeš, se zobrazí i na pubky.app.";
 "profile__edit_tags_error" = "Bitkit nemohl uložit vaše štítky. Ostatní změny byly uloženy, tak zkuste štítky znovu.";
+"profile__delete_active_subscription" = "Aktivní předplatná brání odstranění tohoto profilu.";
 "profile__edit_link_error" = "Opravte odkaz {label}, abyste mohli uložit profil.";
 "profile__link_error_label_length" = "Popisek může mít nejvýše 100 znaků.";
 "profile__link_error_label_stored" = "Popisek tohoto odkazu nelze uložit. Odkaz odstraňte a přidejte znovu.";
@@ -2149,6 +2150,8 @@
 "subscriptions__allowance_limit_description" = "Žádost o {amount} od {name} přesahuje vaše povolení. Zkontrolujte ji a zaplaťte.";
 "subscriptions__allowance_auto_paid" = "Zaplaceno automaticky";
 
+"onboarding__connection_settings" = "Nastavení připojení";
+"onboarding__connection_saved" = "Uloženo. Zkuste to znovu a pokračujte v obnově.";
 "wallet__balance_updating" = "Aktualizace zůstatku…";
 "lightning__move_to_spark__in_flight_text" = "Platba je na cestě a po vypořádání se zobrazí ve Sparku. Pokud selže, částka zůstane ve vašem spojení.";
 "lightning__move_to_spark__in_flight_title" = "Přesouvání na\n<accent>Spark</accent>";

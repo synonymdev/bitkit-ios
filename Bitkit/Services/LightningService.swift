@@ -114,7 +114,7 @@ enum LightningPaymentRail {
 protocol NodeLifecycleService: AnyObject {
     var hasNode: Bool { get }
     func setup(walletIndex: Int, electrumServerUrl: String?, rgsServerUrl: String?, channelMigration: ChannelDataMigration?) async throws
-    func start(onEvent: ((Event) -> Void)?) async throws
+    func start(onEvent: (@MainActor (Event) -> Void)?) async throws
     func stop(clearEventCallback: Bool) async throws
     func isNodeRunning() async -> Bool
     func wipeStorage(walletIndex: Int) async throws
@@ -215,7 +215,7 @@ class LightningService: NodeLifecycleService {
 
     /// Guards the event callback and the rail events waiting for it, which the node and the rail set from different threads.
     private let eventCallbackLock = NSLock()
-    private var storedEventCallback: ((Event) -> Void)?
+    private var storedEventCallback: (@MainActor (Event) -> Void)?
     /// Rail events that arrived before the node's event callback was set, delivered once it is.
     private var pendingChannelFreeRailEvents: [Event] = []
     /// The rail each payment hash's latest attempt went out on, so a stale failure from the other rail can't settle a
@@ -553,7 +553,7 @@ class LightningService: NodeLifecycleService {
 
     /// Pass onEvent when being used in the background to listen for payments, channels, closes, etc
     /// - Parameter onEvent: Triggered on any LDK node event
-    func start(onEvent: ((Event) -> Void)? = nil) async throws {
+    func start(onEvent: (@MainActor (Event) -> Void)? = nil) async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -562,7 +562,7 @@ class LightningService: NodeLifecycleService {
             setEventCallback(onEvent)
         }
 
-        guard let startedLoop = listenForEvents(for: node, onEvent: eventCallbackLock.withLock { storedEventCallback }) else {
+        guard let startedLoop = listenForEvents(for: node) else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
@@ -2764,13 +2764,23 @@ extension LightningService {
 extension LightningService {
     /// Delivers a channel-free rail's payment as an LDK event, so flows that wait on node events cover both rails.
     /// Sets the callback node and rail events are delivered to, and delivers the rail events that arrived before it.
-    func setEventCallback(_ onEvent: @escaping (Event) -> Void) {
+    func setEventCallback(_ onEvent: @escaping @MainActor (Event) -> Void) {
         let pending = eventCallbackLock.withLock {
             storedEventCallback = onEvent
             defer { pendingChannelFreeRailEvents = [] }
             return pendingChannelFreeRailEvents
         }
-        pending.forEach(onEvent)
+        Self.deliverOnMainActor(pending, to: onEvent)
+    }
+
+    /// The node's event callback runs on the main actor; rail events from elsewhere hop there, in order.
+    private static func deliverOnMainActor(_ events: [Event], to callback: @escaping @MainActor (Event) -> Void) {
+        guard !events.isEmpty else { return }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { events.forEach(callback) }
+        } else {
+            Task { @MainActor in events.forEach(callback) }
+        }
     }
 
     /// Drops the event callback and the rail events waiting for it.
@@ -2809,7 +2819,9 @@ extension LightningService {
             }
             return storedEventCallback
         }
-        callback?(event)
+        if let callback {
+            Self.deliverOnMainActor([event], to: callback)
+        }
     }
 
     /// Passes `event` to the app without settling any hold, as for a send whose hold already ended.
@@ -2820,7 +2832,9 @@ extension LightningService {
             }
             return storedEventCallback
         }
-        callback?(event)
+        if let callback {
+            Self.deliverOnMainActor([event], to: callback)
+        }
     }
 
     func noteAttempt(on rail: LightningPaymentRail, paymentHash: String) {
@@ -2905,7 +2919,7 @@ extension LightningService {
         return []
     }
 
-    func deliverEvent(_ event: Event, onEvent: ((Event) -> Void)?) async -> OnchainActivityCompletion? {
+    func deliverEvent(_ event: Event, onEvent: (@MainActor (Event) -> Void)?) async -> OnchainActivityCompletion? {
         let completion: OnchainActivityCompletion? = switch event {
         case .onchainTransactionReceived, .onchainTransactionConfirmed, .onchainTransactionReplaced,
              .onchainTransactionReorged, .onchainTransactionEvicted:
@@ -2914,7 +2928,7 @@ extension LightningService {
         default:
             nil
         }
-        onEvent?(event)
+        await onEvent?(event)
         return completion
     }
 
@@ -2927,7 +2941,7 @@ extension LightningService {
     /// the stopped node, its runtime and this loop alive. The loop ends once `node` is no longer the current node.
     /// Returns the loop it started, or nil when `node` is no longer the configured node.
     @discardableResult
-    private func listenForEvents(for node: Node, onEvent: ((Event) -> Void)? = nil) -> Task<Void, Never>? {
+    private func listenForEvents(for node: Node) -> Task<Void, Never>? {
         // Taken in the order `configuredNode` takes them on a node change, so a start that lost its node to a newer one cannot
         // replace that node's loop.
         setupLock.lock()
@@ -2967,7 +2981,8 @@ extension LightningService {
                     continue
                 }
 
-                let onchainActivityCompletion = await deliverEvent(event, onEvent: onEvent)
+                // Read per event, so a callback set or cleared after the loop started applies to the next event.
+                let onchainActivityCompletion = await deliverEvent(event, onEvent: self.eventCallbackLock.withLock { self.storedEventCallback })
 
                 switch event {
                 case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):

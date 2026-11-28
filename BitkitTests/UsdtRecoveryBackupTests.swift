@@ -157,7 +157,12 @@ final class UsdtRecoveryBackupTests: XCTestCase {
             }
         )
         for _ in 0 ..< 2 {
-            let service = BackupService(defaults: defaults, backupData: { _ in
+            let connection = ConnectionRecoveryService(
+                owner: { .init(walletIndex: 0, network: "regtest", binding: "legacy-test-wallet") },
+                load: { nil }, store: { _ in XCTFail("No connection correction is being saved") },
+                clear: { XCTFail("No connection correction is being completed") }, defaults: defaults
+            )
+            let service = BackupService(defaults: defaults, connectionRecovery: connection, backupData: { _ in
                 XCTFail("A partial wallet must not replace the retained backup")
                 return Data()
             }, usdtRecoveryBackup: recovery, uploadBackup: { _, _ in

@@ -32,25 +32,89 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
-    func testFailedRecoveryWaitsForOtherRetriesAndPreservesAgeAndCooldown() async throws {
-        let fixture = try Fixture(categories: [.settings, .widgets])
+    func testAnExitDeferredSparkExitBackupDoesNotRaiseTheFailureAlert() async throws {
+        let fixture = try Fixture(categories: [.sparkExit])
         defer { fixture.removeDefaults() }
         let uploads = UploadRecorder()
-        let failed = expectation(description: "Settings retry failed")
+        let service = BackupService(
+            defaults: fixture.defaults,
+            backupData: { _ in Data("{}".utf8) },
+            isSparkExitActive: { true },
+            uploadBackup: { key, _ in await uploads.record(key) },
+            waitForBackupDelay: { throw CancellationError() }
+        )
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
+        let falseAlert = expectation(description: "An active exit's deferred SPARK_EXIT must not raise 'Data Backup Failure'")
+        falseAlert.isInverted = true
+        let subscription = service.backupFailurePublisher.sink { _ in falseAlert.fulfill() }
+        defer { subscription.cancel() }
+
+        await service.setAppActive(true)?.value
+        await fulfillment(of: [falseAlert], timeout: 0.5)
+
+        let recorded = await uploads.counts
+        XCTAssertNil(recorded[BackupCategory.sparkExit.rawValue], "an active exit must not upload")
+        XCTAssertTrue(service.getBackupStatus(category: .sparkExit).isRequired, "the deferred backup must stay required")
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
+    func testAnOverdueSparkExitBackupRaisesTheFailureAlertOnceTheExitEnds() async throws {
+        let fixture = try Fixture(categories: [.sparkExit])
+        defer { fixture.removeDefaults() }
+        let exit = SparkExitState()
+        let service = BackupService(
+            defaults: fixture.defaults,
+            backupData: { _ in Data("{}".utf8) },
+            isSparkExitActive: { exit.isActive },
+            uploadBackup: { _, _ in },
+            waitForBackupDelay: { throw CancellationError() },
+            importStagedSparkExit: { exit.isActive ? .nothingStaged : .rejected },
+            stagedSparkExitState: { throw URLError(.cannotOpenFile) }
+        )
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
+        let deferredAlert = expectation(description: "No alert while the exit defers the upload")
+        deferredAlert.isInverted = true
+        var subscription = service.backupFailurePublisher.sink { _ in deferredAlert.fulfill() }
+        await service.setAppActive(true)?.value
+        await fulfillment(of: [deferredAlert], timeout: 0.5)
+        subscription.cancel()
+        service.setAppActive(false)
+
+        // The exit ends, and the next attempt fails before it reaches the exit check, with no retry scheduled.
+        exit.isActive = false
+        let alert = expectation(description: "An overdue SPARK_EXIT backup raises 'Data Backup Failure' once the exit ends")
+        subscription = service.backupFailurePublisher.sink { _ in alert.fulfill() }
+        defer { subscription.cancel() }
+
+        await service.setAppActive(true)?.value
+        await fulfillment(of: [alert], timeout: 2)
+
+        XCTAssertTrue(service.getBackupStatus(category: .sparkExit).isRequired)
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
+    func testFailedRecoveryWaitsForOtherRetriesAndPreservesAgeAndCooldown() async throws {
+        let fixture = try Fixture(categories: [.usdt, .widgets])
+        defer { fixture.removeDefaults() }
+        let uploads = UploadRecorder()
+        let failed = expectation(description: "USDT retry failed")
         let started = expectation(description: "Widgets retry started")
         let (uploadGate, releaseUpload) = AsyncStream<Void>.makeStream()
         defer { releaseUpload.finish() }
         let service = fixture.service(uploadBackup: { key, _ in
             await uploads.record(key)
-            if key == BackupCategory.settings.rawValue {
+            if key == BackupCategory.usdt.rawValue {
                 throw URLError(.notConnectedToInternet)
             }
+            guard key == BackupCategory.widgets.rawValue else { return }
             started.fulfill()
             for await _ in uploadGate {}
         })
         await startAfterPendingJobsSettle(service, categories: fixture.categories)
         let statusSubscription = service.backupStatusesPublisher
-            .map { $0[.settings]?.running == true }
+            .map { $0[.usdt]?.running == true }
             .removeDuplicates()
             .drop(while: { !$0 })
             .filter { !$0 }
@@ -73,8 +137,8 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await fulfillment(of: [genuineAlert], timeout: 2)
         failureSubscription.cancel()
 
-        XCTAssertEqual(service.getBackupStatus(category: .settings).required, fixture.required)
-        XCTAssertTrue(service.getBackupStatus(category: .settings).isRequired)
+        XCTAssertEqual(service.getBackupStatus(category: .usdt).required, fixture.required)
+        XCTAssertTrue(service.getBackupStatus(category: .usdt).isRequired)
         XCTAssertFalse(service.getBackupStatus(category: .widgets).isRequired)
 
         let repeatedAlert = expectation(description: "Foreground retry must preserve notification cooldown")
@@ -85,9 +149,9 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await fulfillment(of: [repeatedAlert], timeout: 0.2)
         failureSubscription.cancel()
         let recorded = await uploads.counts
-        XCTAssertEqual(recorded[BackupCategory.settings.rawValue], 2)
+        XCTAssertEqual(recorded[BackupCategory.usdt.rawValue], 2)
         XCTAssertEqual(recorded[BackupCategory.widgets.rawValue], 1)
-        XCTAssertEqual(service.getBackupStatus(category: .settings).required, fixture.required)
+        XCTAssertEqual(service.getBackupStatus(category: .usdt).required, fixture.required)
         service.setAppActive(false)
         await service.stopObservingBackups()
     }
@@ -291,11 +355,14 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         let fixture = try Fixture(categories: [.settings])
         defer { fixture.removeDefaults() }
         let capturing = expectation(description: "Foreground backup capture started")
-        let (captureGate, releaseCapture) = AsyncStream<Void>.makeStream()
-        defer { releaseCapture.finish() }
+        let cancelled = expectation(description: "Stop cancels the captured operation")
+        let stoppedEarly = expectation(description: "Stop must drain non-cooperative capture")
+        stoppedEarly.isInverted = true
+        let gate = CaptureGate()
         let service = BackupService(defaults: fixture.defaults, backupData: { _ in
-            capturing.fulfill()
-            for await _ in captureGate {}
+            await withTaskCancellationHandler {
+                await gate.wait(started: capturing)
+            } onCancel: { cancelled.fulfill() }
             return Data("isolated-snapshot".utf8)
         }, uploadBackup: { _, _ in XCTFail("Stopped recovery must not upload") }, waitForBackupDelay: { throw CancellationError() })
         await startAfterPendingJobsSettle(service, categories: fixture.categories)
@@ -303,8 +370,16 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         let recovery = service.setAppActive(true)
         await fulfillment(of: [capturing], timeout: 2)
         service.setWiping(true)
-        await service.stopObservingBackups()
-        releaseCapture.finish()
+        let stop = Task {
+            await service.stopObservingBackups()
+            if await gate.isHeld {
+                stoppedEarly.fulfill()
+            }
+        }
+        await fulfillment(of: [cancelled], timeout: 2)
+        await fulfillment(of: [stoppedEarly], timeout: 0.1)
+        await gate.release()
+        await stop.value
         await recovery?.value
 
         let status = service.getBackupStatus(category: .settings)
@@ -416,6 +491,56 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
+    func testScheduledIdlePublicationWaitsForForegroundAdmissionCleanup() async throws {
+        let fixture = try Fixture(categories: [.settings])
+        defer { fixture.removeDefaults() }
+        let uploads = UploadRecorder()
+        let delayStarted = expectation(description: "Initial scheduled backup is held")
+        let queueHeld = expectation(description: "Backup admission queue is held")
+        let prematureIdle = expectation(description: "Idle must not precede admission cleanup")
+        prematureIdle.isInverted = true
+        let settled = expectation(description: "Scheduled backup becomes available for foreground retry")
+        let (delay, releaseDelay) = AsyncStream<Void>.makeStream()
+        let releaseQueue = DispatchSemaphore(value: 0)
+        defer {
+            releaseDelay.finish()
+            releaseQueue.signal()
+        }
+        let service = fixture.service(uploadBackup: { key, _ in
+            await uploads.record(key)
+        }, waitForBackupDelay: {
+            delayStarted.fulfill()
+            for await _ in delay {}
+            throw CancellationError()
+        })
+        await service.startObservingBackups()?.value
+        await fulfillment(of: [delayStarted], timeout: 2)
+        Bitkit.ServiceQueue.ServiceTypes.backup.queue.async {
+            queueHeld.fulfill()
+            XCTAssertEqual(releaseQueue.wait(timeout: .now() + 2), .success)
+        }
+        await fulfillment(of: [queueHeld], timeout: 2)
+        let earlySubscription = service.backupStatusesPublisher
+            .filter { $0[.settings]?.running == false }
+            .first().sink { _ in prematureIdle.fulfill() }
+        releaseDelay.finish()
+        await fulfillment(of: [prematureIdle], timeout: 0.2)
+        earlySubscription.cancel()
+        let settledSubscription = service.backupStatusesPublisher
+            .filter { $0[.settings]?.running == false }
+            .first().sink { _ in settled.fulfill() }
+        defer { settledSubscription.cancel() }
+        releaseQueue.signal()
+        await fulfillment(of: [settled], timeout: 2)
+
+        await service.setAppActive(true)?.value
+        let recorded = await uploads.counts
+        XCTAssertEqual(recorded, [BackupCategory.settings.rawValue: 1])
+        XCTAssertFalse(service.getBackupStatus(category: .settings).isRequired)
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
     func testStoppingObservationRetainsChangesWhileUploadFinishes() async throws {
         let fixture = try Fixture(categories: [])
         defer { fixture.removeDefaults() }
@@ -477,10 +602,11 @@ final class BackupForegroundRecoveryTests: XCTestCase {
 
         let oldStop = Task { await service.stopObservingBackups() }
         await fulfillment(of: [uploadCancelled], timeout: 2)
-        await service.startObservingBackups()?.value
+        let restart = service.startObservingBackups()
         releaseUpload.finish()
         _ = await upload.value
         await oldStop.value
+        await restart?.value
         XCTAssertFalse(service.getBackupStatus(category: .wallet).isRequired)
 
         let changed = expectation(description: "Restarted observation captures a new wallet change")
@@ -683,6 +809,16 @@ private final class CancellationRecorder: @unchecked Sendable {
     }
 }
 
+private final class SparkExitState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var active = true
+
+    var isActive: Bool {
+        get { lock.withLock { active } }
+        set { lock.withLock { active = newValue } }
+    }
+}
+
 private struct Fixture {
     let suite = "BackupForegroundRecoveryTests.\(UUID().uuidString)"
     let defaults: UserDefaults
@@ -722,6 +858,25 @@ private actor UploadRecorder {
 
     func record(_ key: String) {
         counts[key, default: 0] += 1
+    }
+}
+
+private actor CaptureGate {
+    private(set) var isHeld = true
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait(started: XCTestExpectation) async {
+        guard isHeld else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            started.fulfill()
+        }
+    }
+
+    func release() {
+        isHeld = false
+        continuation?.resume()
+        continuation = nil
     }
 }
 

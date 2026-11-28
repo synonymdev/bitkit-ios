@@ -1410,6 +1410,7 @@
 "profile__edit_changed_error" = "Je profiel is gewijzigd in pubky.app. Bitkit heeft de nieuwste versie geladen, dus voer je wijziging opnieuw uit.";
 "profile__edit_public_note" = "Dit is je pubky.app-profiel. Het is openbaar, en wijzigingen die je hier maakt, verschijnen ook op pubky.app.";
 "profile__edit_tags_error" = "Bitkit kon je tags niet opslaan. Je andere wijzigingen zijn opgeslagen, dus probeer de tags opnieuw.";
+"profile__delete_active_subscription" = "Actieve abonnementen verhinderen het verwijderen van dit profiel.";
 "profile__edit_link_error" = "Corrigeer de link {label} om je profiel op te slaan.";
 "profile__link_error_label_length" = "Het label mag maximaal 100 tekens bevatten.";
 "profile__link_error_label_stored" = "Het label van deze link kan niet worden opgeslagen. Verwijder de link en voeg hem opnieuw toe.";
@@ -2154,6 +2155,8 @@
 "subscriptions__allowance_limit_description" = "Een verzoek van {amount} van {name} overschrijdt uw toelage. Bekijk het om te betalen.";
 "subscriptions__allowance_auto_paid" = "Automatisch betaald";
 
+"onboarding__connection_settings" = "Verbindingsinstellingen";
+"onboarding__connection_saved" = "Opgeslagen. Probeer opnieuw om het herstel voort te zetten.";
 "wallet__balance_updating" = "Saldo bijwerken…";
 "lightning__move_to_spark__in_flight_text" = "De betaling is onderweg en verschijnt in Spark zodra die is afgerond. Als die mislukt, blijft het bedrag in je verbinding.";
 "lightning__move_to_spark__in_flight_title" = "Onderweg naar\n<accent>Spark</accent>";

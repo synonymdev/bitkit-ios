@@ -1401,6 +1401,7 @@
 "profile__edit_changed_error" = "Ваш профиль изменился в pubky.app. Bitkit загрузил последнюю версию, поэтому внесите изменение снова.";
 "profile__edit_public_note" = "Это ваш профиль pubky.app. Он публичный, и изменения, которые вы вносите здесь, также видны в pubky.app.";
 "profile__edit_tags_error" = "Bitkit не удалось сохранить ваши теги. Остальные изменения сохранены, поэтому попробуйте сохранить теги ещё раз.";
+"profile__delete_active_subscription" = "Активные подписки не позволяют удалить этот профиль.";
 "profile__edit_link_error" = "Исправьте ссылку {label}, чтобы сохранить профиль.";
 "profile__link_error_label_length" = "Метка должна содержать не более 100 символов.";
 "profile__link_error_label_stored" = "Не удаётся сохранить метку этой ссылки. Удалите ссылку и добавьте её снова.";
@@ -2141,6 +2142,8 @@
 "subscriptions__allowance_limit_description" = "Запрос на {amount} от {name} превышает ваш лимит автооплаты. Проверьте его, чтобы оплатить.";
 "subscriptions__allowance_auto_paid" = "Оплачено автоматически";
 
+"onboarding__connection_settings" = "Настройки подключения";
+"onboarding__connection_saved" = "Сохранено. Повторите попытку, чтобы продолжить восстановление.";
 "wallet__balance_updating" = "Обновление баланса…";
 "lightning__move_to_spark__in_flight_text" = "Платёж в пути и появится в Spark после завершения. Если он не пройдёт, сумма останется в вашем соединении.";
 "lightning__move_to_spark__in_flight_title" = "Идёт перенос\nв <accent>Spark</accent>";

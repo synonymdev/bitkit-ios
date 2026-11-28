@@ -1183,6 +1183,7 @@
 "profile__edit_changed_error" = "تغيّر ملفك الشخصي في pubky.app. حمّل Bitkit أحدث نسخة، لذا أعد إجراء تعديلك.";
 "profile__edit_public_note" = "هذا هو ملفك الشخصي على pubky.app. إنه عام، والتغييرات التي تجريها هنا تظهر أيضًا على pubky.app.";
 "profile__edit_tags_error" = "تعذّر على Bitkit حفظ وسومك. حُفظت تغييراتك الأخرى، لذا حاول حفظ الوسوم مرة أخرى.";
+"profile__delete_active_subscription" = "تمنع الاشتراكات النشطة إزالة هذا الملف الشخصي.";
 "profile__edit_link_error" = "أصلح رابط {label} لحفظ ملفك الشخصي.";
 "profile__link_error_label_length" = "يجب ألا يزيد التصنيف عن 100 حرفًا.";
 "profile__link_error_label_stored" = "لا يمكن حفظ تصنيف هذا الرابط. احذف الرابط وأضفه مرة أخرى.";
@@ -1827,6 +1828,8 @@
 "subscriptions__allowance_limit_description" = "طلب بقيمة {amount} من {name} يتجاوز مخصصك. راجعه للدفع.";
 "subscriptions__allowance_auto_paid" = "مدفوع تلقائيًا";
 
+"onboarding__connection_settings" = "إعدادات الاتصال";
+"onboarding__connection_saved" = "تم الحفظ. أعد المحاولة لمتابعة الاستعادة.";
 "wallet__balance_updating" = "جارٍ تحديث الرصيد…";
 "lightning__move_to_spark__in_flight_text" = "الدفعة في طريقها وستظهر في Spark بمجرد تسويتها. إذا فشلت، يبقى المبلغ في اتصالك.";
 "lightning__move_to_spark__in_flight_title" = "جارٍ النقل إلى\n<accent>Spark</accent>";

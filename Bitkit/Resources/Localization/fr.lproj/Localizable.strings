@@ -1415,6 +1415,7 @@
 "profile__edit_changed_error" = "Ton profil a changé sur pubky.app. Bitkit a chargé la version la plus récente, refais donc ta modification.";
 "profile__edit_public_note" = "Voici ton profil pubky.app. Il est public, et les modifications que tu fais ici apparaissent aussi sur pubky.app.";
 "profile__edit_tags_error" = "Bitkit n'a pas pu enregistrer vos étiquettes. Vos autres modifications ont été enregistrées, réessayez pour les étiquettes.";
+"profile__delete_active_subscription" = "Les abonnements actifs empêchent la suppression de ce profil.";
 "profile__edit_link_error" = "Corrigez le lien {label} pour enregistrer votre profil.";
 "profile__link_error_label_length" = "Le libellé doit contenir 100 caractères au maximum.";
 "profile__link_error_label_stored" = "Le libellé de ce lien ne peut pas être enregistré. Supprimez le lien et ajoutez-le à nouveau.";
@@ -2160,6 +2161,8 @@
 "subscriptions__allowance_limit_description" = "Une demande de {amount} de {name} dépasse votre allocation. Examinez-la pour payer.";
 "subscriptions__allowance_auto_paid" = "Payé automatiquement";
 
+"onboarding__connection_settings" = "Paramètres de connexion";
+"onboarding__connection_saved" = "Enregistré. Réessayez pour poursuivre la restauration.";
 "wallet__balance_updating" = "Mise à jour du solde…";
 "lightning__move_to_spark__in_flight_text" = "Le paiement est en route et apparaîtra dans Spark une fois réglé. En cas d'échec, le montant reste dans votre connexion.";
 "lightning__move_to_spark__in_flight_title" = "Déplacement vers\n<accent>Spark</accent>";

@@ -2,6 +2,7 @@ import BitkitCore
 import Combine
 import CryptoKit
 import Foundation
+import Network
 import Paykit
 import VssRustClientFfi
 
@@ -105,6 +106,7 @@ class BackupService {
         case snapshotChanged
         case busy
         case temporarilyUnavailable
+        case walletDependencyFailed
         case failed
 
         var canRetryPendingBackup: Bool {
@@ -120,21 +122,28 @@ class BackupService {
     @MainActor weak var usdtWallet: UsdtWalletManager?
     private var backupJobs: [BackupCategory: Task<Void, Never>] = [:]
     private var runningBackupTasks: [BackupCategory: Task<BackupOutcome, Never>] = [:]
-    private let cancellables = BackupObservationSubscriptions()
-    private var observationGeneration: UInt64 = 0
-    private var observationRequestGeneration: UInt64 = 0
-    private var periodicCheckTask: Task<Void, Never>?
-    private var isObserving = false
+    @MainActor private var dataStoreListeners = Set<AnyCancellable>()
+    @MainActor private var statusListeners = Set<AnyCancellable>()
+    @MainActor private var periodicCheckTask: Task<Void, Never>?
+    @MainActor private var observationTask: Task<Void, Never>?
+    @MainActor private var isObserving = false
+    private var schedulingGeneration: UInt64 = 0
+    private var isStoppingBackups = false
     private var isRestoring = false
     private var isWiping = false
+    private var wipeGeneration: UInt64 = 0
     private var backupFailureNotificationGate = BackupFailureNotificationGate()
-    private var foregroundObservationGeneration: UInt64 = 0
 
     private let defaults: UserDefaults
     private let fetchBackup: (String) async throws -> Data?
     /// Set while the Spark exit data restore hasn't succeeded or found no older backup, kept across launches, so a fresh
     /// export never replaces the remote backup it couldn't read yet.
     private static let sparkExitRestorePendingKey = "sparkExitRestorePending"
+    private let connectionRecovery: ConnectionRecoveryService?
+    @MainActor private var connectionRecoveryService: ConnectionRecoveryService {
+        connectionRecovery ?? .shared
+    }
+
     /// The prefix of the remote keys of exit data Spark rejected for good: each copy goes under this plus `_` and the first
     /// 16 hex digits of its SHA-256.
     static let sparkExitRejectedKey = "SPARK_EXIT_REJECTED"
@@ -147,6 +156,7 @@ class BackupService {
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
     private let waitForTemporaryFailureDelay: (UInt64) async throws -> Void
+    private let waitForScheduledBackupCompletion: (BackupCategory, BackupOutcome) async -> Void
     private let waitForForegroundRecoveryTimeout: () async throws -> Void
     private static let backupStatusesKey = "backupStatuses"
     private var backupVersions: [BackupCategory: UInt64] = [:]
@@ -173,6 +183,7 @@ class BackupService {
 
     init(
         defaults: UserDefaults = .standard,
+        connectionRecovery: ConnectionRecoveryService? = nil,
         backupData: ((BackupCategory) async throws -> Data)? = nil,
         isSparkExitActive: @escaping () async -> Bool = { @MainActor in SparkExitManager.shared.isExiting },
         usdtRecoveryBackup: UsdtRecoveryBackupStore = UsdtRecoveryBackupStore(),
@@ -185,6 +196,7 @@ class BackupService {
         waitForTemporaryFailureDelay: @escaping (UInt64) async throws -> Void = {
             try await Task.sleep(nanoseconds: $0)
         },
+        waitForScheduledBackupCompletion: @escaping (BackupCategory, BackupOutcome) async -> Void = { _, _ in },
         waitForForegroundRecoveryTimeout: @escaping () async throws -> Void = {
             try await Task.sleep(for: .seconds(BackupService.backupFailureCheckInterval))
         },
@@ -211,11 +223,13 @@ class BackupService {
         self.restoreExitBackup = restoreExitBackup
         self.isSparkExitActive = isSparkExitActive
         self.fetchBackup = fetchBackup
+        self.connectionRecovery = connectionRecovery
         self.backupData = backupData
         self.usdtRecoveryBackup = usdtRecoveryBackup
         self.uploadBackup = uploadBackup
         self.waitForBackupDelay = waitForBackupDelay
         self.waitForTemporaryFailureDelay = waitForTemporaryFailureDelay
+        self.waitForScheduledBackupCompletion = waitForScheduledBackupCompletion
         self.waitForForegroundRecoveryTimeout = waitForForegroundRecoveryTimeout
         let statuses = getAllBackupStatuses()
         var clearedStatuses = statuses
@@ -246,29 +260,44 @@ class BackupService {
     /// Sets the wiping flag to prevent backups during wipe operations
     func setWiping(_ isWiping: Bool) {
         stateQueue.sync {
+            if isWiping, !self.isWiping {
+                wipeGeneration &+= 1
+            }
             self.isWiping = isWiping
         }
     }
 
+    private func captureWipeGeneration() throws -> UInt64 {
+        try stateQueue.sync {
+            guard !isWiping else { throw CancellationError() }
+            return wipeGeneration
+        }
+    }
+
+    private func requireWipeGeneration(_ generation: UInt64) throws {
+        try stateQueue.sync {
+            guard !isWiping, wipeGeneration == generation else { throw CancellationError() }
+        }
+    }
+
+    @MainActor
     @discardableResult
     func setAppActive(_ isActive: Bool) -> Task<Void, Never>? {
+        let observingAtEntry = isObserving
         let (shouldRecover, generation) = stateQueue.sync {
             backupFailureNotificationGate.setActive(isActive)
-            return (isActive && backupFailureNotificationGate.beginForegroundRecovery(), foregroundObservationGeneration)
+            return (isActive && backupFailureNotificationGate.beginForegroundRecovery(), schedulingGeneration)
         }
 
         guard shouldRecover else { return nil }
         return Task {
-            await waitForForegroundRetries(generation: generation)
+            await waitForForegroundRetries(generation: generation, observingAtEntry: observingAtEntry)
             self.stateQueue.sync {
                 self.backupFailureNotificationGate.endForegroundRecovery()
             }
-            let isObserving = try? await ServiceQueue.background(.backup) {
-                self.isObserving
-            }
             let shouldCheck = self.stateQueue.sync {
-                self.foregroundObservationGeneration == generation && self.backupFailureNotificationGate.shouldCheckForFailedBackups(
-                    isObserving: isObserving == true
+                self.schedulingGeneration == generation && self.backupFailureNotificationGate.shouldCheckForFailedBackups(
+                    isObserving: self.isObserving
                 )
             }
 
@@ -277,11 +306,11 @@ class BackupService {
         }
     }
 
-    private func waitForForegroundRetries(generation: UInt64) async {
+    private func waitForForegroundRetries(generation: UInt64, observingAtEntry: Bool) async {
         let (settled, finish) = AsyncStream<Void>.makeStream()
         // Bound alert suppression, not the uploads: an FFI write may ignore cancellation.
         Task {
-            await self.retryPendingBackups(generation: generation)
+            await self.retryPendingBackups(generation: generation, observingAtEntry: observingAtEntry)
             finish.finish()
         }
         let timeout = Task {
@@ -295,9 +324,11 @@ class BackupService {
         timeout.cancel()
     }
 
-    private func retryPendingBackups(generation: UInt64) async {
+    private func retryPendingBackups(generation: UInt64, observingAtEntry: Bool) async {
         let tasks = try? await ServiceQueue.background(.backup) { [self] in
-            guard isObserving, stateQueue.sync(execute: { foregroundObservationGeneration == generation }) else {
+            guard observingAtEntry, !isStoppingBackups, generation == currentSchedulingGeneration,
+                  let wipeGeneration = try? captureWipeGeneration()
+            else {
                 return [Task<BackupOutcome, Never>]()
             }
             return BackupCategory.allCases.compactMap { category -> Task<BackupOutcome, Never>? in
@@ -308,9 +339,9 @@ class BackupService {
                 else { return nil }
 
                 let task = Task {
-                    let outcome = await self.runBackup(category: category, isScheduled: true)
+                    let outcome = await self.runBackup(category: category, isScheduled: true, wipeGeneration: wipeGeneration)
                     if outcome.canRetryPendingBackup, !Task.isCancelled, self.getBackupStatus(category: category).isRequired {
-                        await self.scheduleBackup(category: category, initialOutcome: outcome, foregroundGeneration: generation)
+                        await self.scheduleBackup(category: category, generation: generation, initialOutcome: outcome)
                     }
                     return outcome
                 }
@@ -323,81 +354,79 @@ class BackupService {
         }
     }
 
+    @MainActor
     @discardableResult
     func startObservingBackups() -> Task<Void, Never>? {
-        guard !shouldSkipBackup() else { return nil }
-        let request = nextObservationRequest()
-
-        return Task {
-            let observation = try? await ServiceQueue.background(.backup) { () -> (generation: UInt64, foregroundGeneration: UInt64)? in
-                guard !self.isObserving, !self.shouldSkipBackup(),
-                      self.stateQueue.sync(execute: { self.observationRequestGeneration == request })
-                else { return nil }
-                self.isObserving = true
-                let observation = self.stateQueue.sync {
-                    self.observationGeneration &+= 1
-                    return (generation: self.observationGeneration, foregroundGeneration: self.foregroundObservationGeneration)
-                }
-                self.startPeriodicBackupFailureCheck()
-                return observation
-            }
-
-            guard let observation else { return }
-
+        let previous = observationTask
+        let listeners = makeDataStoreListeners()
+        let starting = Task {
+            await previous?.value
+            guard !shouldSkipBackup(), !isObserving else { return }
+            isObserving = true
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
-            await installBackupObservers(generation: observation.generation, foregroundGeneration: observation.foregroundGeneration)
+            dataStoreListeners.formUnion(listeners)
+            startBackupStatusObservers()
+            startPeriodicBackupFailureCheck()
 
             // Spark's exit data signals are missed while observing is stopped, as it is while the node stops and Spark
             // stays connected: mark it when the exit data changed since it was last marked, not on every restart.
-            let version = await SparkManager.shared.exitStateVersion
+            let version = SparkManager.shared.exitStateVersion
             if stateQueue.sync(execute: { sparkExitMark.claim(version: version) }) {
                 markBackupRequired(category: .sparkExit)
             }
         }
+        observationTask = starting
+        return starting
     }
 
+    @MainActor
     func stopObservingBackups() async {
         await requestStopObservingBackups().value
     }
 
+    @MainActor
     @discardableResult
     func requestStopObservingBackups() -> Task<Void, Never> {
-        let request = nextObservationRequest()
-        return Task {
-            let stopped = try? await ServiceQueue.background(.backup) { () -> (wasObserving: Bool, generation: UInt64)? in
-                guard self.stateQueue.sync(execute: { self.observationRequestGeneration == request }) else { return nil }
-                let wasObserving = self.isObserving
-                self.isObserving = false
-                let generation = self.stateQueue.sync {
-                    self.foregroundObservationGeneration &+= 1
-                    self.observationGeneration &+= 1
-                    return self.observationGeneration
+        let previous = observationTask
+        let stopping = Task {
+            await previous?.value
+            isObserving = false
+            statusListeners.removeAll()
+            periodicCheckTask?.cancel()
+            periodicCheckTask = nil
+
+            let tasks = try? await ServiceQueue.background(.backup) {
+                self.stateQueue.sync { self.schedulingGeneration &+= 1 }
+                self.isStoppingBackups = true
+                let scheduled = Array(self.backupJobs.values)
+                let running = Array(self.runningBackupTasks.values)
+                for (category, job) in self.backupJobs {
+                    job.cancel()
+                    self.clearScheduledBackupStatus(category: category)
                 }
-
-                self.backupJobs.values.forEach { $0.cancel() }
                 self.backupJobs.removeAll()
-                self.runningBackupTasks.values.forEach { $0.cancel() }
-                self.periodicCheckTask?.cancel()
-                self.periodicCheckTask = nil
-                return (wasObserving: wasObserving, generation: generation)
+                running.forEach { $0.cancel() }
+                return (scheduled, running)
             }
-
-            let metadataTask = try? await ServiceQueue.background(.backup) { self.runningBackupTasks[.metadata] }
-            _ = await metadataTask?.value
+            // Cleanup uses the backup queue too, so drain outside it before a replacement starts.
+            if let (scheduled, running) = tasks {
+                for task in scheduled {
+                    await task.value
+                }
+                for task in running {
+                    _ = await task.value
+                }
+            }
             await walletBackupWriter.waitUntilIdle()
             await usdtBackupWriter.waitUntilIdle()
-            guard let stopped else { return }
-            await removeBackupObservers(generation: stopped.generation)
-            guard stopped.wasObserving else { return }
+            dataStoreListeners.removeAll()
+            try? await ServiceQueue.background(.backup) {
+                self.isStoppingBackups = false
+            }
             Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
         }
-    }
-
-    private func nextObservationRequest() -> UInt64 {
-        stateQueue.sync {
-            observationRequestGeneration &+= 1
-            return observationRequestGeneration
-        }
+        observationTask = stopping
+        return stopping
     }
 
     @discardableResult
@@ -405,27 +434,59 @@ class BackupService {
         await triggerBackup(category: category, isScheduled: false)
     }
 
-    private func triggerBackup(category: BackupCategory, isScheduled: Bool, waitForExisting: Bool = false) async -> BackupOutcome {
-        let work = try? await ServiceQueue.background(.backup) { [self] () -> (task: Task<BackupOutcome, Never>, owned: Bool)? in
-            if let existing = runningBackupTasks[category] {
-                return waitForExisting ? (existing, false) : nil
+    private func triggerBackup(category: BackupCategory, isScheduled: Bool, waitForExisting: Bool = false,
+                               generation: UInt64? = nil) async -> BackupOutcome
+    {
+        guard let wipeGeneration = try? captureWipeGeneration() else { return .failed }
+        while !Task.isCancelled {
+            // The run starts on the backup queue before this caller resumes; a cancel in between must still reach it.
+            let cancellation = BackupRunCancellation()
+            let admission = try? await withTaskCancellationHandler {
+                try await ServiceQueue.background(.backup) { [self] () -> (
+                    task: Task<BackupOutcome, Never>?,
+                    owned: Bool,
+                    stopping: Bool
+                ) in
+                    try requireWipeGeneration(wipeGeneration)
+                    if let generation, generation != currentSchedulingGeneration {
+                        return (nil, false, false)
+                    }
+                    guard !isStoppingBackups else { return (nil, false, true) }
+                    if let existing = runningBackupTasks[category] {
+                        return (waitForExisting ? existing : nil, false, false)
+                    }
+                    let task = Task { await self.runBackup(category: category, isScheduled: isScheduled, wipeGeneration: wipeGeneration) }
+                    runningBackupTasks[category] = task
+                    cancellation.attach(task)
+                    return (task, true, false)
+                }
+            } onCancel: {
+                cancellation.cancel()
             }
-            let backupTask = Task { await self.runBackup(category: category, isScheduled: isScheduled) }
-            runningBackupTasks[category] = backupTask
-            return (backupTask, true)
-        }
-
-        guard let work else { return .busy }
-        return await withTaskCancellationHandler {
-            await work.task.value
-        } onCancel: {
-            if work.owned {
-                work.task.cancel()
+            guard let admission else { return .failed }
+            if admission.stopping, !isScheduled {
+                await waitForObservationTransition()
+                continue
+            }
+            guard let backupTask = admission.task else { return .busy }
+            return await withTaskCancellationHandler {
+                await backupTask.value
+            } onCancel: {
+                if admission.owned {
+                    backupTask.cancel()
+                }
             }
         }
+        return .failed
     }
 
-    private func runBackup(category: BackupCategory, isScheduled: Bool) async -> BackupOutcome {
+    @MainActor
+    private func waitForObservationTransition() async {
+        await observationTask?.value
+    }
+
+    private func runBackup(category: BackupCategory, isScheduled: Bool, wipeGeneration: UInt64) async -> BackupOutcome {
+        let generation = currentSchedulingGeneration
         Logger.debug("Backup starting for: '\(category.rawValue)'", context: "BackupService")
         var outcome = BackupOutcome.failed
         var requiredAtStart: UInt64 = 0
@@ -440,6 +501,7 @@ class BackupService {
 
         do {
             try Task.checkCancellation()
+            try requireWipeGeneration(wipeGeneration)
             if isScheduled, shouldSkipBackup(category: category) {
                 throw CancellationError()
             }
@@ -486,24 +548,34 @@ class BackupService {
                 case .nothingStaged, .imported:
                     break
                 }
+                // An active exit defers the upload and keeps this category required; it never counts as backed up.
+                guard await !isSparkExitActive() else { throw CancellationError() }
                 // Nothing to back up until Spark connects, which marks this category required again.
                 if let data = try await sparkExitBackupData() {
+                    guard await !isSparkExitActive() else { throw CancellationError() }
+                    try Task.checkCancellation()
+                    try requireWipeGeneration(wipeGeneration)
+                    if isScheduled, shouldSkipBackup(category: category) {
+                        throw CancellationError()
+                    }
                     try await uploadBackup(category.rawValue, data)
                 }
             } else {
                 if category == .metadata {
-                    try await prepareMetadataBackup()
+                    try await prepareMetadataBackup(generation: generation)
                 }
                 let data = try await getBackupDataBytes(category: category)
                 if category == .metadata {
                     try requireMetadataBackupReady()
                 }
                 try Task.checkCancellation()
+                try requireWipeGeneration(wipeGeneration)
                 if isScheduled, shouldSkipBackup(category: category) {
                     throw CancellationError()
                 }
                 try await uploadBackup(category.rawValue, data)
             }
+            try requireWipeGeneration(wipeGeneration)
             updateBackupStatus(category: category) { status in
                 let changed = self.backupVersions[category, default: 0] != versionAtStart
                 return BackupItemStatus(
@@ -540,19 +612,27 @@ class BackupService {
                 outcome = .temporarilyUnavailable
                 Logger.warn("Backup temporarily unavailable for: '\(category.rawValue)'", context: "BackupService")
             } else {
+                if case MetadataBackupError.walletBackupFailed = error {
+                    outcome = .walletDependencyFailed
+                }
                 Logger.error("Backup failed for: '\(category.rawValue)': \(error)", context: "BackupService")
                 checkForFailedBackups()
             }
         }
         _ = try? await ServiceQueue.background(.backup) { self.runningBackupTasks.removeValue(forKey: category) }
+        if category == .wallet, outcome == .completed {
+            await resumeMetadataAfterWalletBackup(generation: generation)
+        } else if category == .metadata, outcome == .walletDependencyFailed {
+            await resumeMetadataAfterWalletBackup(generation: generation)
+        }
         return outcome
     }
 
-    private func prepareMetadataBackup() async throws {
+    private func prepareMetadataBackup(generation: UInt64) async throws {
         try Task.checkCancellation()
         guard !shouldSkipBackup(), !hasPendingWalletRestore() else { throw MetadataBackupError.deferred }
         if getBackupStatus(category: .wallet).isRequired {
-            let outcome = await triggerBackup(category: .wallet, isScheduled: true, waitForExisting: true)
+            let outcome = await triggerBackup(category: .wallet, isScheduled: true, waitForExisting: true, generation: generation)
             try Task.checkCancellation()
             if outcome == .temporarilyUnavailable {
                 throw MetadataBackupError.walletTemporarilyUnavailable
@@ -576,13 +656,40 @@ class BackupService {
 
     static func isTemporaryBackupFailure(_ error: Error) -> Bool {
         switch error {
+        case let error as AppError:
+            return error.underlyingError is VssBackupClient.SetupTimeout
         case MetadataBackupError.walletTemporarilyUnavailable,
              PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport,
              VssError.ConnectionError, VssError.NetworkError, VssError.StoreError, VssError.PutError:
-            true
+            return true
+        case let VssError.UnknownError(details):
+            return isVssRequestSendFailure(details, pathSuffix: "/putObjects")
+        case let VssError.AuthError(details):
+            let prefix = "error performing external request: "
+            let requestFailure = details.hasPrefix(prefix) ? String(details.dropFirst(prefix.count)) : details
+            return isVssRequestSendFailure(requestFailure)
         default:
-            false
+            return false
         }
+    }
+
+    private static func isVssRequestSendFailure(_ details: String, pathSuffix: String? = nil) -> Bool {
+        let prefix = "error sending request for url ("
+        let invalidHostCharacters = CharacterSet.whitespacesAndNewlines.union(.controlCharacters)
+            .union(CharacterSet(charactersIn: "/%@?#\\"))
+        guard details.hasPrefix(prefix), details.hasSuffix(")"),
+              let url = URLComponents(string: String(details.dropFirst(prefix.count).dropLast()), encodingInvalidCharacters: false),
+              url.scheme == "http" || url.scheme == "https",
+              let host = url.host, !host.isEmpty, host.rangeOfCharacter(from: invalidHostCharacters) == nil,
+              (0 ... 65535).contains(url.port ?? 0),
+              url.url != nil
+        else { return false }
+        if host.hasPrefix("[") {
+            guard host.hasSuffix("]"), IPv6Address(String(host.dropFirst().dropLast())) != nil else { return false }
+        } else if host.contains(":") || host.contains("[") || host.contains("]") {
+            return false
+        }
+        return pathSuffix.map { url.path.hasSuffix($0) } ?? true
     }
 
     func persistWalletBackup() async throws {
@@ -660,6 +767,12 @@ class BackupService {
 
     /// Performs full restore from latest backup
     func performFullRestoreFromLatestBackup() async throws {
+        try await connectionRecoveryService.perform {
+            try await self.restoreLatestWalletBackup()
+        }
+    }
+
+    private func restoreLatestWalletBackup() async throws {
         if UsdtRecoveryRestoreGate.isPending, try !walletRestoreGate.hasPendingRestore() {
             try await restoreUsdtRecoveryAfterLegacyMigration()
             return
@@ -672,7 +785,7 @@ class BackupService {
         Logger.debug("Full restore starting", context: "BackupService")
 
         do {
-            _ = try await walletRestoreGate.performRestore { retainedWalletBackup in
+            _ = try await connectionRecoveryService.restoreRequired(gate: walletRestoreGate) { [self] retainedWalletBackup in
                 try UsdtRecoveryRestoreGate.begin()
                 await usdtWallet?.pauseForRecoveryRestore()
                 await usdtBackupWriter.waitUntilIdle()
@@ -717,7 +830,14 @@ class BackupService {
     }
 
     func restoreUsdtRecoveryAfterLegacyMigration() async throws {
+        try await connectionRecoveryService.perform {
+            try await self.restoreLegacyUsdtRecovery()
+        }
+    }
+
+    private func restoreLegacyUsdtRecovery() async throws {
         let retained = try UsdtRecoveryRestoreGate.begin()
+        _ = try await connectionRecoveryService.replay()
         await usdtWallet?.pauseForRecoveryRestore()
         await usdtBackupWriter.waitUntilIdle()
         await walletBackupWriter.waitUntilIdle()
@@ -746,6 +866,7 @@ class BackupService {
                 try await PaykitUsdtPaymentService.shared.restoreBackup($0)
             }
         )
+        _ = try await connectionRecoveryService.replay()
         try UsdtRecoveryRestoreGate.complete()
         await usdtWallet?.resumeAfterRecoveryRestore()
         markRestoreComplete(category: .usdt)
@@ -755,8 +876,11 @@ class BackupService {
         do {
             try await performRestore(category: .settings) { dataBytes in
                 let payload = try SettingsBackupV1.decode(from: dataBytes)
-                await SettingsViewModel.shared.restoreSettingsDictionary(payload.settings)
+                let settings = try await connectionRecoveryService.mergeRestoredSettings(payload.settings)
+                await SettingsViewModel.shared.restoreSettingsDictionary(settings)
             }
+
+            _ = try await connectionRecoveryService.replay()
 
             try await performRestore(category: .widgets) { dataBytes in
                 let payload = try WidgetsBackupV1.decode(from: dataBytes)
@@ -896,21 +1020,7 @@ class BackupService {
     // MARK: - Private Methods
 
     @MainActor
-    private func installBackupObservers(generation: UInt64, foregroundGeneration: UInt64) {
-        guard stateQueue.sync(execute: { observationGeneration == generation }) else { return }
-        cancellables.cancelAll()
-        startBackupStatusObservers(generation: foregroundGeneration)
-        startDataStoreListeners()
-    }
-
-    @MainActor
-    private func removeBackupObservers(generation: UInt64) {
-        guard stateQueue.sync(execute: { observationGeneration == generation }) else { return }
-        cancellables.cancelAll()
-    }
-
-    @MainActor
-    private func startBackupStatusObservers(generation: UInt64) {
+    private func startBackupStatusObservers() {
         for category in BackupCategory.allCases {
             let categoryPublisher = backupStatusesPublisher
                 .prepend(getAllBackupStatuses())
@@ -927,128 +1037,122 @@ class BackupService {
                 .sink { @Sendable [weak self] status in
                     guard let self, !self.shouldSkipBackup(category: category) else { return }
                     if status.isRequired && !status.running {
+                        let generation = currentSchedulingGeneration
                         Task {
-                            await self.scheduleBackup(category: category, foregroundGeneration: generation)
+                            await self.scheduleBackup(category: category, generation: generation)
                         }
                     }
                 }
-                .store(in: cancellables)
+                .store(in: &statusListeners)
         }
 
         Logger.debug("Started \(BackupCategory.allCases.count) backup status observers", context: "BackupService")
     }
 
     @MainActor
-    private func startDataStoreListeners() {
+    private func makeDataStoreListeners() -> Set<AnyCancellable> {
+        var listeners = Set<AnyCancellable>()
         // SETTINGS
         SettingsViewModel.shared.settingsPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .settings)
+                markObservedBackupRequired(category: .settings)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // WIDGETS
         SettingsViewModel.shared.widgetsPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .widgets)
+                markObservedBackupRequired(category: .widgets)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         SparkManager.exitStateChangedPublisher
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .sparkExit)
+                markObservedBackupRequired(category: .sparkExit)
                 Task { @MainActor in
                     let version = SparkManager.shared.exitStateVersion
                     _ = self.stateQueue.sync { self.sparkExitMark.claim(version: version) }
                 }
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // Record requirements synchronously; the scheduled upload already has a debounce.
         WalletBackupChangeTracker.localChanges
             .merge(with: PaykitSdkService.walletBackupDataChangedPublisher)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .wallet)
+                markObservedBackupRequired(category: .wallet)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         UsdtWalletManager.walletBackupDataChangedPublisher
             .merge(with: PaykitUsdtPaymentService.walletBackupDataChangedPublisher)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.isWipingOrRestoringUsdt() else { return }
-                markBackupRequired(category: .usdt)
+                markObservedBackupRequired(category: .usdt)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .activity)
+                markObservedBackupRequired(category: .activity)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // METADATA (from ActivityService)
         CoreService.shared.activity.metadataChangedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
+                markObservedBackupRequired(category: .metadata)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
         HwKnownDeviceStorage.namesChangedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
+                markObservedBackupRequired(category: .metadata)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // METADATA (earlier Spark exit addresses)
         SparkExitEarlierAddressStore.savedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
+                markObservedBackupRequired(category: .metadata)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // METADATA (moves to Spark). Marked as the hash is saved, so a stop right after can't leave a later Activity backup
         // holding the move without the metadata that names it one.
         MoveToSparkPayments.savedPublisher
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
+                markObservedBackupRequired(category: .metadata)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // APP STATE (UserDefaults changes, etc.)
         SettingsViewModel.shared.appStatePublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
+                markObservedBackupRequired(category: .metadata)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // BLOCKTANK
         CoreService.shared.blocktank.stateChangedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .blocktank)
+                markObservedBackupRequired(category: .blocktank)
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
         // LIGHTNING SYNC STATUS
         LightningService.shared.syncStatusChangedPublisher
@@ -1063,17 +1167,28 @@ class BackupService {
                     )
                 }
             }
-            .store(in: cancellables)
+            .store(in: &listeners)
 
-        Logger.debug("Started data store listeners", context: "BackupService")
+        return listeners
     }
 
+    private func markObservedBackupRequired(category: BackupCategory) {
+        // Persist notifications during restart without admitting uploads before cleanup finishes.
+        markBackupRequired(category: category, schedule: false)
+        Task { @MainActor in
+            await waitForObservationTransition()
+            guard isObserving else { return }
+            await scheduleBackup(category: category, generation: currentSchedulingGeneration)
+        }
+    }
+
+    @MainActor
     private func startPeriodicBackupFailureCheck() {
         periodicCheckTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(Self.backupFailureCheckInterval * 1_000_000_000))
                 guard !Task.isCancelled else { break }
-                self.checkForFailedBackups()
+                checkForFailedBackups()
             }
         }
     }
@@ -1100,24 +1215,63 @@ class BackupService {
             return BackupItemStatus(
                 synced: status.synced,
                 required: max(status.required, status.synced + 1, UInt64(Date().timeIntervalSince1970)),
-                running: schedule || status.running
+                running: status.running
             )
         }
 
         guard schedule else { return }
-        Task {
-            let status = getBackupStatus(category: category)
-            if status.isRequired && !shouldSkipBackup(category: category) {
-                await scheduleBackup(category: category)
-            } else if !status.isRequired {
+        let generation = currentSchedulingGeneration
+        Task { await scheduleBackup(category: category, generation: generation) }
+    }
+
+    private var currentSchedulingGeneration: UInt64 {
+        stateQueue.sync { schedulingGeneration }
+    }
+
+    private func scheduleBackup(category: BackupCategory, generation: UInt64, initialOutcome: BackupOutcome = .failed) async {
+        while !Task.isCancelled {
+            let waitingForStop = try? await ServiceQueue.background(.backup) { [self] in
+                guard generation == currentSchedulingGeneration else { return false }
+                guard !isStoppingBackups else { return true }
+                enqueueBackup(category: category, generation: generation, initialOutcome: initialOutcome)
+                return false
+            }
+            guard waitingForStop == true else { return }
+            await waitForObservationTransition()
+        }
+    }
+
+    #if DEBUG
+        func scheduledBackupTask(for category: BackupCategory) async -> Task<Void, Never>? {
+            try? await ServiceQueue.background(.backup) { self.backupJobs[category] }
+        }
+    #endif
+
+    /// Called on the backup queue with admission open for this generation.
+    private func enqueueBackup(category: BackupCategory, generation: UInt64, initialOutcome: BackupOutcome) {
+        // A request made before a wipe or restore began can arrive after it: drop it, and clear a running flag left with no
+        // job, which would otherwise keep the category from being scheduled again
+        guard !shouldSkipBackup(category: category) else {
+            if backupJobs[category] == nil, runningBackupTasks[category] == nil, getBackupStatus(category: category).running {
                 updateBackupStatus(category: category) { status in
-                    BackupItemStatus(
-                        synced: status.synced,
-                        required: status.required,
-                        running: false
-                    )
+                    BackupItemStatus(synced: status.synced, required: status.required, running: false)
                 }
             }
+            return
+        }
+        guard backupJobs[category] == nil, getBackupStatus(category: category).isRequired else { return }
+        updateBackupStatus(category: category) { status in
+            BackupItemStatus(synced: status.synced, required: status.required, running: true)
+        }
+        backupJobs[category] = Task {
+            await self.runScheduledBackup(category: category, generation: generation, initialOutcome: initialOutcome)
+        }
+    }
+
+    private func clearScheduledBackupStatus(category: BackupCategory) {
+        guard runningBackupTasks[category] == nil else { return }
+        updateBackupStatus(category: category) { status in
+            BackupItemStatus(synced: status.synced, required: status.required, running: false)
         }
     }
 
@@ -1133,36 +1287,7 @@ class BackupService {
         _ = persistBackupStatuses(statuses, defaults: defaults)
     }
 
-    private func scheduleBackup(category: BackupCategory, initialOutcome: BackupOutcome = .failed, foregroundGeneration: UInt64? = nil) async {
-        try? await ServiceQueue.background(.backup) { [self] in
-            // A request made before a wipe or restore began can arrive after it: drop it, and clear the running flag that
-            // `markBackupRequired` set for it, which would otherwise keep the category from being scheduled again
-            guard !shouldSkipBackup(category: category) else {
-                if backupJobs[category] == nil, runningBackupTasks[category] == nil {
-                    updateBackupStatus(category: category) { status in
-                        BackupItemStatus(synced: status.synced, required: status.required, running: false)
-                    }
-                }
-                return
-            }
-            if let foregroundGeneration {
-                guard isObserving,
-                      stateQueue.sync(execute: { foregroundObservationGeneration == foregroundGeneration })
-                else { return }
-            }
-            guard backupJobs[category] == nil else { return }
-            updateBackupStatus(category: category) { status in
-                BackupItemStatus(
-                    synced: status.synced,
-                    required: status.required,
-                    running: true
-                )
-            }
-            backupJobs[category] = Task { await self.runScheduledBackup(category: category, initialOutcome: initialOutcome) }
-        }
-    }
-
-    private func runScheduledBackup(category: BackupCategory, initialOutcome: BackupOutcome) async {
+    private func runScheduledBackup(category: BackupCategory, generation: UInt64, initialOutcome: BackupOutcome) async {
         var outcome = initialOutcome
         var retryDelay: UInt64 = 10_000_000_000
         while !Task.isCancelled {
@@ -1179,20 +1304,32 @@ class BackupService {
                 break
             }
             guard getBackupStatus(category: category).isRequired && !shouldSkipBackup(category: category) else { break }
-            outcome = await triggerBackup(category: category, isScheduled: true)
+            outcome = await triggerBackup(category: category, isScheduled: true, generation: generation)
             if !outcome.canRetryPendingBackup || !getBackupStatus(category: category).isRequired {
                 break
             }
         }
-        _ = try? await ServiceQueue.background(.backup) { self.backupJobs.removeValue(forKey: category) }
-        updateBackupStatus(category: category) { status in
-            BackupItemStatus(synced: status.synced, required: status.required, running: false)
+        await waitForScheduledBackupCompletion(category, outcome)
+        let shouldRetry = outcome.canRetryPendingBackup && !Task.isCancelled
+        try? await ServiceQueue.background(.backup) { [self] in
+            guard generation == currentSchedulingGeneration else { return }
+            backupJobs.removeValue(forKey: category)
+            clearScheduledBackupStatus(category: category)
+            if shouldRetry {
+                enqueueBackup(category: category, generation: generation, initialOutcome: .failed)
+            }
         }
-        if outcome.canRetryPendingBackup, !Task.isCancelled,
-           getBackupStatus(category: category).isRequired, !shouldSkipBackup(category: category)
-        {
-            await scheduleBackup(category: category)
+        // A wallet recovery may have arrived while this metadata job still occupied its slot.
+        if category == .metadata, outcome == .walletDependencyFailed {
+            await resumeMetadataAfterWalletBackup(generation: generation)
         }
+    }
+
+    @MainActor
+    private func resumeMetadataAfterWalletBackup(generation: UInt64) async {
+        guard !Task.isCancelled, isObserving, !getBackupStatus(category: .wallet).isRequired,
+              getBackupStatus(category: .metadata).isRequired else { return }
+        await scheduleBackup(category: .metadata, generation: generation)
     }
 
     private func checkForFailedBackups() {
@@ -1202,8 +1339,12 @@ class BackupService {
         }
     }
 
-    private func hasFailedBackups(at currentTime: UInt64) -> Bool {
+    /// An active exit defers the SPARK_EXIT upload and keeps it required, so while one runs that category is no failure.
+    private func hasFailedBackups(at currentTime: UInt64, isSparkExitActive: Bool = false) -> Bool {
         BackupCategory.allCases.contains { category in
+            if category == .sparkExit, isSparkExitActive {
+                return false
+            }
             let status = getBackupStatus(category: category)
             return BackupFailureNotificationGate.hasFailedBackup(
                 status,
@@ -1214,25 +1355,27 @@ class BackupService {
     }
 
     private func showBackupFailureNotification() {
-        Task {
-            try? await ServiceQueue.background(.backup) {
-                guard self.isObserving, !self.shouldSkipBackup() else { return }
-                let currentTime = UInt64(Date().timeIntervalSince1970)
-                guard self.statusUpdateQueue.sync(execute: { self.hasFailedBackups(at: currentTime) }) else { return }
+        let generation = currentSchedulingGeneration
+        Task { @MainActor in
+            guard self.isObserving, generation == self.currentSchedulingGeneration, !self.shouldSkipBackup() else { return }
+            let isSparkExitActive = await self.isSparkExitActive()
+            guard self.isObserving, generation == self.currentSchedulingGeneration else { return }
+            let currentTime = UInt64(Date().timeIntervalSince1970)
+            guard self.statusUpdateQueue.sync(execute: {
+                self.hasFailedBackups(at: currentTime, isSparkExitActive: isSparkExitActive)
+            }) else { return }
 
-                let shouldNotify = self.stateQueue.sync {
-                    self.backupFailureNotificationGate.shouldNotify(
-                        at: currentTime,
-                        notificationInterval: Self.failedBackupNotificationInterval
-                    )
-                }
-                guard shouldNotify else { return }
-
-                let backupCheckIntervalMinutes = Int(Self.backupFailureCheckInterval / 60)
-                self.backupFailureSubject.send(backupCheckIntervalMinutes)
-
-                Logger.warn("Backup failed for more than 30 minutes", context: "BackupService")
+            let shouldNotify = self.stateQueue.sync {
+                self.backupFailureNotificationGate.shouldNotify(
+                    at: currentTime,
+                    notificationInterval: Self.failedBackupNotificationInterval
+                )
             }
+            guard shouldNotify else { return }
+
+            let backupCheckIntervalMinutes = Int(Self.backupFailureCheckInterval / 60)
+            self.backupFailureSubject.send(backupCheckIntervalMinutes)
+            Logger.warn("Backup failed for more than 30 minutes", context: "BackupService")
         }
     }
 
@@ -1290,6 +1433,7 @@ class BackupService {
     }
 
     func scheduleFullBackup() async {
+        let generation = currentSchedulingGeneration
         let currentTime = UInt64(Date().timeIntervalSince1970)
         for category in BackupCategory.allCases {
             updateBackupStatus(category: category) { status in
@@ -1305,7 +1449,7 @@ class BackupService {
         for category in BackupCategory.allCases {
             let status = getBackupStatus(category: category)
             if status.isRequired && !status.running {
-                await scheduleBackup(category: category)
+                await scheduleBackup(category: category, generation: generation)
             }
         }
     }
@@ -1314,7 +1458,9 @@ class BackupService {
         statusUpdateQueue.sync {
             var statuses = getAllBackupStatuses()
             let currentStatus = statuses[category] ?? BackupItemStatus()
-            statuses[category] = update(currentStatus)
+            let nextStatus = update(currentStatus)
+            guard statuses[category] != nextStatus else { return }
+            statuses[category] = nextStatus
             saveBackupStatuses(statuses)
         }
     }
@@ -1482,9 +1628,9 @@ class BackupService {
             return try JSONEncoder().encode(payload)
 
         case .blocktank:
-            let orders = try await CoreService.shared.blocktank.orders()
-            let cjitEntries = try await CoreService.shared.blocktank.cjitOrders()
-            let info = try? await CoreService.shared.blocktank.info(refresh: false)
+            let orders = try await CoreService.shared.blocktank.orders(refresh: false)
+            let cjitEntries = try await CoreService.shared.blocktank.cjitOrders(refresh: false)
+            let info = try await CoreService.shared.blocktank.info(refresh: false)
 
             let payload = BlocktankBackupV1(
                 version: 1,
@@ -1851,5 +1997,30 @@ struct SparkExitBackupMark {
         guard let version, version != markedVersion else { return false }
         markedVersion = version
         return true
+    }
+}
+
+/// Cancels a backup run its caller owns, even when the cancel arrives before the caller has resumed with that run.
+private final class BackupRunCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<BackupService.BackupOutcome, Never>?
+    private var isCancelled = false
+
+    func attach(_ task: Task<BackupService.BackupOutcome, Never>) {
+        let cancelled = lock.withLock {
+            self.task = task
+            return isCancelled
+        }
+        if cancelled {
+            task.cancel()
+        }
+    }
+
+    func cancel() {
+        let task = lock.withLock {
+            isCancelled = true
+            return self.task
+        }
+        task?.cancel()
     }
 }
