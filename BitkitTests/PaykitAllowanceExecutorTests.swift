@@ -2297,6 +2297,8 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         let entries = harness.log.entries
         let removal = try XCTUnwrap(entries.firstIndex(of: "removeLightningProof:\(paymentHash)"), "The started proof is removed")
         XCTAssertLessThan(removal, try XCTUnwrap(entries.lastIndex(of: "recordPaymentOutcome")))
+        let owners = await harness.payer.removedProofOwners
+        XCTAssertEqual(owners, try ["\(Fixtures.paymentRequest().id.paymentRequestId)@\(Fixtures.identityKey)"], "Only its own request's proof")
     }
 
     func testRecoveryRemovesTheStartedProofOfARefusedAutomaticPayment() async throws {
@@ -2322,6 +2324,8 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         let entries = harness.log.entries
         let removal = try XCTUnwrap(entries.firstIndex(of: "removeLightningProof:\(AllowanceHarness.paymentHash)"))
         XCTAssertLessThan(removal, try XCTUnwrap(entries.firstIndex(of: "recordPaymentOutcome")), "Removed before the outcome is saved")
+        let owners = await harness.payer.removedProofOwners
+        XCTAssertEqual(owners, ["\(request.id.paymentRequestId)@\(Fixtures.identityKey)"], "Only its own request's proof")
     }
 
     func testRecoveryLeavesARefusedPaymentOpenWhenItsProofCannotBeRemoved() async throws {
@@ -3691,8 +3695,11 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         proofRemovalFails = true
     }
 
-    func removeLightningProof(paymentHash: String) async -> Bool {
+    private(set) var removedProofOwners: [String] = []
+
+    func removeLightningProof(paymentHash: String, requestId: PaykitPaymentRequest.ID, identity: String) async -> Bool {
         called("removeLightningProof:\(paymentHash)")
+        removedProofOwners.append("\(requestId.paymentRequestId)@\(identity)")
         return !proofRemovalFails
     }
 

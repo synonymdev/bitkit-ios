@@ -301,8 +301,9 @@ protocol PaykitAllowancePaying: Sendable {
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool
     /// Whether the submission error proves nothing reached the node.
     func submissionSentNothing(_ submissionError: Error) async -> Bool
-    /// Removes the Lightning proof for `paymentHash`, for an attempt recovery ends as failed; false when it could not be saved.
-    func removeLightningProof(paymentHash: String) async -> Bool
+    /// Removes `requestId`'s Lightning proof for `paymentHash`, for an attempt recovery ends as failed; false when it could
+    /// not be saved.
+    func removeLightningProof(paymentHash: String, requestId: PaykitPaymentRequest.ID, identity: String) async -> Bool
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async
 }
 
@@ -448,8 +449,8 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
         PaykitPaymentProofService.submissionSentNothing(submissionError)
     }
 
-    func removeLightningProof(paymentHash: String) async -> Bool {
-        await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+    func removeLightningProof(paymentHash: String, requestId: PaykitPaymentRequest.ID, identity: String) async -> Bool {
+        await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash, requestId: requestId, identity: identity)
     }
 
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async {
@@ -873,7 +874,7 @@ actor PaykitAllowanceExecutor {
         guard let entry = localState(identity: identity).journal.first(where: { $0.attemptId == attemptId }),
               !entry.stage.isTerminal, let paymentHash = entry.paymentHash
         else { return true }
-        return await payer.removeLightningProof(paymentHash: paymentHash)
+        return await payer.removeLightningProof(paymentHash: paymentHash, requestId: entry.requestId, identity: identity)
     }
 
     private func record(attemptId: String, outcome: Paykit.PaymentOutcome, identity: String) async throws {

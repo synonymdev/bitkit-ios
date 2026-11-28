@@ -1414,6 +1414,15 @@ actor PaykitPaymentProofService {
         }
     }
 
+    /// Removes only `requestId`'s proof for `paymentHash`, so another request paying the same invoice keeps its own.
+    /// Returns false when the proofs could not be saved without it.
+    func failLightningPayment(paymentHash: String, requestId: PaykitPaymentRequest.ID, identity: String) async -> Bool {
+        await removeProofs {
+            $0.kind == .lightning && $0.requestId == requestId && PubkyPublicKeyFormat.matches($0.identity, identity) &&
+                $0.paymentIdentifier?.caseInsensitiveCompare(paymentHash) == .orderedSame
+        }
+    }
+
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
         guard Self.submissionSentNothing(submissionError) else { return false }
         await failLightningPayment(paymentHash: paymentHash)
