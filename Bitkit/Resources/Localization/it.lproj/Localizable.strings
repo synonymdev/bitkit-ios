@@ -1693,6 +1693,7 @@
 "wallet__payment_request_expiry_month" = "1 mese";
 "wallet__payment_request_choose_recipient" = "Scegli Destinatario";
 "wallet__payment_request_recipient" = "Destinatario";
+"wallet__payment_request_recipient_failed" = "Impossibile verificare quali contatti possono ricevere una richiesta di pagamento. Controlla la connessione.";
 "wallet__payment_request_recipient_no_match" = "Nessun contatto salvato corrispondente con una connessione privata.";
 "wallet__payment_request_recipient_unavailable" = "Le richieste di pagamento possono essere inviate solo a un contatto salvato con una connessione privata.";
 "wallet__payment_request_enter_pubky" = "Inserisci pubky";

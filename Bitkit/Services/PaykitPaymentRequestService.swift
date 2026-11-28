@@ -497,6 +497,13 @@ struct PaykitPaymentRequestTarget: Identifiable, Equatable, Hashable {
     }
 }
 
+/// Whether the saved contacts' payment request eligibility is known.
+enum PaykitPaymentRequestTargetsStatus: Equatable {
+    case loading
+    case loaded
+    case failed
+}
+
 struct PaykitPaymentRequestTargetDiscovery: Equatable {
     let targets: [PaykitPaymentRequestTarget]
     let isComplete: Bool
@@ -1418,6 +1425,9 @@ final class PaykitPaymentRequestManager {
     private(set) var subscriptions: [PaykitSubscription] = []
     private(set) var receivedPaymentContacts = PaykitReceivedPaymentContacts()
     private(set) var eligibleTargets: [PaykitPaymentRequestTarget] = []
+    /// Loading until a discovery for the current identity finishes; failed when it could not check every contact.
+    private(set) var eligibleTargetsStatus: PaykitPaymentRequestTargetsStatus = .loading
+    private var eligibilityRefreshCount = 0
     private(set) var requestedPresentationId: PaykitPaymentRequest.ID?
     private(set) var requestedSubscriptionProposalId: PaykitSubscription.ID?
     private(set) var isCreatingRequest = false
@@ -1559,11 +1569,14 @@ final class PaykitPaymentRequestManager {
               !PubkyPublicKeyFormat.matches(activeIdentity, normalizedIdentity) else { return }
         if activeIdentity != nil {
             clear()
+        } else {
+            clearEligibleTargets()
         }
         do {
             acceptedRequestIds = try acceptanceStore.load(identity: normalizedIdentity)
         } catch {
             acceptedRequestIds = []
+            eligibleTargetsStatus = .failed
             logWarning("Failed to restore locally accepted Paykit payment requests: \(error)")
             return
         }
@@ -1588,6 +1601,7 @@ final class PaykitPaymentRequestManager {
             persistedSubscriptionState = PaykitSubscriptionState()
             logWarning("Failed to restore Paykit subscription state: \(error)")
             activeIdentity = nil
+            eligibleTargetsStatus = .failed
             return
         }
         activeIdentity = normalizedIdentity
@@ -1603,14 +1617,92 @@ final class PaykitPaymentRequestManager {
         }
     }
 
+    /// Checks the saved contacts once they have loaded, so an empty list read before the load is not taken as final.
+    /// Without a profile there are no saved contacts; a profile still signing in cannot be checked yet. When no
+    /// contacts load is running, the picker starts one, which also retries a failed load; it waits at most `timeout`
+    /// for a load another caller started.
+    func refreshEligibleTargets(
+        contactsManager: ContactsManager,
+        profilePublicKey: String?,
+        isProfileSignInPending: Bool = false,
+        waitingAtMost timeout: Duration = .seconds(30)
+    ) async {
+        guard let profilePublicKey else {
+            if isProfileSignInPending {
+                markEligibleTargetsUnknown()
+            } else {
+                markNoEligibleTargets()
+            }
+            return
+        }
+        if !contactsManager.hasLoaded {
+            if eligibleTargetsStatus == .failed {
+                eligibleTargetsStatus = .loading
+            }
+            if contactsManager.isLoading {
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask { @MainActor in
+                        for await isLoading in contactsManager.$isLoading.values where !isLoading {
+                            return
+                        }
+                    }
+                    group.addTask { try? await Task.sleep(for: timeout) }
+                    await group.next()
+                    group.cancelAll()
+                }
+            } else {
+                // Not tied to the picker's task, so closing or reopening the picker does not cancel the load.
+                await Task { try? await contactsManager.loadContacts(for: profilePublicKey) }.value
+            }
+            guard !Task.isCancelled else { return }
+            guard contactsManager.hasLoaded else {
+                markEligibleTargetsUnknown()
+                return
+            }
+        }
+        await refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+    }
+
+    /// Without a profile no saved contact can receive a request, which is a final answer rather than a failure.
+    func markNoEligibleTargets() {
+        guard activeIdentity == nil else { return }
+        eligibleTargets = []
+        eligibleTargetsStatus = .loaded
+    }
+
+    /// Saved contacts could not be loaded, so a first load cannot tell whether any of them can receive a request.
+    func markEligibleTargetsUnknown() {
+        if eligibleTargetsStatus == .loading {
+            eligibleTargetsStatus = .failed
+        }
+    }
+
     func refreshEligibleTargets(savedPublicKeys: [String]) async {
         updateSavedPublicKeys(savedPublicKeys)
         eligibilityGeneration += 1
+        eligibilityRefreshCount += 1
         let generation = eligibilityGeneration
+        let refreshNumber = eligibilityRefreshCount
         let currentStateGeneration = stateGeneration
         guard isAvailable(), let activeIdentity else {
             eligibleTargets = []
+            if eligibleTargetsStatus == .loading {
+                eligibleTargetsStatus = .failed
+            }
             return
+        }
+        // A saved-contacts change drops this result without starting a refresh of its own.
+        let retryIfSuperseded = { [self] in
+            guard refreshNumber == eligibilityRefreshCount,
+                  currentStateGeneration == stateGeneration,
+                  eligibleTargetsStatus != .loaded,
+                  !Task.isCancelled
+            else { return }
+            await refreshEligibleTargets(savedPublicKeys: self.savedPublicKeys)
+        }
+        let statusBeforeRefresh = eligibleTargetsStatus
+        if eligibleTargetsStatus != .loaded {
+            eligibleTargetsStatus = .loading
         }
 
         do {
@@ -1625,12 +1717,16 @@ final class PaykitPaymentRequestManager {
                   Set(savedPublicKeys.map(Self.eligibilityKey)) == Set(self.savedPublicKeys.map(Self.eligibilityKey)),
                   isAvailable(),
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
-            else { return }
+            else {
+                await retryIfSuperseded()
+                return
+            }
             let newerSingleRefreshKeys = Set(singleEligibilityWriteGenerations.filter { $0.value >= generation }.keys)
             let isNewerSingleRefresh: (PaykitPaymentRequestTarget) -> Bool = {
                 newerSingleRefreshKeys.contains(Self.eligibilityKey($0.publicKey))
             }
             eligibleTargets = discovery.targets.filter { !isNewerSingleRefresh($0) } + eligibleTargets.filter(isNewerSingleRefresh)
+            eligibleTargetsStatus = discovery.isComplete ? .loaded : .failed
             lastFullEligibilityWriteGeneration = generation
             if discovery.isComplete {
                 let checkedAt = now()
@@ -1640,14 +1736,22 @@ final class PaykitPaymentRequestManager {
                 }
             }
         } catch is CancellationError {
+            if generation == eligibilityGeneration, currentStateGeneration == stateGeneration {
+                eligibleTargetsStatus = statusBeforeRefresh
+            }
             return
         } catch {
             guard generation == eligibilityGeneration,
                   currentStateGeneration == stateGeneration
-            else { return }
-            if case PaykitPaymentRequestError.operationInProgress = error {
+            else {
+                await retryIfSuperseded()
                 return
             }
+            if case PaykitPaymentRequestError.operationInProgress = error {
+                eligibleTargetsStatus = statusBeforeRefresh == .loading ? .failed : statusBeforeRefresh
+                return
+            }
+            eligibleTargetsStatus = .failed
             eligibleTargets = eligibleTargets.filter { target in
                 savedPublicKeys.contains { PubkyPublicKeyFormat.matches($0, target.publicKey) }
             }
@@ -1755,10 +1859,12 @@ final class PaykitPaymentRequestManager {
 
     func clearEligibleTargets() {
         eligibilityGeneration += 1
+        eligibilityRefreshCount += 1
         singleEligibilityWriteGenerations = [:]
         eligibilityCheckDates = [:]
         savedPublicKeys = []
         eligibleTargets = []
+        eligibleTargetsStatus = .loading
     }
 
     func propose(_ draft: PaykitPaymentRequestDraft, to target: PaykitPaymentRequestTarget) async throws -> PaykitPaymentRequest {
@@ -2302,6 +2408,7 @@ final class PaykitPaymentRequestManager {
         presentationGeneration += 1
         invalidateRefresh()
         eligibilityGeneration += 1
+        eligibilityRefreshCount += 1
         singleEligibilityWriteGenerations = [:]
         eligibilityCheckDates = [:]
         expirationTask?.cancel()
@@ -2314,6 +2421,7 @@ final class PaykitPaymentRequestManager {
         subscriptions = []
         receivedPaymentContacts = PaykitReceivedPaymentContacts()
         eligibleTargets = []
+        eligibleTargetsStatus = .loading
         processingRequestIds = []
         approvedPaymentRequestIds = []
         acceptedRequestIds = []

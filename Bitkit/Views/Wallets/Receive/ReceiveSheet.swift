@@ -47,6 +47,9 @@ struct ReceiveSheetItem: SheetItem {
 
 struct ReceiveSheet: View {
     @EnvironmentObject private var tagManager: TagManager
+    @EnvironmentObject private var contactsManager: ContactsManager
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(TrezorManager.self) private var trezorManager
 
@@ -54,6 +57,7 @@ struct ReceiveSheet: View {
 
     @State private var navigationPath: [ReceiveRoute] = []
     @State private var isUsdtSelected: Bool?
+    @State private var paymentRequestPickerOpenCount = 0
 
     private var usesUsdtHeader: Bool {
         switch navigationPath.last ?? config.initialRoute {
@@ -77,11 +81,24 @@ struct ReceiveSheet: View {
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
+        .onChange(of: navigationPath) { oldPath, newPath in
+            guard newPath.count > oldPath.count, case .paymentRequestRecipient? = newPath.last else { return }
+            paymentRequestPickerOpenCount += 1
+        }
+        .task(id: paymentRequestPickerOpenCount) {
+            guard paymentRequestPickerOpenCount > 0 else { return }
+            await paymentRequests.refreshEligibleTargets(contactsManager: contactsManager,
+                                                         profilePublicKey: pubkyProfile.publicKey,
+                                                         isProfileSignInPending: pubkyProfile.isProfileSignInPending)
+        }
         .onAppear {
             navigationPath = []
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
             tagManager.clearSelectedTags()
+            if case .paymentRequestRecipient = config.initialRoute {
+                paymentRequestPickerOpenCount += 1
+            }
             guard config.initialRoute.requiresInvoiceRefresh else { return }
             Task {
                 // Reset tags for current payment ID before refreshing

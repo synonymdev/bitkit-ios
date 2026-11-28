@@ -1730,6 +1730,7 @@
 "wallet__payment_request_expiry_month" = "1 mois";
 "wallet__payment_request_choose_recipient" = "Choisir le destinataire";
 "wallet__payment_request_recipient" = "Destinataire";
+"wallet__payment_request_recipient_failed" = "Impossible de vérifier quels contacts peuvent recevoir une demande de paiement. Vérifiez votre connexion.";
 "wallet__payment_request_recipient_no_match" = "Aucun contact enregistré correspondant avec une connexion privée.";
 "wallet__payment_request_recipient_unavailable" = "Les demandes de paiement ne peuvent être envoyées qu'à un contact enregistré disposant d'une connexion privée.";
 "wallet__payment_request_enter_pubky" = "Saisir un pubky";

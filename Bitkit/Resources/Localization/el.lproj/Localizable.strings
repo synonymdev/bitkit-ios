@@ -1469,6 +1469,7 @@
 "wallet__payment_request_expiry_month" = "1 μήνας";
 "wallet__payment_request_choose_recipient" = "Επιλογή παραλήπτη";
 "wallet__payment_request_recipient" = "Παραλήπτης";
+"wallet__payment_request_recipient_failed" = "Δεν ήταν δυνατός ο έλεγχος των επαφών που μπορούν να λάβουν αίτημα πληρωμής. Έλεγξε τη σύνδεσή σου.";
 "wallet__payment_request_recipient_no_match" = "Καμία αποθηκευμένη επαφή με ιδιωτική σύνδεση δεν ταιριάζει.";
 "wallet__payment_request_recipient_unavailable" = "Τα αιτήματα πληρωμής μπορούν να σταλούν μόνο σε αποθηκευμένη επαφή με ιδιωτική σύνδεση.";
 "wallet__payment_request_enter_pubky" = "Εισαγωγή pubky";

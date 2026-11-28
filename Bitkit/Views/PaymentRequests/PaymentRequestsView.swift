@@ -388,8 +388,6 @@ struct PaymentRequestsFooterButton: View {
                     .receive,
                     data: ReceiveConfig(view: .paymentRequestRecipient(ReceiveSheet.defaultPaymentRequestDraft))
                 )
-                let savedPublicKeys = contactsManager.contacts.map(\.publicKey)
-                Task { await paymentRequests.refreshEligibleTargets(savedPublicKeys: savedPublicKeys) }
             }
         }
         .accessibilityIdentifier("PaymentRequestRequestPayment")

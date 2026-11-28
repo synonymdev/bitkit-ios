@@ -1741,7 +1741,7 @@ struct AppScene: View {
         if presentItems, canRefresh(), pubkyProfile.automaticPaykitSession == session {
             await presentNextIncomingPaykitItem()
         }
-        if mode == .full, canRefresh() {
+        if mode == .full, canRefresh(), contactsManager.hasLoaded {
             await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
         return refreshed

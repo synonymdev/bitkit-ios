@@ -1561,6 +1561,7 @@
 "wallet__payment_request_expiry_month" = "شهر واحد";
 "wallet__payment_request_choose_recipient" = "اختر المستلم";
 "wallet__payment_request_recipient" = "المستلم";
+"wallet__payment_request_recipient_failed" = "تعذّر التحقق من جهات الاتصال التي يمكنها استلام طلب دفع. تحقق من اتصالك.";
 "wallet__payment_request_recipient_no_match" = "لا توجد جهة اتصال محفوظة مطابقة لديها اتصال خاص.";
 "wallet__payment_request_recipient_unavailable" = "لا يمكن إرسال طلبات الدفع إلا إلى جهة اتصال محفوظة لديها اتصال خاص.";
 "wallet__payment_request_enter_pubky" = "أدخل pubky";
