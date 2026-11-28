@@ -301,6 +301,8 @@ protocol PaykitAllowancePaying: Sendable {
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool
     /// Whether the submission error proves nothing reached the node.
     func submissionSentNothing(_ submissionError: Error) async -> Bool
+    /// Removes the Lightning proof for `paymentHash`, for an attempt recovery ends as failed; false when it could not be saved.
+    func removeLightningProof(paymentHash: String) async -> Bool
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async
 }
 
@@ -444,6 +446,10 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
 
     func submissionSentNothing(_ submissionError: Error) -> Bool {
         PaykitPaymentProofService.submissionSentNothing(submissionError)
+    }
+
+    func removeLightningProof(paymentHash: String) async -> Bool {
+        await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
     }
 
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async {
@@ -723,6 +729,10 @@ actor PaykitAllowanceExecutor {
                             }
                             continue
                         }
+                        // Left open when the proof could not be removed, so the next recovery tries again.
+                        if outcome == .failed, await !removeUnsentLightningProof(attemptId: attempt.attemptId, identity: identity) {
+                            continue
+                        }
                         try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
                     case .succeeded, .failed:
                         // Reconciliation can settle an attempt the journal still shows as open.
@@ -855,6 +865,15 @@ actor PaykitAllowanceExecutor {
             }
         }
         return entry.transactionId == nil ? nil : .succeeded
+    }
+
+    /// A failed payment has no proof to deliver, and a started proof left in place hides its request from the pending list.
+    /// Removed before the outcome is saved, so a kill in between leaves the attempt open and recovery removes it again.
+    private func removeUnsentLightningProof(attemptId: String, identity: String) async -> Bool {
+        guard let entry = localState(identity: identity).journal.first(where: { $0.attemptId == attemptId }),
+              !entry.stage.isTerminal, let paymentHash = entry.paymentHash
+        else { return true }
+        return await payer.removeLightningProof(paymentHash: paymentHash)
     }
 
     private func record(attemptId: String, outcome: Paykit.PaymentOutcome, identity: String) async throws {

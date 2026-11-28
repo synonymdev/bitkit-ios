@@ -1406,7 +1406,9 @@ actor PaykitPaymentProofService {
         }
     }
 
-    func failLightningPayment(paymentHash: String) async {
+    /// Returns false when the proofs could not be saved without it.
+    @discardableResult
+    func failLightningPayment(paymentHash: String) async -> Bool {
         await removeProofs {
             $0.kind == .lightning && $0.paymentIdentifier?.caseInsensitiveCompare(paymentHash) == .orderedSame
         }
@@ -2057,20 +2059,24 @@ actor PaykitPaymentProofService {
         }
     }
 
-    private func removeProofs(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async {
+    @discardableResult
+    private func removeProofs(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async -> Bool {
         await mutationLock.withLock {
             await removeProofsLocked(where: shouldRemove)
         }
     }
 
-    private func removeProofsLocked(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async {
+    @discardableResult
+    private func removeProofsLocked(where shouldRemove: (PendingPaykitPaymentProof) -> Bool) async -> Bool {
         do {
             let pendingProofs = try await loadProofs()
             let remainingProofs = pendingProofs.filter { !shouldRemove($0) }
-            guard remainingProofs != pendingProofs else { return }
+            guard remainingProofs != pendingProofs else { return true }
             try await persist(remainingProofs)
+            return true
         } catch {
             logWarning("Failed to clear a pending Paykit payment proof: \(error)")
+            return false
         }
     }
 
