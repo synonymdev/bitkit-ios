@@ -126,7 +126,7 @@ struct ContactDetailView: View {
 
     private var contactActions: some View {
         HStack(spacing: 16) {
-            GradientCircleButton(icon: "coins-regular", accessibilityLabel: t("wallet__send"), isLoading: isPayLoading) {
+            GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send"), isLoading: isPayLoading) {
                 payTask = Task {
                     await onPayTapped()
                 }

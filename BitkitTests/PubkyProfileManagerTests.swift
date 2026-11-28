@@ -467,6 +467,47 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testProfileSignInStaysPendingAfterRestoreFailsOrIsDeferred() async throws {
+        try await withEmptyIdentityStorage {
+            for result: PubkyProfileManager.SessionInitializationResult in [.restorationFailed, .restorationDeferred] {
+                let manager = PubkyProfileManager()
+                await manager.initialize { result }
+                XCTAssertNil(manager.publicKey)
+                XCTAssertTrue(manager.isProfileSignInPending, "\(result)")
+            }
+            let manager = PubkyProfileManager()
+            await manager.initialize { .noSession }
+            XCTAssertFalse(manager.isProfileSignInPending)
+        }
+    }
+
+    @MainActor
+    func testDroppingALostAdoptedIdentityEndsPendingSignIn() async throws {
+        try await withEmptyIdentityStorage {
+            AdoptedPubkyReference.current = (sourceApp: "missing.test.app", pubky: "pubky\(String(repeating: "m", count: 52))")
+            let manager = PubkyProfileManager()
+
+            await manager.initialize { .restorationFailed }
+
+            XCTAssertTrue(manager.adoptedSourceLost)
+            XCTAssertFalse(manager.isProfileSignInPending)
+        }
+    }
+
+    @MainActor
+    func testDisconnectingAnUnrestoredProfileEndsPendingSignIn() async throws {
+        try await withEmptyIdentityStorage {
+            let manager = PubkyProfileManager()
+            await manager.initialize { .restorationFailed }
+            XCTAssertTrue(manager.isProfileSignInPending)
+
+            try await manager.signOut(performSessionCleanup: {})
+
+            XCTAssertFalse(manager.isProfileSignInPending)
+        }
+    }
+
+    @MainActor
     func testFailedRestorationPreservesCachedProfile() async {
         let keys = ["pubky_profile_name", "pubky_profile_image_uri"]
         let defaults = UserDefaults.standard

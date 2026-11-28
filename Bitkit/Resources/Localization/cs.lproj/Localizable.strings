@@ -1404,6 +1404,11 @@
 "profile__edit_changed_error" = "Tvůj profil se v pubky.app změnil. Bitkit načetl nejnovější verzi, proveď proto úpravu znovu.";
 "profile__edit_public_note" = "Toto je tvůj profil na pubky.app. Je veřejný a změny, které zde provedeš, se zobrazí i na pubky.app.";
 "profile__edit_tags_error" = "Bitkit nemohl uložit vaše štítky. Ostatní změny byly uloženy, tak zkuste štítky znovu.";
+"profile__edit_link_error" = "Opravte odkaz {label}, abyste mohli uložit profil.";
+"profile__link_error_label_length" = "Popisek může mít nejvýše 100 znaků.";
+"profile__link_error_label_stored" = "Popisek tohoto odkazu nelze uložit. Odkaz odstraňte a přidejte znovu.";
+"profile__link_error_url_invalid" = "Zadejte platný webový odkaz, například example.com.";
+"profile__link_error_url_length" = "Odkaz může mít nejvýše 300 znaků.";
 "profile__delete_title" = "Smazat profil?";
 "profile__delete_description" = "Smazáním profilu ho odstraníte z Pubky. Kontakty si mohou ponechat informace o profilu a platbách, které jste s nimi dříve sdíleli.";
 "profile__delete_confirm" = "Ano, smazat";
@@ -1714,6 +1719,7 @@
 "wallet__payment_request_expiry_month" = "1 měsíc";
 "wallet__payment_request_choose_recipient" = "Vybrat příjemce";
 "wallet__payment_request_recipient" = "Příjemce";
+"wallet__payment_request_recipient_failed" = "Nepodařilo se ověřit, které kontakty mohou přijmout žádost o platbu. Zkontrolujte připojení.";
 "wallet__payment_request_recipient_no_match" = "Žádný odpovídající uložený kontakt se soukromým spojením.";
 "wallet__payment_request_recipient_unavailable" = "Žádosti o platbu lze posílat pouze uloženým kontaktům se soukromým spojením.";
 "wallet__payment_request_enter_pubky" = "Zadejte pubky";

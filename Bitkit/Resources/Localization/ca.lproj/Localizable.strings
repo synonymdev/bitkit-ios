@@ -1300,6 +1300,11 @@
 "profile__edit_changed_error" = "El teu perfil ha canviat a pubky.app. Bitkit ha carregat la versió més recent, així que torna a fer la teva edició.";
 "profile__edit_public_note" = "Aquest és el teu perfil de pubky.app. És públic, i els canvis que hi facis aquí també es veuen a pubky.app.";
 "profile__edit_tags_error" = "Bitkit no ha pogut desar les teves etiquetes. Els altres canvis s'han desat, així que torna a provar amb les etiquetes.";
+"profile__edit_link_error" = "Corregeix l'enllaç {label} per desar el teu perfil.";
+"profile__link_error_label_length" = "L'etiqueta ha de tenir 100 caràcters o menys.";
+"profile__link_error_label_stored" = "No es pot desar l'etiqueta d'aquest enllaç. Elimina l'enllaç i torna'l a afegir.";
+"profile__link_error_url_invalid" = "Introdueix un enllaç web vàlid, com ara example.com.";
+"profile__link_error_url_length" = "L'enllaç ha de tenir 300 caràcters o menys.";
 "profile__delete_title" = "Eliminar el perfil?";
 "profile__delete_description" = "Eliminar el teu perfil l'esborra de Pubky. És possible que els contactes conservin la informació de perfil i de pagament que s'hi hagi compartit abans.";
 "profile__delete_confirm" = "Sí, elimina";
@@ -1592,6 +1597,7 @@
 "wallet__payment_request_expiry_month" = "1 mes";
 "wallet__payment_request_choose_recipient" = "Triar destinatari";
 "wallet__payment_request_recipient" = "Destinatari";
+"wallet__payment_request_recipient_failed" = "No s'ha pogut comprovar quins contactes poden rebre una sol·licitud de pagament. Comprova la connexió.";
 "wallet__payment_request_recipient_no_match" = "Cap contacte desat coincident amb una connexió privada.";
 "wallet__payment_request_recipient_unavailable" = "Les sol·licituds de pagament només es poden enviar a un contacte desat amb una connexió privada.";
 "wallet__payment_request_enter_pubky" = "Introdueix un pubky";

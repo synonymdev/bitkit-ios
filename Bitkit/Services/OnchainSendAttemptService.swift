@@ -1399,6 +1399,11 @@ actor OnchainSendAttemptService {
         }
     }
 
+    /// The journal's attempt, to any address and in any state.
+    func journalAttempt() throws -> OnchainSendAttempt? {
+        try currentAttempt()
+    }
+
     func blockingAttempt() throws -> OnchainSendAttempt? {
         try currentAttemptForPending().flatMap { $0.blocksNewSend ? $0 : nil }
     }

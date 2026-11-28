@@ -228,8 +228,8 @@ struct SparkExitReminder: Equatable {
 enum SparkExitFundingState: Equatable {
     /// Ask for `sats` more at the funding address, with its QR. `receivedSats` is the new funding already there.
     case ask(sats: UInt64, receivedSats: UInt64 = 0)
-    /// Bitkit paid it from savings in `txid`, which has not confirmed yet.
-    case paid(txid: String)
+    /// Bitkit paid it from savings in `txid`, which has not confirmed yet; nil while a stop left that txid unsaved.
+    case paid(txid: String?)
     /// A payment covering the shortfall reached the address, and the exit waits for it to confirm or to build.
     case seen(txid: String)
 }
@@ -560,6 +560,10 @@ enum SparkExitMath {
         // Covered by confirmed funding alone, the next tick builds.
         if seenSats >= total.covered, let pending = fresh.first(where: { !$0.status.confirmed }) ?? fresh.first {
             return .seen(txid: pending.txid)
+        }
+        // A savings payment whose txid was never kept is waited for, also when it pays the rest of a partial one.
+        if record.isSavingsSendUnsaved {
+            return .paid(txid: nil)
         }
         return .ask(sats: max(total.toSend.saturatingSub(seenSats), fundingDustSats), receivedSats: seenSats)
     }

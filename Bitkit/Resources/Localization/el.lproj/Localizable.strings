@@ -1201,6 +1201,11 @@
 "profile__edit_changed_error" = "Το προφίλ σου άλλαξε στο pubky.app. Το Bitkit φόρτωσε την πιο πρόσφατη έκδοση, οπότε κάνε ξανά την αλλαγή σου.";
 "profile__edit_public_note" = "Αυτό είναι το προφίλ σου στο pubky.app. Είναι δημόσιο, και οι αλλαγές που κάνεις εδώ εμφανίζονται και στο pubky.app.";
 "profile__edit_tags_error" = "Το Bitkit δεν μπόρεσε να αποθηκεύσει τις ετικέτες σου. Οι άλλες αλλαγές σου αποθηκεύτηκαν, οπότε δοκίμασε ξανά τις ετικέτες.";
+"profile__edit_link_error" = "Διόρθωσε τον σύνδεσμο {label} για να αποθηκεύσεις το προφίλ σου.";
+"profile__link_error_label_length" = "Η ετικέτα πρέπει να έχει έως 100 χαρακτήρες.";
+"profile__link_error_label_stored" = "Η ετικέτα αυτού του συνδέσμου δεν μπορεί να αποθηκευτεί. Αφαίρεσε τον σύνδεσμο και πρόσθεσέ τον ξανά.";
+"profile__link_error_url_invalid" = "Εισήγαγε έναν έγκυρο σύνδεσμο ιστού, όπως example.com.";
+"profile__link_error_url_length" = "Ο σύνδεσμος πρέπει να έχει έως 300 χαρακτήρες.";
 "profile__delete_title" = "Διαγραφή Προφίλ;";
 "profile__delete_description" = "Η διαγραφή του προφίλ σας το αφαιρεί από το Pubky. Οι επαφές μπορεί να διατηρούν ακόμα πληροφορίες προφίλ και πληρωμών που τους κοινοποιήθηκαν παλαιότερα.";
 "profile__delete_confirm" = "Ναι, Διαγραφή";
@@ -1464,6 +1469,7 @@
 "wallet__payment_request_expiry_month" = "1 μήνας";
 "wallet__payment_request_choose_recipient" = "Επιλογή παραλήπτη";
 "wallet__payment_request_recipient" = "Παραλήπτης";
+"wallet__payment_request_recipient_failed" = "Δεν ήταν δυνατός ο έλεγχος των επαφών που μπορούν να λάβουν αίτημα πληρωμής. Έλεγξε τη σύνδεσή σου.";
 "wallet__payment_request_recipient_no_match" = "Καμία αποθηκευμένη επαφή με ιδιωτική σύνδεση δεν ταιριάζει.";
 "wallet__payment_request_recipient_unavailable" = "Τα αιτήματα πληρωμής μπορούν να σταλούν μόνο σε αποθηκευμένη επαφή με ιδιωτική σύνδεση.";
 "wallet__payment_request_enter_pubky" = "Εισαγωγή pubky";

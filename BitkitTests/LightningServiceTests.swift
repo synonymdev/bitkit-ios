@@ -160,4 +160,67 @@ final class LightningServiceTests: XCTestCase {
         XCTAssertEqual(attempts, 1)
         XCTAssertTrue(recovered)
     }
+
+    func testBuiltNodeIsReleasedInsteadOfStartedAfterAStopDuringSetup() async {
+        var released = false
+        var started = false
+        do {
+            try await Bitkit.LightningService.startUnlessStopRequested(
+                stopRequested: { true },
+                release: { released = true },
+                start: { started = true }
+            )
+            XCTFail("expected the start to yield to the stop")
+        } catch {}
+        XCTAssertTrue(released)
+        XCTAssertFalse(started)
+    }
+
+    func testQueuedRestartLeavesTheCurrentNodeAfterAStopWhileItWaited() async {
+        var stoppedCurrent = false
+        do {
+            try await Bitkit.LightningService.stopCurrentNodeUnlessStopRequested(stopRequested: { true }) {
+                stoppedCurrent = true
+            }
+            XCTFail("expected the restart to yield to the stop")
+        } catch {}
+        XCTAssertFalse(stoppedCurrent)
+    }
+
+    func testQueuedRestartStopsTheCurrentNodeWithoutAStop() async throws {
+        var stoppedCurrent = false
+        try await Bitkit.LightningService.stopCurrentNodeUnlessStopRequested(stopRequested: { false }) {
+            stoppedCurrent = true
+        }
+        XCTAssertTrue(stoppedCurrent)
+    }
+
+    func testBuiltNodeStartsWithoutAStopDuringSetup() async throws {
+        var released = false
+        var started = false
+        try await Bitkit.LightningService.startUnlessStopRequested(
+            stopRequested: { false },
+            release: { released = true },
+            start: { started = true }
+        )
+        XCTAssertFalse(released)
+        XCTAssertTrue(started)
+    }
+
+    func testConfigChangeDoesNotRecoverOverAStopThatEndedIt() async {
+        var stopped = false
+        var recovered = false
+        do {
+            try await Bitkit.LightningService.applyConfigChange(
+                stopRequested: { stopped },
+                start: {
+                    stopped = true
+                    throw Bitkit.AppError(serviceError: .nodeNotSetup)
+                },
+                recover: { recovered = true }
+            )
+            XCTFail("expected the change to fail")
+        } catch {}
+        XCTAssertFalse(recovered)
+    }
 }

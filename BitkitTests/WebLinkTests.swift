@@ -10,6 +10,14 @@ final class WebLinkTests: XCTestCase {
             " www.example.com/path ",
             "medium.com/@alice",
             "example.com/a@b",
+            "bücher.de",
+            "my_site.example.com",
+            "https://example.com/?q=a|b",
+            "https://example.com.",
+            "example.com.",
+            "https://user:pass@example.com",
+            "EXAMPLE.COM",
+            "HTTPS://Example.COM/Path",
         ] {
             XCTAssertTrue(link.isWebLink, link)
         }
@@ -19,6 +27,9 @@ final class WebLinkTests: XCTestCase {
         let links = [
             "mailto:a@b.c", "a@b.c", "tel:+123456789", "+1 234 567 890", "123.456.7890",
             "ftp://example.com", "example.com:8080", "example", "two words.com", "",
+            "https:example.com", "https:/example.com", "https:\\\\example.com", "https://\\example.com",
+            "https:///example.com", "https:////example.com", "/example.com", "https://.", "https://..",
+            "example.com/a\u{00A0}b", "example\u{2007}.com", "https://example.com/a\u{202F}b",
         ]
         for link in links {
             XCTAssertFalse(link.isWebLink, link)

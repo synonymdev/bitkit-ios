@@ -1416,6 +1416,11 @@
 "profile__edit_changed_error" = "Your profile changed in pubky.app. Bitkit loaded the latest version, so make your edit again.";
 "profile__edit_public_note" = "This is your pubky.app profile. It is public, and changes you make here also show on pubky.app.";
 "profile__edit_tags_error" = "Bitkit could not save your tags. Your other changes were saved, so try the tags again.";
+"profile__edit_link_error" = "Fix the {label} link to save your profile.";
+"profile__link_error_label_length" = "Label must be 100 characters or fewer.";
+"profile__link_error_label_stored" = "This link's label can't be saved. Remove the link and add it again.";
+"profile__link_error_url_invalid" = "Enter a valid web link, such as example.com.";
+"profile__link_error_url_length" = "Link must be 300 characters or fewer.";
 "profile__delete_title" = "Delete Profile?";
 "profile__delete_description" = "Deleting your profile removes it from Pubky. Contacts may still retain profile and payment information previously shared with them.";
 "profile__delete_confirm" = "Yes, Delete";
@@ -1726,6 +1731,7 @@
 "wallet__payment_request_expiry_month" = "1 month";
 "wallet__payment_request_choose_recipient" = "Choose Recipient";
 "wallet__payment_request_recipient" = "Recipient";
+"wallet__payment_request_recipient_failed" = "Couldn't check which contacts can receive a payment request. Check your connection.";
 "wallet__payment_request_recipient_no_match" = "No matching saved contact with a private connection.";
 "wallet__payment_request_recipient_unavailable" = "Payment requests can only be sent to a saved contact with a private connection.";
 "wallet__payment_request_enter_pubky" = "Enter pubky";

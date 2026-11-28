@@ -200,6 +200,8 @@ the consumed details and started proof until the payment is reconciled.
 
 `contact-request-or-pay.xml` is ported alongside Android's matching journey.
 
+`contact-request-or-pay-compact.xml` uses the same setup on an iPhone SE (3rd generation) simulator at the default and accessibility-extra-extra-extra-large Dynamic Type sizes (`xcrun simctl ui booted content_size`); it restores `large` at the end. Android runs it on a 320 x 640 dp display at font scale 2.0.
+
 ### Setup
 
 Use the same two-instance setup as the request summary, and start from the payer's Contact Detail
@@ -225,7 +227,7 @@ the SDK and can push the Pay step well past the budget.
 - Confirmation details: `SendConfirmToggleDetails`.
 - Saved-contact recipient: `ReviewContactRecipient`.
 - Contact Detail pay action: `ContactPay`.
-- Request or Pay sheet: `RequestOrPaySheet` (its Pay and Request buttons carry no identifier; find them by label).
+- Request or Pay sheet: `RequestOrPaySheet`, with its Pay button `RequestOrPayPay` and Request button `RequestOrPayRequest`.
 - Payment Request amount screen: `PaymentRequestAmount`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
 - Minimum-amount feedback: `PaymentRequestAmountTooLowToast`.
